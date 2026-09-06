@@ -135,6 +135,17 @@ final class ActionExecutor {
             }
         case .script(let script):
             runScript(script, argument: argument)
+        case .quick(let quick):
+            switch quick {
+            case .openURL(let url), .webSearch(_, let url):
+                if NSWorkspace.shared.open(url) {
+                    record(item.id)
+                } else {
+                    fail("\(item.title): could not open \(url.absoluteString)")
+                }
+            case .terminal(let text):
+                runInTerminal(id: item.id, name: "Run in Terminal", command: text, cwd: nil)
+            }
         }
     }
 
@@ -174,9 +185,10 @@ final class ActionExecutor {
                     record(item.id)
                 }
             case .url(let url):
-                let text = (argument != nil && URLTemplate.accepts(url))
-                    ? URLTemplate.resolve(url, query: argument!).absoluteString
-                    : URLTemplate.display(url)
+                var text = URLTemplate.display(url)
+                if let argument, URLTemplate.accepts(url) {
+                    text = URLTemplate.resolve(url, query: argument).absoluteString
+                }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
                 record(item.id)
@@ -186,6 +198,8 @@ final class ActionExecutor {
             }
         case .script(let script):
             runScript(script, argument: argument, forceFullOutput: true)
+        case .quick:
+            run(item, argument: argument)
         }
     }
 
@@ -260,6 +274,7 @@ final class ActionExecutor {
     }
 
     private func record(_ id: String) {
+        guard !id.hasPrefix("quick:") else { return }
         Task { [frecency, onRecorded] in
             await frecency.record(id)
             await MainActor.run { onRecorded?() }

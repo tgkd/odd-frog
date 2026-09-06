@@ -82,12 +82,14 @@ public enum LauncherItem: Sendable, Hashable {
     case app(AppItem)
     case command(CommandItem)
     case script(ScriptItem)
+    case quick(QuickAction)
 
     public var id: String {
         switch self {
         case .app(let app): app.id
         case .command(let command): command.id
         case .script(let script): script.id
+        case .quick(let quick): quick.id
         }
     }
 
@@ -96,6 +98,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .app(let app): app.name
         case .command(let command): command.name
         case .script(let script): script.title
+        case .quick(let quick): quick.title
         }
     }
 
@@ -111,6 +114,8 @@ public enum LauncherItem: Sendable, Hashable {
             }
         case .script(let script):
             script.package.flatMap { $0.caseInsensitiveCompare(script.title) == .orderedSame ? nil : $0 }
+        case .quick(let quick):
+            quick.subtitle
         }
     }
 
@@ -145,6 +150,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .app(let app): app.aliases
         case .command(let command): command.aliases
         case .script(let script): script.aliases
+        case .quick: []
         }
     }
 
@@ -156,6 +162,8 @@ public enum LauncherItem: Sendable, Hashable {
             if case .url(let url) = command.action { return URLTemplate.accepts(url) }
             return false
         case .app:
+            return false
+        case .quick:
             return false
         }
     }
@@ -171,6 +179,8 @@ public enum LauncherItem: Sendable, Hashable {
             }
         case .script:
             "Script"
+        case .quick(let quick):
+            quick.kindLabel
         }
     }
 
@@ -186,6 +196,8 @@ public enum LauncherItem: Sendable, Hashable {
         case .script(var script):
             script.aliases = merged(script.aliases, extra)
             return .script(script)
+        case .quick:
+            return self
         }
     }
 

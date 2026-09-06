@@ -53,6 +53,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let filterField = NSSearchField()
     private let hotkeyRecorder = HotkeyRecorder()
     private let hotkeyHelper = NSTextField(labelWithString: "")
+    private let webSearchField = NSTextField()
+    private let webSearchHelper = NSTextField(labelWithString: "")
     private let loginSwitch = NSSwitch()
     private let loginStatus = NSTextField(labelWithString: "")
     private let loginButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
@@ -112,6 +114,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         refreshLogin()
         reloadFolders()
         applyFilter()
+        webSearchField.stringValue = settings.search.url
+        resetWebSearchHelper()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.initialFirstResponder = filterField
@@ -238,9 +242,19 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         loginControl.spacing = 8
         loginControl.alignment = .centerY
 
+        webSearchField.bezelStyle = .roundedBezel
+        webSearchField.usesSingleLineMode = true
+        webSearchField.lineBreakMode = .byTruncatingTail
+        webSearchField.placeholderString = Settings.Search.defaultURL
+        webSearchField.font = .systemFont(ofSize: 13)
+        webSearchField.delegate = self
+        style(helper: webSearchHelper)
+        resetWebSearchHelper()
+
         let shortcut = settingBlock(title: "Shortcut", control: hotkeyRecorder, helper: hotkeyHelper)
         let login = settingBlock(title: "Launch at login", control: loginControl, helper: loginStatus)
-        let blocks = NSStackView(views: [shortcut, login])
+        let webSearch = settingBlock(title: "Web search", control: webSearchField, helper: webSearchHelper)
+        let blocks = NSStackView(views: [shortcut, login, webSearch])
         blocks.orientation = .horizontal
         blocks.alignment = .top
         blocks.distribution = .fillEqually
@@ -257,6 +271,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             blocks.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             blocks.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             shortcut.heightAnchor.constraint(equalTo: login.heightAnchor),
+            webSearch.heightAnchor.constraint(equalTo: login.heightAnchor),
         ])
         return container
     }
@@ -639,6 +654,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         onChange?(settings)
     }
 
+    private func resetWebSearchHelper() {
+        webSearchHelper.stringValue = "Used when nothing matches. {query} is replaced with what you typed."
+        webSearchHelper.textColor = .secondaryLabelColor
+    }
+
     @objc private func showLinks() {
         guard let window else { return }
         endAliasEdit(commit: true)
@@ -726,6 +746,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     func controlTextDidChange(_ obj: Notification) {
         if obj.object as? NSSearchField === filterField { applyFilter() }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard obj.object as? NSTextField === webSearchField else { return }
+        let trimmed = webSearchField.stringValue.trimmingCharacters(in: .whitespaces)
+        if trimmed.contains(URLTemplate.placeholder), URLTemplate.resolve(template: trimmed, query: "test") != nil {
+            settings.search.url = trimmed
+            commit()
+            resetWebSearchHelper()
+        } else {
+            webSearchHelper.stringValue = "Enter a full URL containing {query}."
+            webSearchHelper.textColor = .systemRed
+            webSearchField.stringValue = settings.search.url
+        }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {

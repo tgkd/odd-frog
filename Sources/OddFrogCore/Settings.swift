@@ -50,23 +50,47 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Search: Codable, Sendable, Equatable {
+        public static let defaultURL = "https://duckduckgo.com/?q={query}"
+
+        public var url: String
+
+        public init(url: String = Search.defaultURL) {
+            self.url = url
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case url
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let decoded = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+            url = decoded.isEmpty ? Search.defaultURL : decoded
+        }
+    }
+
     public var scripts: Scripts
     public var items: [ItemOverride]
+    public var search: Search
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = []) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search()) {
         self.scripts = scripts
         self.items = items
+        self.search = search
     }
 
     enum CodingKeys: String, CodingKey {
         case scripts
         case items
+        case search
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         scripts = try container.decodeIfPresent(Scripts.self, forKey: .scripts) ?? Scripts()
         items = try container.decodeIfPresent([ItemOverride].self, forKey: .items) ?? []
+        search = try container.decodeIfPresent(Search.self, forKey: .search) ?? Search()
     }
 
     public static let empty = Settings()

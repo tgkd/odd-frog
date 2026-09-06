@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wirePanel() {
         controller.maxResults = config.general.maxResults
+        controller.searchTemplate = settings.search.url
         controller.onSubmit = { [weak self] item, argument, secondary in
             guard let self else { return }
             hidePanel()
@@ -206,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await refreshScripts(force: true) }
         }
         rebuildItems()
+        controller.searchTemplate = settings.search.url
     }
 
     private func rewatchScripts() {

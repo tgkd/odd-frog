@@ -35,6 +35,15 @@ final class IconCache {
         case .script(let script):
             if let emoji = script.icon { return emojiImage(emoji, size: size) }
             return tile(name: "script", color: .systemGray, glyph: ">_", glyphSize: 10, size: size)
+        case .quick(let quick):
+            switch quick {
+            case .openURL:
+                return tile(name: "url", color: .systemTeal, symbol: "link", symbolSize: 14, size: size)
+            case .webSearch:
+                return tile(name: "search", color: .systemIndigo, symbol: "magnifyingglass", symbolSize: 13, size: size)
+            case .terminal:
+                return tile(name: "shell", color: NSColor(white: 0.16, alpha: 1), glyph: "$", glyphSize: 13, size: size)
+            }
         }
     }
 

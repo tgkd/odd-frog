@@ -81,11 +81,13 @@ struct ScriptTests {
         settings.setOverride(ItemOverride(id: "/Applications/Xcode.app", enabled: false))
         settings.setOverride(ItemOverride(id: "command:Build", aliases: ["bb"]))
         settings.setOverride(ItemOverride(id: "command:Noop"))
+        settings.search.url = "https://www.google.com/search?q={query}"
         let text = try settings.serialized()
         let parsed = try Settings.parse(text)
         #expect(parsed == settings)
         #expect(parsed.items.count == 2)
         #expect(parsed.scriptFolders.first?.path == NSHomeDirectory() + "/Projects/raycast-scripts")
+        #expect(parsed.search.url == "https://www.google.com/search?q={query}")
 
         let xcode = LauncherItem.app(AppItem(url: URL(fileURLWithPath: "/Applications/Xcode.app"), name: "Xcode", bundleID: nil))
         let build = LauncherItem.command(CommandItem(name: "Build", aliases: ["b"], action: .shell("make"), cwd: nil, terminal: false))
