@@ -15,8 +15,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private struct Metrics {
         let padding: CGFloat
         let gap: CGFloat
-        let labelColumn: CGFloat
-        let formRow: CGFloat
         let folderRow: CGFloat
         let folderBar: CGFloat
         let searchWidth: CGFloat
@@ -26,8 +24,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let regular = Metrics(
             padding: 20,
             gap: 18,
-            labelColumn: 120,
-            formRow: 32,
             folderRow: 28,
             folderBar: 32,
             searchWidth: 200,
@@ -38,8 +34,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let compact = Metrics(
             padding: 16,
             gap: 14,
-            labelColumn: 110,
-            formRow: 34,
             folderRow: 26,
             folderBar: 30,
             searchWidth: 160,
@@ -47,6 +41,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             showsItemsHelper: false
         )
     }
+
+    private let linkManager = LinkManagerController()
+    var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
 
     private let icons: IconCache
     private let folderTable = FolderTable()
@@ -67,8 +64,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let itemsEmptyLabel = NSTextField(labelWithString: "")
 
     private var gapConstraints: [NSLayoutConstraint] = []
-    private var labelColumnConstraints: [NSLayoutConstraint] = []
-    private var formRowConstraints: [NSLayoutConstraint] = []
     private var paddingLeading: NSLayoutConstraint?
     private var paddingTrailing: NSLayoutConstraint?
     private var paddingBottom: NSLayoutConstraint?
@@ -150,7 +145,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             loginStatus.stringValue = "Move Odd Frog to your Applications folder to enable this."
         default:
             loginSwitch.state = .off
-            loginStatus.stringValue = ""
+            loginStatus.stringValue = "Open Odd Frog automatically when you log in."
         }
     }
 
@@ -214,9 +209,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         let title = groupTitle("General")
-        let box = GroupBox()
-        box.translatesAutoresizingMaskIntoConstraints = false
-
         hotkeyRecorder.translatesAutoresizingMaskIntoConstraints = false
         hotkeyRecorder.onRecord = { [weak self] hotkey in self?.onHotkey?(hotkey) }
         hotkeyRecorder.onRecordingChanged = { [weak self] recording in
@@ -231,10 +223,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         }
         style(helper: hotkeyHelper)
         hotkeyHelper.stringValue = "Click, then press a new combination."
-        let shortcutControl = NSStackView(views: [hotkeyRecorder, hotkeyHelper])
-        shortcutControl.orientation = .horizontal
-        shortcutControl.spacing = 10
-        shortcutControl.alignment = .centerY
 
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLogin)
@@ -245,37 +233,30 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         loginButton.controlSize = .small
         loginButton.font = .systemFont(ofSize: 11)
         loginButton.isHidden = true
-        let loginControl = NSStackView(views: [loginSwitch, loginStatus, loginButton])
+        let loginControl = NSStackView(views: [loginSwitch, loginButton])
         loginControl.orientation = .horizontal
         loginControl.spacing = 8
         loginControl.alignment = .centerY
 
-        let shortcutRow = formRow(caption: "Shortcut:", control: shortcutControl)
-        let loginRow = formRow(caption: "Launch at login:", control: loginControl)
-        let divider = hairline()
-        box.addSubview(shortcutRow)
-        box.addSubview(divider)
-        box.addSubview(loginRow)
+        let shortcut = settingBlock(title: "Shortcut", control: hotkeyRecorder, helper: hotkeyHelper)
+        let login = settingBlock(title: "Launch at login", control: loginControl, helper: loginStatus)
+        let blocks = NSStackView(views: [shortcut, login])
+        blocks.orientation = .horizontal
+        blocks.alignment = .top
+        blocks.distribution = .fillEqually
+        blocks.spacing = 12
+        blocks.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(title)
-        container.addSubview(box)
+        container.addSubview(blocks)
 
         NSLayoutConstraint.activate([
             title.topAnchor.constraint(equalTo: container.topAnchor),
             title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            box.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
-            box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            box.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            shortcutRow.topAnchor.constraint(equalTo: box.topAnchor),
-            shortcutRow.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            shortcutRow.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            divider.topAnchor.constraint(equalTo: shortcutRow.bottomAnchor),
-            divider.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            divider.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
-            loginRow.topAnchor.constraint(equalTo: divider.bottomAnchor),
-            loginRow.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            loginRow.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            loginRow.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+            blocks.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
+            blocks.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            blocks.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            blocks.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            shortcut.heightAnchor.constraint(equalTo: login.heightAnchor),
         ])
         return container
     }
@@ -405,7 +386,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         filterField.translatesAutoresizingMaskIntoConstraints = false
         filterField.setContentHuggingPriority(.required, for: .horizontal)
 
-        let header = NSStackView(views: [title, itemsHelper, filterField])
+        let manageLinks = NSButton(title: "Manage Links…", target: self, action: #selector(showLinks))
+        manageLinks.bezelStyle = .rounded
+        manageLinks.controlSize = .small
+        manageLinks.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let header = NSStackView(views: [title, itemsHelper, manageLinks, filterField])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.distribution = .fill
@@ -490,33 +475,32 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return container
     }
 
-    private func formRow(caption text: String, control: NSView) -> NSView {
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        let caption = NSTextField(labelWithString: text)
-        caption.font = .systemFont(ofSize: 13)
-        caption.alignment = .right
-        caption.translatesAutoresizingMaskIntoConstraints = false
+    private func settingBlock(title: String, control: NSView, helper: NSTextField) -> NSView {
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        let caption = groupTitle(title)
+        helper.lineBreakMode = .byWordWrapping
+        helper.maximumNumberOfLines = 0
+        helper.cell?.wraps = true
+        helper.cell?.isScrollable = false
         control.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(caption)
-        row.addSubview(control)
-
-        let width = caption.widthAnchor.constraint(equalToConstant: Metrics.regular.labelColumn)
-        let height = row.heightAnchor.constraint(equalToConstant: Metrics.regular.formRow)
-        labelColumnConstraints.append(width)
-        formRowConstraints.append(height)
+        for view in [caption, control, helper] { box.addSubview(view) }
 
         NSLayoutConstraint.activate([
-            width,
-            height,
-            caption.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
-            caption.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            control.leadingAnchor.constraint(equalTo: caption.trailingAnchor, constant: 12),
-            control.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -14),
-            control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            control.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 5),
+            caption.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+            caption.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
+            caption.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -12),
+            control.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: 8),
+            control.leadingAnchor.constraint(equalTo: caption.leadingAnchor),
+            control.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -12),
+            control.heightAnchor.constraint(equalToConstant: 24),
+            helper.topAnchor.constraint(equalTo: control.bottomAnchor, constant: 8),
+            helper.leadingAnchor.constraint(equalTo: caption.leadingAnchor),
+            helper.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
+            helper.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
+            helper.heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
         ])
-        return row
+        return box
     }
 
     private func groupTitle(_ text: String) -> NSTextField {
@@ -536,21 +520,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         field.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
     }
 
-    private func hairline() -> NSView {
-        let view = NSBox()
-        view.boxType = .separator
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        return view
-    }
-
     private func apply(_ metrics: Metrics) {
         paddingLeading?.constant = metrics.padding
         paddingTrailing?.constant = -metrics.padding
         paddingBottom?.constant = -metrics.padding
         for gap in gapConstraints { gap.constant = metrics.gap }
-        for constraint in labelColumnConstraints { constraint.constant = metrics.labelColumn }
-        for constraint in formRowConstraints { constraint.constant = metrics.formRow }
         folderTable.rowHeight = metrics.folderRow
         folderBarHeight?.constant = metrics.folderBar
         searchFieldWidth?.constant = metrics.searchWidth
@@ -663,6 +637,17 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func commit() {
         onChange?(settings)
+    }
+
+    @objc private func showLinks() {
+        guard let window else { return }
+        endAliasEdit(commit: true)
+        let links = allItems.compactMap { item -> CommandItem? in
+            guard case .command(let command) = item, case .url = command.action else { return nil }
+            return command
+        }
+        linkManager.onApply = onApplyLink
+        linkManager.present(links: links, for: window)
     }
 
     @objc private func addFolder() {

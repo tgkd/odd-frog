@@ -88,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         executor.onRecorded = { [weak self] in Task { await self?.refreshWeights() } }
         settingsWindow.onChange = { [weak self] updated in self?.applySettings(updated, persist: true) }
+        settingsWindow.onApplyLink = { [weak self] original, draft in
+            guard let self else { throw LinkEditError.message("Settings is no longer available.") }
+            return try applyLink(original: original, draft: draft)
+        }
         settingsWindow.onHotkey = { [weak self] hotkey in self?.setHotkey(hotkey) }
     }
 
@@ -237,6 +241,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettings() {
         settingsWindow.present(settings: settings, items: allItems, hotkey: hotkeys.current ?? config.general.hotkey)
+    }
+
+    private func applyLink(original: CommandItem?, draft: LinkDraft?) throws -> [CommandItem] {
+        let saved = try LinkEditor.save(to: ConfigLoader.defaultPath, original: original, draft: draft)
+        configWatcher.markApplied(saved.contents)
+        reloadConfig(from: saved.contents, source: "links settings")
+        // Renames keep the item's visibility and extra aliases; deletion removes stale overrides.
+        if let original, let old = settings.override(for: original.id) {
+            var updated = settings
+            updated.setOverride(ItemOverride(id: original.id))
+            if let replacement = try draft?.command() {
+                updated.setOverride(ItemOverride(id: replacement.id, enabled: old.enabled, aliases: old.aliases))
+            }
+            applySettings(updated, persist: true)
+        }
+        return saved.config.commands.filter { if case .url = $0.action { true } else { false } }
     }
 
     private func setHotkey(_ hotkey: Hotkey) {

@@ -92,6 +92,17 @@ aliases = ["kp"]
 
 Item ids are the app bundle path, `command:<name>` for config commands, and `script:<path>`.
 
+### Links
+
+Settings → **Manage Links…** lists URL commands, including the default GitHub shortcut (`gh`).
+Use **New Link** to enter a name, full URL, and comma-separated aliases, then **Add Link**.
+Select an existing link to edit it with **Save Changes**, or remove it with **Delete**.
+Changes are saved immediately to `config.toml` and appear in the launcher without restarting.
+
+`https://` and `http://` links open in your default browser. App URLs such as `obsidian://open`
+open in the app registered for that scheme. Names and command aliases must be unique.
+Extra aliases added in the Items table remain available when a link is edited or renamed.
+
 ### Scripts
 
 `silent` and `inline` scripts run in the background; their output is shown as a notification.
@@ -119,3 +130,9 @@ learn from use. State lives in `~/Library/Application Support/odd-frog/frecency.
 ## Logs
 
 `~/Library/Logs/odd-frog.log`.
+
+## App icon
+
+The original frog artwork and all macOS icon sizes can be regenerated with
+`swift scripts/generate-icon.swift`. The generated `Resources/AppIcon.icns` is included in
+normal builds, so running the generator is only necessary when changing the artwork.

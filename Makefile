@@ -15,6 +15,7 @@ bundle: build
 	cp $(BIN) $(CONTENTS)/MacOS/$(APP)
 	cp Resources/Info.plist $(CONTENTS)/Info.plist
 	cp Resources/config.example.toml $(CONTENTS)/Resources/
+	cp Resources/AppIcon.icns $(CONTENTS)/Resources/
 	printf 'APPL????' > $(CONTENTS)/PkgInfo
 	codesign --force --sign - --deep $(BUNDLE)
 

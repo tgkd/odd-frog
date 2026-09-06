@@ -165,7 +165,10 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
         labels.addArrangedSubview(customLabel)
 
         editor.font = .systemFont(ofSize: 12)
-        editor.isBordered = false
+        editor.controlSize = .small
+        editor.isBordered = true
+        editor.isBezeled = true
+        editor.bezelStyle = .roundedBezel
         editor.drawsBackground = true
         editor.backgroundColor = .textBackgroundColor
         editor.focusRingType = .exterior
@@ -173,9 +176,6 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
         editor.lineBreakMode = .byClipping
         editor.delegate = self
         editor.isHidden = true
-        editor.wantsLayer = true
-        editor.layer?.cornerRadius = 5
-        editor.layer?.cornerCurve = .continuous
         editor.translatesAutoresizingMaskIntoConstraints = false
         if let cell = editor.cell as? NSTextFieldCell {
             cell.wraps = false
@@ -197,7 +197,7 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
             editor.leadingAnchor.constraint(equalTo: pill.leadingAnchor),
             editor.trailingAnchor.constraint(equalTo: pill.trailingAnchor),
             editor.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
-            editor.heightAnchor.constraint(equalToConstant: 20),
+            editor.heightAnchor.constraint(equalToConstant: 22),
         ])
     }
 }
