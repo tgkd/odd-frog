@@ -38,6 +38,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var onSubmit: ((LauncherItem, String?, Bool) -> Void)?
     var onDismiss: (() -> Void)?
     var onHeightChange: ((CGFloat) -> Void)?
+    var onReveal: ((LauncherItem) -> Void)?
+    var onSettings: (() -> Void)?
 
     init(icons: IconCache) {
         self.icons = icons
@@ -250,6 +252,21 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             }
             return true
         }
+        if event.charactersIgnoringModifiers == "i" {
+            if let item = selectedItem, !isQuick(item) {
+                onReveal?(item)
+            }
+            return true
+        }
+        if event.charactersIgnoringModifiers == "," {
+            onSettings?()
+            return true
+        }
+        return false
+    }
+
+    private func isQuick(_ item: LauncherItem) -> Bool {
+        if case .quick = item { return true }
         return false
     }
 

@@ -85,6 +85,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             executor.run(item, argument: argument, secondary: secondary)
         }
         controller.onDismiss = { [weak self] in self?.hidePanel() }
+        controller.onReveal = { [weak self] item in
+            guard let self else { return }
+            hidePanel()
+            settingsWindow.present(settings: settings, items: allItems, hotkey: hotkeys.current ?? config.general.hotkey, focusing: item.id)
+        }
+        controller.onSettings = { [weak self] in
+            guard let self else { return }
+            hidePanel()
+            showSettings()
+        }
         panel.onKeyEquivalent = { [weak self] event in self?.controller.handleKeyEquivalent(event) ?? false }
         controller.onHeightChange = { [weak self] height in
             guard let self, panel.isVisible else { return }

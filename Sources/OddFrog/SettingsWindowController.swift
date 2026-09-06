@@ -108,20 +108,38 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     required init?(coder: NSCoder) { nil }
 
     func present(settings: Settings, items: [LauncherItem], hotkey: Hotkey) {
+        present(settings: settings, items: items, hotkey: hotkey, focusing: nil)
+    }
+
+    func present(settings: Settings, items: [LauncherItem], hotkey: Hotkey, focusing id: String?) {
         self.settings = settings
         self.allItems = items
         showHotkey(hotkey)
         refreshLogin()
         reloadFolders()
+        let target = id.flatMap { targetID in items.first { $0.id == targetID } }
+        if let target {
+            filterField.stringValue = target.title
+        }
         applyFilter()
         webSearchField.stringValue = settings.search.url
         resetWebSearchHelper()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
-        window?.initialFirstResponder = filterField
-        window?.makeKeyAndOrderFront(nil)
-        window?.makeFirstResponder(filterField)
-        layoutColumns()
+        if let target, let row = visibleItems.firstIndex(where: { $0.id == target.id }) {
+            itemTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            itemTable.scrollRowToVisible(row)
+            window?.initialFirstResponder = itemTable
+            window?.makeKeyAndOrderFront(nil)
+            window?.makeFirstResponder(itemTable)
+            layoutColumns()
+            beginAliasEdit(row: row)
+        } else {
+            window?.initialFirstResponder = filterField
+            window?.makeKeyAndOrderFront(nil)
+            window?.makeFirstResponder(filterField)
+            layoutColumns()
+        }
     }
 
     func update(items: [LauncherItem]) {

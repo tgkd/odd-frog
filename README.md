@@ -25,6 +25,9 @@ value. `⌘1`–`⌘9` runs the first through ninth visible row.
 in the configured terminal, URL commands copy the URL, background shell commands run in the
 terminal, and scripts run in the terminal with full output.
 
+`⌘I` hides the panel and opens Settings › Items with the selected item found and its Aliases
+cell ready for editing. `⌘,` hides the panel and opens Settings unchanged.
+
 When nothing matches, the panel offers a fallback instead of an empty list: "Open <url>" when
 the text looks like a URL, and "Search for “<text>”" that opens the web search configured in
 Settings (DuckDuckGo by default). Typing `>` followed by text shows a single "Run in Terminal"
