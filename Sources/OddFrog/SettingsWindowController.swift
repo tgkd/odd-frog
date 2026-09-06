@@ -3,7 +3,7 @@ import OddFrogCore
 import ServiceManagement
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSSearchFieldDelegate {
+final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSSearchFieldDelegate, NSWindowDelegate {
     private enum Column {
         static let enabled = NSUserInterfaceItemIdentifier("enabled")
         static let name = NSUserInterfaceItemIdentifier("name")
@@ -12,27 +12,85 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let folder = NSUserInterfaceItemIdentifier("folder")
     }
 
+    private struct Metrics {
+        let padding: CGFloat
+        let gap: CGFloat
+        let labelColumn: CGFloat
+        let formRow: CGFloat
+        let folderRow: CGFloat
+        let folderBar: CGFloat
+        let searchWidth: CGFloat
+        let itemsMinHeight: CGFloat
+        let showsItemsHelper: Bool
+
+        static let regular = Metrics(
+            padding: 20,
+            gap: 18,
+            labelColumn: 120,
+            formRow: 32,
+            folderRow: 28,
+            folderBar: 32,
+            searchWidth: 200,
+            itemsMinHeight: 150,
+            showsItemsHelper: true
+        )
+
+        static let compact = Metrics(
+            padding: 16,
+            gap: 14,
+            labelColumn: 110,
+            formRow: 34,
+            folderRow: 26,
+            folderBar: 30,
+            searchWidth: 160,
+            itemsMinHeight: 130,
+            showsItemsHelper: false
+        )
+    }
+
     private let icons: IconCache
-    private let folderTable = NSTableView()
-    private let itemTable = NSTableView()
-    private let watchCheckbox = NSButton(checkboxWithTitle: "Watch folders for changes", target: nil, action: nil)
+    private let folderTable = FolderTable()
+    private let folderScroll = NSScrollView()
+    private let itemTable = ItemTable()
+    private let itemScroll = NSScrollView()
     private let filterField = NSSearchField()
-    private let removeButton = NSButton(title: "Remove", target: nil, action: nil)
     private let hotkeyRecorder = HotkeyRecorder()
-    private let hotkeyNote = NSTextField(labelWithString: "")
-    private let loginCheckbox = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
-    private let loginNote = NSTextField(labelWithString: "")
+    private let hotkeyHelper = NSTextField(labelWithString: "")
+    private let loginSwitch = NSSwitch()
+    private let loginStatus = NSTextField(labelWithString: "")
+    private let loginButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
+    private let addFolderButton = NSButton(title: "+", target: nil, action: nil)
+    private let removeFolderButton = NSButton(title: "−", target: nil, action: nil)
+    private let watchSwitch = NSSwitch()
+    private let folderEmptyLabel = NSTextField(labelWithString: "No script folders yet. Click + to add one.")
+    private let itemsHelper = NSTextField(labelWithString: "Grey aliases are built in. Click a cell to add your own; Return saves.")
+    private let itemsEmptyLabel = NSTextField(labelWithString: "")
+
+    private var gapConstraints: [NSLayoutConstraint] = []
+    private var labelColumnConstraints: [NSLayoutConstraint] = []
+    private var formRowConstraints: [NSLayoutConstraint] = []
+    private var paddingLeading: NSLayoutConstraint?
+    private var paddingTrailing: NSLayoutConstraint?
+    private var paddingBottom: NSLayoutConstraint?
+    private var folderListHeight: NSLayoutConstraint?
+    private var folderBarHeight: NSLayoutConstraint?
+    private var searchFieldWidth: NSLayoutConstraint?
+    private var itemsBoxHeight: NSLayoutConstraint?
+    private var isCompact = false
+    private var selectedItemRow = -1
+    private weak var editingAliasCell: AliasCellView?
 
     private(set) var settings = Settings.empty
     private var allItems: [LauncherItem] = []
     private var visibleItems: [LauncherItem] = []
+    private var folderCounts: [Int] = []
     var onChange: ((Settings) -> Void)?
     var onHotkey: ((Hotkey) -> Void)?
 
     init(icons: IconCache) {
         self.icons = icons
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -40,9 +98,14 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         window.title = "Odd Frog Settings"
         window.minSize = NSSize(width: 560, height: 420)
         window.isReleasedWhenClosed = false
+        window.backgroundColor = .windowBackgroundColor
         window.center()
         super.init(window: window)
         buildContent()
+        icons.observeLoads { [weak self] _ in
+            guard let self, window.isVisible else { return }
+            itemTable.reloadData()
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -56,168 +119,546 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         applyFilter()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
+        window?.initialFirstResponder = filterField
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(filterField)
+        layoutColumns()
     }
 
     func update(items: [LauncherItem]) {
         allItems = items
+        recomputeFolderCounts()
+        folderTable.reloadData()
         applyFilter()
     }
 
     func refreshLogin() {
         let status = LoginItem.status
-        loginCheckbox.state = status == .enabled || status == .requiresApproval ? .on : .off
-        loginCheckbox.isEnabled = status != .notFound
+        loginSwitch.isEnabled = status != .notFound
+        loginButton.isHidden = status != .requiresApproval
+        loginStatus.textColor = .secondaryLabelColor
         switch status {
+        case .enabled:
+            loginSwitch.state = .on
+            loginStatus.stringValue = "Odd Frog opens when you log in."
         case .requiresApproval:
-            loginNote.stringValue = "Waiting for approval in System Settings → General → Login Items."
+            loginSwitch.state = .on
+            loginStatus.stringValue = "Waiting for approval in System Settings › Login Items."
+            loginStatus.textColor = .systemOrange
         case .notFound:
-            loginNote.stringValue = "Available after the app is installed in Applications (make install)."
+            loginSwitch.state = .off
+            loginStatus.stringValue = "Move Odd Frog to your Applications folder to enable this."
         default:
-            loginNote.stringValue = ""
+            loginSwitch.state = .off
+            loginStatus.stringValue = ""
         }
     }
 
     func showHotkey(_ hotkey: Hotkey, note: String? = nil) {
         hotkeyRecorder.hotkey = hotkey
-        hotkeyNote.stringValue = note ?? "Click, then press the new combination."
-        hotkeyNote.textColor = note == nil ? .secondaryLabelColor : .systemRed
+        if let note {
+            hotkeyRecorder.conflict = true
+            hotkeyHelper.stringValue = note + " Try another combination."
+            hotkeyHelper.textColor = .systemRed
+        } else {
+            hotkeyRecorder.conflict = false
+            hotkeyHelper.stringValue = "Click, then press a new combination."
+            hotkeyHelper.textColor = .secondaryLabelColor
+        }
     }
 
     private func buildContent() {
         guard let content = window?.contentView else { return }
+        window?.delegate = self
 
-        let hotkeyLabel = label("Hotkey", bold: true)
+        let general = makeGeneralGroup()
+        let folders = makeFoldersGroup()
+        let items = makeItemsGroup()
+        general.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        folders.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        items.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .vertical)
+        items.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
+
+        for group in [general, folders, items] {
+            group.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(group)
+        }
+
+        let leading = general.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Metrics.regular.padding)
+        let trailing = general.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Metrics.regular.padding)
+        let bottom = items.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Metrics.regular.padding)
+        let foldersGap = folders.topAnchor.constraint(equalTo: general.bottomAnchor, constant: Metrics.regular.gap)
+        let itemsGap = items.topAnchor.constraint(equalTo: folders.bottomAnchor, constant: Metrics.regular.gap)
+        paddingLeading = leading
+        paddingTrailing = trailing
+        paddingBottom = bottom
+        gapConstraints = [foldersGap, itemsGap]
+
+        NSLayoutConstraint.activate([
+            leading,
+            trailing,
+            bottom,
+            foldersGap,
+            itemsGap,
+            general.topAnchor.constraint(equalTo: content.topAnchor, constant: 4),
+            folders.leadingAnchor.constraint(equalTo: general.leadingAnchor),
+            folders.trailingAnchor.constraint(equalTo: general.trailingAnchor),
+            items.leadingAnchor.constraint(equalTo: general.leadingAnchor),
+            items.trailingAnchor.constraint(equalTo: general.trailingAnchor),
+        ])
+
+        apply(Metrics.regular)
+    }
+
+    private func makeGeneralGroup() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let title = groupTitle("General")
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+
         hotkeyRecorder.translatesAutoresizingMaskIntoConstraints = false
         hotkeyRecorder.onRecord = { [weak self] hotkey in self?.onHotkey?(hotkey) }
-        hotkeyNote.font = .systemFont(ofSize: 11)
-        hotkeyNote.textColor = .secondaryLabelColor
-        hotkeyNote.lineBreakMode = .byTruncatingTail
-        let hotkeyRow = NSStackView(views: [hotkeyRecorder, hotkeyNote])
-        hotkeyRow.orientation = .horizontal
-        hotkeyRow.spacing = 10
-        hotkeyRow.alignment = .centerY
+        hotkeyRecorder.onRecordingChanged = { [weak self] recording in
+            guard let self else { return }
+            if recording {
+                hotkeyHelper.stringValue = "Press the keys you want to use."
+                hotkeyHelper.textColor = .secondaryLabelColor
+            } else if !hotkeyRecorder.conflict {
+                hotkeyHelper.stringValue = "Click, then press a new combination."
+                hotkeyHelper.textColor = .secondaryLabelColor
+            }
+        }
+        style(helper: hotkeyHelper)
+        hotkeyHelper.stringValue = "Click, then press a new combination."
+        let shortcutControl = NSStackView(views: [hotkeyRecorder, hotkeyHelper])
+        shortcutControl.orientation = .horizontal
+        shortcutControl.spacing = 10
+        shortcutControl.alignment = .centerY
 
-        loginCheckbox.target = self
-        loginCheckbox.action = #selector(toggleLogin)
-        loginNote.font = .systemFont(ofSize: 11)
-        loginNote.textColor = .secondaryLabelColor
-        loginNote.lineBreakMode = .byTruncatingTail
-        let loginRow = NSStackView(views: [loginCheckbox, loginNote])
-        loginRow.orientation = .horizontal
-        loginRow.spacing = 10
-        loginRow.alignment = .centerY
+        loginSwitch.target = self
+        loginSwitch.action = #selector(toggleLogin)
+        style(helper: loginStatus)
+        loginButton.target = self
+        loginButton.action = #selector(openLoginItems)
+        loginButton.bezelStyle = .rounded
+        loginButton.controlSize = .small
+        loginButton.font = .systemFont(ofSize: 11)
+        loginButton.isHidden = true
+        let loginControl = NSStackView(views: [loginSwitch, loginStatus, loginButton])
+        loginControl.orientation = .horizontal
+        loginControl.spacing = 8
+        loginControl.alignment = .centerY
 
-        let foldersLabel = label("Script folders", bold: true)
-        let foldersHint = label("Executable scripts here appear in the launcher. Raycast metadata is optional.", bold: false)
-        foldersHint.textColor = .secondaryLabelColor
+        let shortcutRow = formRow(caption: "Shortcut:", control: shortcutControl)
+        let loginRow = formRow(caption: "Launch at login:", control: loginControl)
+        let divider = hairline()
+        box.addSubview(shortcutRow)
+        box.addSubview(divider)
+        box.addSubview(loginRow)
+        container.addSubview(title)
+        container.addSubview(box)
 
-        let folderColumn = NSTableColumn(identifier: Column.folder)
-        folderColumn.title = "Folder"
-        folderTable.addTableColumn(folderColumn)
+        NSLayoutConstraint.activate([
+            title.topAnchor.constraint(equalTo: container.topAnchor),
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            box.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            box.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            shortcutRow.topAnchor.constraint(equalTo: box.topAnchor),
+            shortcutRow.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            shortcutRow.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: shortcutRow.bottomAnchor),
+            divider.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
+            divider.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
+            loginRow.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            loginRow.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            loginRow.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            loginRow.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        ])
+        return container
+    }
+
+    private func makeFoldersGroup() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let title = groupTitle("Script Folders")
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+
+        let column = NSTableColumn(identifier: Column.folder)
+        column.resizingMask = .autoresizingMask
+        folderTable.addTableColumn(column)
         folderTable.headerView = nil
         folderTable.dataSource = self
         folderTable.delegate = self
-        folderTable.rowHeight = 22
+        folderTable.rowHeight = Metrics.regular.folderRow
+        folderTable.intercellSpacing = .zero
+        folderTable.selectionHighlightStyle = .none
         folderTable.allowsEmptySelection = true
-        let folderScroll = scroll(folderTable)
+        folderTable.allowsMultipleSelection = false
+        folderTable.backgroundColor = .clear
+        folderTable.style = .plain
+        folderTable.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        folderTable.onDelete = { [weak self] in self?.removeFolder() }
 
-        let addButton = NSButton(title: "Add…", target: self, action: #selector(addFolder))
-        removeButton.target = self
-        removeButton.action = #selector(removeFolder)
-        removeButton.isEnabled = false
-        watchCheckbox.target = self
-        watchCheckbox.action = #selector(toggleWatch)
-        let folderButtons = NSStackView(views: [addButton, removeButton, watchCheckbox])
-        folderButtons.orientation = .horizontal
-        folderButtons.spacing = 8
+        folderScroll.documentView = folderTable
+        folderScroll.drawsBackground = false
+        folderScroll.borderType = .noBorder
+        folderScroll.hasVerticalScroller = true
+        folderScroll.autohidesScrollers = true
+        folderScroll.scrollerStyle = .overlay
+        folderScroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let itemsLabel = label("Items", bold: true)
+        style(helper: folderEmptyLabel)
+        folderEmptyLabel.font = .systemFont(ofSize: 13)
+        folderEmptyLabel.alignment = .center
+
+        let bar = FolderBar()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        addFolderButton.target = self
+        addFolderButton.action = #selector(addFolder)
+        removeFolderButton.target = self
+        removeFolderButton.action = #selector(removeFolder)
+        removeFolderButton.isEnabled = false
+        for button in [addFolderButton, removeFolderButton] {
+            button.bezelStyle = .rounded
+            button.controlSize = .small
+            button.translatesAutoresizingMaskIntoConstraints = false
+            bar.addSubview(button)
+            button.widthAnchor.constraint(equalToConstant: 26).isActive = true
+            button.centerYAnchor.constraint(equalTo: bar.centerYAnchor).isActive = true
+        }
+        let watchLabel = NSTextField(labelWithString: "Watch for changes")
+        watchLabel.font = .systemFont(ofSize: 13)
+        watchLabel.translatesAutoresizingMaskIntoConstraints = false
+        watchSwitch.target = self
+        watchSwitch.action = #selector(toggleWatch)
+        watchSwitch.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(watchLabel)
+        bar.addSubview(watchSwitch)
+
+        let helper = NSTextField(wrappingLabelWithString: "Executable scripts in these folders appear in the launcher. Raycast script metadata is optional.")
+        helper.font = .systemFont(ofSize: 11)
+        helper.textColor = .secondaryLabelColor
+        helper.isSelectable = false
+        helper.translatesAutoresizingMaskIntoConstraints = false
+
+        box.addSubview(folderScroll)
+        box.addSubview(folderEmptyLabel)
+        box.addSubview(bar)
+        container.addSubview(title)
+        container.addSubview(box)
+        container.addSubview(helper)
+
+        let listHeight = folderScroll.heightAnchor.constraint(equalToConstant: Metrics.regular.folderRow)
+        let barHeight = bar.heightAnchor.constraint(equalToConstant: Metrics.regular.folderBar)
+        folderListHeight = listHeight
+        folderBarHeight = barHeight
+
+        NSLayoutConstraint.activate([
+            title.topAnchor.constraint(equalTo: container.topAnchor),
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            box.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            helper.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 6),
+            helper.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            helper.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            helper.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            folderScroll.topAnchor.constraint(equalTo: box.topAnchor, constant: 4),
+            folderScroll.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
+            folderScroll.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
+            listHeight,
+            folderEmptyLabel.centerXAnchor.constraint(equalTo: folderScroll.centerXAnchor),
+            folderEmptyLabel.centerYAnchor.constraint(equalTo: folderScroll.centerYAnchor),
+            bar.topAnchor.constraint(equalTo: folderScroll.bottomAnchor, constant: 4),
+            bar.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+            barHeight,
+            addFolderButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 4),
+            removeFolderButton.leadingAnchor.constraint(equalTo: addFolderButton.trailingAnchor, constant: 4),
+            watchSwitch.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -6),
+            watchSwitch.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            watchLabel.trailingAnchor.constraint(equalTo: watchSwitch.leadingAnchor, constant: -6),
+            watchLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            watchLabel.leadingAnchor.constraint(greaterThanOrEqualTo: removeFolderButton.trailingAnchor, constant: 8),
+        ])
+        return container
+    }
+
+    private func makeItemsGroup() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let title = groupTitle("Items")
+        style(helper: itemsHelper)
+        itemsHelper.lineBreakMode = .byTruncatingTail
+        itemsHelper.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        itemsHelper.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+
         filterField.placeholderString = "Filter"
+        filterField.controlSize = .small
+        filterField.font = .systemFont(ofSize: 11)
         filterField.delegate = self
-        let itemsHeader = NSStackView(views: [itemsLabel, filterField])
-        itemsHeader.orientation = .horizontal
-        itemsHeader.distribution = .fill
-        filterField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        itemsLabel.setContentHuggingPriority(.required, for: .horizontal)
+        filterField.translatesAutoresizingMaskIntoConstraints = false
+        filterField.setContentHuggingPriority(.required, for: .horizontal)
 
-        for (id, title, width) in [
-            (Column.enabled, "", CGFloat(28)),
+        let header = NSStackView(views: [title, itemsHelper, filterField])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.distribution = .fill
+        header.spacing = 8
+        header.translatesAutoresizingMaskIntoConstraints = false
+
+        for (id, columnTitle, width) in [
+            (Column.enabled, "", CGFloat(30)),
             (Column.name, "Item", CGFloat(260)),
-            (Column.kind, "Kind", CGFloat(80)),
+            (Column.kind, "Kind", CGFloat(68)),
             (Column.aliases, "Aliases", CGFloat(200)),
         ] {
             let column = NSTableColumn(identifier: id)
-            column.title = title
+            column.title = columnTitle
             column.width = width
-            column.minWidth = id == Column.enabled ? 28 : 60
+            column.minWidth = id == Column.enabled ? 30 : 60
             if id == Column.enabled {
-                column.maxWidth = 28
+                column.maxWidth = 30
                 column.headerToolTip = "Show in launcher"
             }
+            if id == Column.kind { column.maxWidth = 68 }
             if id == Column.aliases { column.headerToolTip = "Comma separated. Built-in aliases from config are kept." }
             itemTable.addTableColumn(column)
         }
         itemTable.dataSource = self
         itemTable.delegate = self
         itemTable.rowHeight = 28
-        itemTable.usesAlternatingRowBackgroundColors = true
+        itemTable.usesAlternatingRowBackgroundColors = false
         itemTable.allowsEmptySelection = true
-        itemTable.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        let itemScroll = scroll(itemTable)
+        itemTable.backgroundColor = .clear
+        itemTable.style = .fullWidth
+        itemTable.columnAutoresizingStyle = .noColumnAutoresizing
+        itemTable.target = self
+        itemTable.action = #selector(itemTableClicked)
+        itemTable.onReturn = { [weak self] in
+            guard let self else { return }
+            beginAliasEdit(row: itemTable.selectedRow)
+        }
 
-        let stack = NSStackView(views: [hotkeyLabel, hotkeyRow, loginRow, foldersLabel, foldersHint, folderScroll, folderButtons, itemsHeader, itemScroll])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.setCustomSpacing(16, after: loginRow)
-        stack.setCustomSpacing(16, after: folderButtons)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
+        itemScroll.documentView = itemTable
+        itemScroll.drawsBackground = false
+        itemScroll.borderType = .noBorder
+        itemScroll.hasVerticalScroller = true
+        itemScroll.autohidesScrollers = true
+        itemScroll.translatesAutoresizingMaskIntoConstraints = false
+
+        style(helper: itemsEmptyLabel)
+        itemsEmptyLabel.font = .systemFont(ofSize: 13)
+        itemsEmptyLabel.alignment = .center
+        itemsEmptyLabel.isHidden = true
+
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(itemScroll)
+        box.addSubview(itemsEmptyLabel)
+        container.addSubview(header)
+        container.addSubview(box)
+
+        let boxHeight = box.heightAnchor.constraint(greaterThanOrEqualToConstant: Metrics.regular.itemsMinHeight)
+        boxHeight.priority = NSLayoutConstraint.Priority(999)
+        let fieldWidth = filterField.widthAnchor.constraint(equalToConstant: Metrics.regular.searchWidth)
+        itemsBoxHeight = boxHeight
+        searchFieldWidth = fieldWidth
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20),
-            folderScroll.heightAnchor.constraint(equalToConstant: 60),
-            hotkeyRecorder.widthAnchor.constraint(equalToConstant: 160),
-            hotkeyRecorder.heightAnchor.constraint(equalToConstant: 24),
-            folderScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            foldersHint.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            itemsHeader.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            itemScroll.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            header.topAnchor.constraint(equalTo: container.topAnchor),
+            header.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            header.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            fieldWidth,
+            box.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 7),
+            box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            box.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            boxHeight,
+            itemScroll.topAnchor.constraint(equalTo: box.topAnchor),
+            itemScroll.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            itemScroll.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            itemScroll.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+            itemsEmptyLabel.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            itemsEmptyLabel.centerYAnchor.constraint(equalTo: box.centerYAnchor, constant: -12),
         ])
+        return container
     }
 
-    private func label(_ text: String, bold: Bool) -> NSTextField {
-        let field = NSTextField(wrappingLabelWithString: text)
-        field.font = bold ? .boldSystemFont(ofSize: 13) : .systemFont(ofSize: 11)
+    private func formRow(caption text: String, control: NSView) -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let caption = NSTextField(labelWithString: text)
+        caption.font = .systemFont(ofSize: 13)
+        caption.alignment = .right
+        caption.translatesAutoresizingMaskIntoConstraints = false
+        control.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(caption)
+        row.addSubview(control)
+
+        let width = caption.widthAnchor.constraint(equalToConstant: Metrics.regular.labelColumn)
+        let height = row.heightAnchor.constraint(equalToConstant: Metrics.regular.formRow)
+        labelColumnConstraints.append(width)
+        formRowConstraints.append(height)
+
+        NSLayoutConstraint.activate([
+            width,
+            height,
+            caption.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
+            caption.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            control.leadingAnchor.constraint(equalTo: caption.trailingAnchor, constant: 12),
+            control.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -14),
+            control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            control.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 5),
+        ])
+        return row
+    }
+
+    private func groupTitle(_ text: String) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = .systemFont(ofSize: 13, weight: .semibold)
         field.isSelectable = false
+        field.translatesAutoresizingMaskIntoConstraints = false
         return field
     }
 
-    private func scroll(_ table: NSTableView) -> NSScrollView {
-        let view = NSScrollView()
-        view.documentView = table
-        view.hasVerticalScroller = true
-        view.borderType = .bezelBorder
+    private func style(helper field: NSTextField) {
+        field.font = .systemFont(ofSize: 11)
+        field.textColor = .secondaryLabelColor
+        field.isSelectable = false
+        field.lineBreakMode = .byTruncatingTail
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+    }
+
+    private func hairline() -> NSView {
+        let view = NSBox()
+        view.boxType = .separator
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return view
     }
 
+    private func apply(_ metrics: Metrics) {
+        paddingLeading?.constant = metrics.padding
+        paddingTrailing?.constant = -metrics.padding
+        paddingBottom?.constant = -metrics.padding
+        for gap in gapConstraints { gap.constant = metrics.gap }
+        for constraint in labelColumnConstraints { constraint.constant = metrics.labelColumn }
+        for constraint in formRowConstraints { constraint.constant = metrics.formRow }
+        folderTable.rowHeight = metrics.folderRow
+        folderBarHeight?.constant = metrics.folderBar
+        searchFieldWidth?.constant = metrics.searchWidth
+        itemsBoxHeight?.constant = metrics.itemsMinHeight
+        itemsHelper.isHidden = !metrics.showsItemsHelper
+        updateFolderListHeight()
+    }
+
+    private func updateFolderListHeight() {
+        let rows = max(1, min(settings.scripts.folders.count, 3))
+        folderListHeight?.constant = folderTable.rowHeight * CGFloat(rows)
+    }
+
+    private func layoutColumns() {
+        window?.contentView?.layoutSubtreeIfNeeded()
+        let columns = Dictionary(uniqueKeysWithValues: itemTable.tableColumns.map { ($0.identifier, $0) })
+        guard let name = columns[Column.name], let aliases = columns[Column.aliases] else { return }
+        let spacing = itemTable.intercellSpacing.width * 4
+        let available = max(160, itemScroll.contentSize.width - 30 - 68 - spacing)
+        name.width = available * 2 / 3.6
+        aliases.width = available * 1.6 / 3.6
+    }
+
+    private func recomputeFolderCounts() {
+        let roots = settings.scriptFolders.map { $0.path.hasSuffix("/") ? $0.path : $0.path + "/" }
+        var counts = [Int](repeating: 0, count: roots.count)
+        for item in allItems {
+            guard case .script(let script) = item else { continue }
+            let path = script.url.path
+            for (index, root) in roots.enumerated() where path.hasPrefix(root) { counts[index] += 1 }
+        }
+        folderCounts = counts
+    }
+
     private func reloadFolders() {
+        recomputeFolderCounts()
         folderTable.reloadData()
-        watchCheckbox.state = settings.scripts.watch ? .on : .off
-        removeButton.isEnabled = folderTable.selectedRow >= 0
+        watchSwitch.state = settings.scripts.watch ? .on : .off
+        removeFolderButton.isEnabled = folderTable.selectedRow >= 0
+        folderEmptyLabel.isHidden = !settings.scripts.folders.isEmpty
+        updateFolderListHeight()
     }
 
     private func applyFilter() {
-        let query = filterField.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
+        endAliasEdit(commit: false)
+        let raw = filterField.stringValue.trimmingCharacters(in: .whitespaces)
+        let query = raw.lowercased()
         visibleItems = query.isEmpty ? allItems : allItems.filter {
             $0.title.lowercased().contains(query) || $0.aliases.contains { $0.contains(query) } || ($0.kindLabel ?? "App").lowercased().contains(query)
         }
         itemTable.reloadData()
+        selectedItemRow = itemTable.selectedRow
+        itemsEmptyLabel.stringValue = "No items match “\(raw)”."
+        itemsEmptyLabel.isHidden = !(visibleItems.isEmpty && !raw.isEmpty)
+    }
+
+    private var aliasColumnIndex: Int? {
+        itemTable.tableColumns.firstIndex { $0.identifier == Column.aliases }
+    }
+
+    private func aliasCell(row: Int, makeIfNecessary: Bool) -> AliasCellView? {
+        guard row >= 0, row < visibleItems.count, let column = aliasColumnIndex else { return nil }
+        return itemTable.view(atColumn: column, row: row, makeIfNecessary: makeIfNecessary) as? AliasCellView
+    }
+
+    private func refreshAliasCell(row: Int) {
+        guard let cell = aliasCell(row: row, makeIfNecessary: false), !cell.isEditingAliases else { return }
+        configureAliasCell(cell, row: row)
+    }
+
+    private func configureAliasCell(_ cell: AliasCellView, row: Int) {
+        let item = visibleItems[row]
+        let custom = settings.override(for: item.id)?.aliases ?? []
+        let builtin = item.aliases.filter { !custom.contains($0) }
+        let hovered = (itemTable.rowView(atRow: row, makeIfNecessary: false) as? HoverRowView)?.isHovered ?? false
+        cell.configure(builtin: builtin, custom: custom, hovered: hovered, selected: itemTable.selectedRow == row)
+        cell.onCommit = { [weak self, weak cell] aliases in
+            guard let self, let cell else { return }
+            let index = itemTable.row(for: cell)
+            guard index >= 0, index < visibleItems.count else { return }
+            let target = visibleItems[index]
+            var override = settings.override(for: target.id) ?? ItemOverride(id: target.id)
+            override.aliases = aliases
+            settings.setOverride(override)
+            commit()
+            refreshAliasCell(row: index)
+        }
+    }
+
+    private func beginAliasEdit(row: Int) {
+        endAliasEdit(commit: true)
+        guard row >= 0, row < visibleItems.count else { return }
+        itemTable.scrollRowToVisible(row)
+        guard let cell = aliasCell(row: row, makeIfNecessary: true) else { return }
+        editingAliasCell = cell
+        cell.beginEditing()
+    }
+
+    private func endAliasEdit(commit shouldCommit: Bool) {
+        guard let cell = editingAliasCell else { return }
+        editingAliasCell = nil
+        cell.endEditing(commit: shouldCommit)
+    }
+
+    @objc private func itemTableClicked() {
+        let row = itemTable.clickedRow
+        guard row >= 0, itemTable.clickedColumn == aliasColumnIndex else { return }
+        beginAliasEdit(row: row)
     }
 
     private func commit() {
@@ -248,6 +689,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let row = folderTable.selectedRow
         guard row >= 0, row < settings.scripts.folders.count else { return }
         settings.scripts.folders.remove(at: row)
+        folderTable.deselectAll(nil)
         reloadFolders()
         commit()
     }
@@ -256,7 +698,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         do {
             try LoginItem.toggle()
         } catch {
-            loginNote.stringValue = error.localizedDescription
+            loginStatus.stringValue = error.localizedDescription
+            loginStatus.textColor = .systemRed
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             MainActor.assumeIsolated { self.refreshLogin() }
@@ -264,8 +707,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         refreshLogin()
     }
 
+    @objc private func openLoginItems() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
     @objc private func toggleWatch() {
-        settings.scripts.watch = watchCheckbox.state == .on
+        settings.scripts.watch = watchSwitch.state == .on
         commit()
     }
 
@@ -277,25 +724,23 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         override.enabled = sender.state == .on
         settings.setOverride(override)
         commit()
+        if let column = itemTable.tableColumns.firstIndex(where: { $0.identifier == Column.name }) {
+            itemTable.reloadData(forRowIndexes: [row], columnIndexes: [column])
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let window else { return }
+        let wantsCompact = window.frame.width < 600
+        if wantsCompact != isCompact {
+            isCompact = wantsCompact
+            apply(wantsCompact ? Metrics.compact : Metrics.regular)
+        }
+        layoutColumns()
     }
 
     func controlTextDidChange(_ obj: Notification) {
         if obj.object as? NSSearchField === filterField { applyFilter() }
-    }
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField, field.identifier == Column.aliases else { return }
-        let row = field.tag
-        guard row >= 0, row < visibleItems.count else { return }
-        let item = visibleItems[row]
-        let aliases = field.stringValue
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty }
-        var override = settings.override(for: item.id) ?? ItemOverride(id: item.id)
-        override.aliases = aliases
-        settings.setOverride(override)
-        commit()
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -304,55 +749,77 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         if notification.object as? NSTableView === folderTable {
-            removeButton.isEnabled = folderTable.selectedRow >= 0
+            removeFolderButton.isEnabled = folderTable.selectedRow >= 0
+            return
         }
+        guard notification.object as? NSTableView === itemTable else { return }
+        let previous = selectedItemRow
+        selectedItemRow = itemTable.selectedRow
+        if previous >= 0 { refreshAliasCell(row: previous) }
+        if selectedItemRow >= 0 { refreshAliasCell(row: selectedItemRow) }
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        if tableView === folderTable { return FolderRowView() }
+        let rowView = HoverRowView()
+        rowView.onHoverChange = { [weak self, weak rowView] _ in
+            guard let self, let rowView else { return }
+            let index = itemTable.row(for: rowView)
+            guard index >= 0 else { return }
+            refreshAliasCell(row: index)
+        }
+        return rowView
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let id = tableColumn?.identifier else { return nil }
         if tableView === folderTable {
-            let cell = textCell(tableView, id: id)
-            cell.textField?.stringValue = settings.scripts.folders[row]
+            let cell = (tableView.makeView(withIdentifier: id, owner: nil) as? FolderCellView) ?? FolderCellView(identifier: id)
+            cell.path.stringValue = settings.scripts.folders[row]
+            let count = row < folderCounts.count ? folderCounts[row] : 0
+            cell.count.stringValue = count == 1 ? "1 script" : "\(count) scripts"
             return cell
         }
         let item = visibleItems[row]
         let override = settings.override(for: item.id)
         switch id {
         case Column.enabled:
-            let button = (tableView.makeView(withIdentifier: id, owner: nil) as? NSButton) ?? {
+            let cell = (tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView) ?? {
+                let host = NSTableCellView()
+                host.identifier = id
                 let b = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleEnabled(_:)))
-                b.identifier = id
                 b.toolTip = "Show in launcher"
-                return b
+                b.translatesAutoresizingMaskIntoConstraints = false
+                host.addSubview(b)
+                NSLayoutConstraint.activate([
+                    b.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+                    b.centerYAnchor.constraint(equalTo: host.centerYAnchor),
+                ])
+                return host
             }()
+            guard let button = cell.subviews.first as? NSButton else { return cell }
             button.tag = row
             button.state = (override?.enabled ?? true) ? .on : .off
-            return button
+            return cell
         case Column.name:
+            let enabled = override?.enabled ?? true
             let cell = textCell(tableView, id: id, withIcon: true)
-            cell.imageView?.image = icons.icon(for: item)
+            cell.imageView?.image = icons.icon(for: item, size: 16)
+            cell.imageView?.alphaValue = enabled ? 1 : 0.45
+            cell.textField?.font = .systemFont(ofSize: 13)
             cell.textField?.stringValue = item.title
-            cell.textField?.textColor = (override?.enabled ?? true) ? .labelColor : .tertiaryLabelColor
+            cell.textField?.textColor = enabled ? .labelColor : .secondaryLabelColor
             return cell
         case Column.kind:
             let cell = textCell(tableView, id: id)
+            cell.textField?.font = .systemFont(ofSize: 12)
             cell.textField?.stringValue = item.kindLabel ?? "App"
-            cell.textField?.textColor = .secondaryLabelColor
+            cell.textField?.textColor = (override?.enabled ?? true) ? .secondaryLabelColor : .tertiaryLabelColor
             return cell
         case Column.aliases:
-            let cell = textCell(tableView, id: id)
-            let field = cell.textField!
-            field.isEditable = true
-            field.isBordered = false
-            field.drawsBackground = false
-            field.focusRingType = .default
-            field.delegate = self
-            field.identifier = Column.aliases
-            field.tag = row
-            field.toolTip = "Comma separated"
-            field.stringValue = (override?.aliases ?? []).joined(separator: ", ")
-            let builtIn = item.aliases.filter { !(override?.aliases ?? []).contains($0) }
-            field.placeholderString = builtIn.isEmpty ? "" : "built-in: " + builtIn.joined(separator: ", ")
+            let cell = (tableView.makeView(withIdentifier: AliasCellView.identifier, owner: nil) as? AliasCellView) ?? AliasCellView(frame: .zero)
+            cell.toolTip = "Comma separated. Built-in aliases from config are kept."
+            configureAliasCell(cell, row: row)
             return cell
         default:
             return nil
@@ -375,12 +842,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             cell.addSubview(image)
             cell.imageView = image
             NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                image.widthAnchor.constraint(equalToConstant: 20),
-                image.heightAnchor.constraint(equalToConstant: 20),
+                image.widthAnchor.constraint(equalToConstant: 16),
+                image.heightAnchor.constraint(equalToConstant: 16),
             ])
-            leading = field.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6)
+            leading = field.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8)
         }
         NSLayoutConstraint.activate([
             leading,
@@ -388,5 +855,119 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
+    }
+}
+
+@MainActor
+private final class ItemTable: NSTableView {
+    var onReturn: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76 {
+            onReturn?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+@MainActor
+private final class FolderTable: NSTableView {
+    var onDelete: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 51 || event.keyCode == 117 {
+            onDelete?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+}
+
+@MainActor
+private final class FolderRowView: NSTableRowView {
+    override var isSelected: Bool {
+        didSet {
+            needsDisplay = true
+            applySelection()
+        }
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        applySelection()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isSelected else { return }
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
+    }
+
+    private func applySelection() {
+        for case let cell as FolderCellView in subviews { cell.isRowSelected = isSelected }
+    }
+}
+
+@MainActor
+private final class FolderCellView: NSTableCellView {
+    let symbol = NSImageView()
+    let path = NSTextField(labelWithString: "")
+    let count = NSTextField(labelWithString: "")
+
+    var isRowSelected = false {
+        didSet { applyStyle() }
+    }
+
+    init(identifier: NSUserInterfaceItemIdentifier) {
+        super.init(frame: .zero)
+        self.identifier = identifier
+        symbol.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
+        symbol.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        symbol.translatesAutoresizingMaskIntoConstraints = false
+        path.font = .systemFont(ofSize: 13)
+        path.lineBreakMode = .byTruncatingMiddle
+        path.translatesAutoresizingMaskIntoConstraints = false
+        count.font = .systemFont(ofSize: 11)
+        count.alignment = .right
+        count.setContentCompressionResistancePriority(.required, for: .horizontal)
+        count.setContentHuggingPriority(.required, for: .horizontal)
+        count.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(symbol)
+        addSubview(path)
+        addSubview(count)
+        textField = path
+        imageView = symbol
+        NSLayoutConstraint.activate([
+            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
+            symbol.widthAnchor.constraint(equalToConstant: 18),
+            path.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 8),
+            path.centerYAnchor.constraint(equalTo: centerYAnchor),
+            count.leadingAnchor.constraint(greaterThanOrEqualTo: path.trailingAnchor, constant: 8),
+            count.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            count.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        applyStyle()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func applyStyle() {
+        let ink = SelectionPalette.onFill(effectiveAppearance)
+        path.textColor = isRowSelected ? ink : .labelColor
+        count.textColor = isRowSelected ? ink.withAlphaComponent(0.75) : .tertiaryLabelColor
+        symbol.contentTintColor = isRowSelected ? ink : .systemTeal
+    }
+}
+
+@MainActor
+private final class FolderBar: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.05).setFill()
+        bounds.fill()
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.maxY - 0.5, width: bounds.width, height: 0.5).fill()
     }
 }

@@ -105,13 +105,20 @@ public enum LauncherItem: Sendable, Hashable {
             nil
         case .command(let command):
             switch command.action {
-            case .shell(let text): "$ \(text)"
+            case .shell: nil
             case .path(let url): Self.abbreviate(url.path)
-            case .url(let url): url.absoluteString
+            case .url(let url): Self.webAddress(url)
             }
         case .script(let script):
             script.package.flatMap { $0.caseInsensitiveCompare(script.title) == .orderedSame ? nil : $0 }
         }
+    }
+
+    private static func webAddress(_ url: URL) -> String {
+        guard let host = url.host, !host.isEmpty else { return url.absoluteString }
+        var text = host + url.path
+        while text.hasSuffix("/") { text.removeLast() }
+        return text
     }
 
     public static func abbreviate(_ path: String) -> String {
@@ -127,7 +134,7 @@ public enum LauncherItem: Sendable, Hashable {
             if let subtitle = item.subtitle {
                 out[item.id] = subtitle
             } else if case .app(let app) = item, (byTitle[item.title.lowercased()]?.count ?? 0) > 1 {
-                out[item.id] = abbreviate(app.url.deletingLastPathComponent().path) + "/" + app.url.lastPathComponent
+                out[item.id] = abbreviate(app.url.deletingLastPathComponent().path)
             }
         }
         return out

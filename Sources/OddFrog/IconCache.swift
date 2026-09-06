@@ -9,36 +9,40 @@ private struct SendableImage: @unchecked Sendable {
 final class IconCache {
     private let cache = NSCache<NSString, NSImage>()
     private var pending = Set<String>()
-    var onLoaded: ((String) -> Void)?
+    private var observers: [(String) -> Void] = []
 
     init() {
         cache.countLimit = 1000
     }
 
-    func icon(for item: LauncherItem) -> NSImage? {
+    func observeLoads(_ handler: @escaping (String) -> Void) {
+        observers.append(handler)
+    }
+
+    func icon(for item: LauncherItem, size: CGFloat = 24) -> NSImage? {
         switch item {
         case .app(let app):
-            return icon(forFile: app.url.path)
+            return icon(forFile: app.url.path, size: size)
         case .command(let command):
-            let name: String
             switch command.action {
-            case .shell: name = command.terminal ? "terminal" : "chevron.left.forwardslash.chevron.right"
-            case .path: name = "folder"
-            case .url: name = "globe"
+            case .shell:
+                return tile(name: "shell", color: NSColor(white: 0.16, alpha: 1), glyph: "$", glyphSize: 13, size: size)
+            case .path:
+                return tile(name: "path", color: .systemBlue, symbol: "folder.fill", symbolSize: 12, size: size)
+            case .url:
+                return tile(name: "url", color: .systemTeal, symbol: "link", symbolSize: 14, size: size)
             }
-            return symbol(name)
         case .script(let script):
-            if let emoji = script.icon { return emojiImage(emoji) }
-            return symbol("scroll")
+            if let emoji = script.icon { return emojiImage(emoji, size: size) }
+            return tile(name: "script", color: .systemGray, glyph: ">_", glyphSize: 10, size: size)
         }
     }
 
-    private func emojiImage(_ emoji: String) -> NSImage? {
-        let key = "emoji:\(emoji)" as NSString
+    private func emojiImage(_ emoji: String, size: CGFloat) -> NSImage? {
+        let key = "emoji:\(emoji):\(size)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let size = NSSize(width: 24, height: 24)
-        let image = NSImage(size: size, flipped: false) { rect in
-            let text = NSAttributedString(string: emoji, attributes: [.font: NSFont.systemFont(ofSize: 18)])
+        let text = NSAttributedString(string: emoji, attributes: [.font: NSFont.systemFont(ofSize: size * 20 / 24)])
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
             let bounds = text.size()
             text.draw(at: NSPoint(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2))
             return true
@@ -47,40 +51,74 @@ final class IconCache {
         return image
     }
 
-    private func symbol(_ name: String) -> NSImage? {
-        let key = "symbol:\(name)" as NSString
+    private func tile(name: String, color: NSColor, glyph: String, glyphSize: CGFloat, size: CGFloat) -> NSImage? {
+        tile(name: name, color: color, size: size) { rect in
+            let font = NSFont.monospacedSystemFont(ofSize: glyphSize * size / 24, weight: .bold)
+            let text = NSAttributedString(string: glyph, attributes: [.font: font, .foregroundColor: NSColor.white])
+            let bounds = text.size()
+            text.draw(at: NSPoint(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2))
+        }
+    }
+
+    private func tile(name: String, color: NSColor, symbol: String, symbolSize: CGFloat, size: CGFloat) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: symbolSize * size / 24, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        guard let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return nil }
+        return tile(name: name, color: color, size: size) { rect in
+            let bounds = glyph.size
+            glyph.draw(in: NSRect(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2, width: bounds.width, height: bounds.height))
+        }
+    }
+
+    private func tile(name: String, color: NSColor, size: CGFloat, content: @escaping (NSRect) -> Void) -> NSImage? {
+        let key = "tile:\(name):\(size)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return nil }
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            color.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: size / 4, yRadius: size / 4).fill()
+            content(rect)
+            return true
+        }
         cache.setObject(image, forKey: key)
         return image
     }
 
-    private func icon(forFile path: String) -> NSImage? {
-        if let cached = cache.object(forKey: path as NSString) { return cached }
-        guard pending.insert(path).inserted else { return nil }
+    private func icon(forFile path: String, size: CGFloat) -> NSImage? {
+        let sized = "app:\(size):\(path)" as NSString
+        if let cached = cache.object(forKey: sized) { return cached }
+        guard let native = cache.object(forKey: "app:\(path)" as NSString) else {
+            load(path: path)
+            return nil
+        }
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            native.draw(in: rect)
+            return true
+        }
+        cache.setObject(image, forKey: sized)
+        return image
+    }
+
+    private func load(path: String) {
+        guard pending.insert(path).inserted else { return }
         Task.detached(priority: .userInitiated) {
             let boxed = Self.loadIcon(path: path)
             await MainActor.run { [weak self] in
                 self?.store(boxed, path: path)
             }
         }
-        return nil
     }
 
     private nonisolated static func loadIcon(path: String) -> SendableImage {
-        let image = NSWorkspace.shared.icon(forFile: path)
-        image.size = NSSize(width: 24, height: 24)
-        return SendableImage(image: image)
+        SendableImage(image: NSWorkspace.shared.icon(forFile: path))
     }
 
     private func store(_ boxed: SendableImage, path: String) {
-        cache.setObject(boxed.image, forKey: path as NSString)
+        cache.setObject(boxed.image, forKey: "app:\(path)" as NSString)
         pending.remove(path)
-        onLoaded?(path)
+        for observer in observers { observer(path) }
     }
 
     func prewarm(_ apps: [AppItem]) {
-        for app in apps { _ = icon(forFile: app.url.path) }
+        for app in apps { _ = icon(forFile: app.url.path, size: 24) }
     }
 }

@@ -4,13 +4,23 @@ import OddFrogCore
 @MainActor
 final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     static let fieldHeight: CGFloat = 44
-    static let listPadding: CGFloat = 6
+    static let fieldPadding: CGFloat = 16
+    static let cornerRadius: CGFloat = 18
+    static let hairlineHeight: CGFloat = 0.5
+    static let hairlineInset: CGFloat = 12
+    static let listInsetTop: CGFloat = 6
+    static let listInsetSide: CGFloat = 8
+    static let listInsetBottom: CGFloat = 8
+    static let emptyStateHeight: CGFloat = 56
+    static let visibleRowCap = 8
 
     let searchField = SearchField()
     let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let separator = NSBox()
+    private let hairline = HairlineView()
+    private let emptyLabel = NSTextField(labelWithString: "")
     private var scrollHeight: NSLayoutConstraint!
+    private var showsEmptyState = false
 
     var items: [LauncherItem] = [] {
         didSet {
@@ -31,31 +41,31 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     init(icons: IconCache) {
         self.icons = icons
         super.init(nibName: nil, bundle: nil)
-        icons.onLoaded = { [weak self] _ in self?.tableView.reloadData(forRowIndexes: IndexSet(0..<(self?.results.count ?? 0)), columnIndexes: IndexSet(integer: 0)) }
+        icons.observeLoads { [weak self] _ in self?.tableView.reloadData(forRowIndexes: IndexSet(0..<(self?.results.count ?? 0)), columnIndexes: IndexSet(integer: 0)) }
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSVisualEffectView()
-        root.material = .popover
-        root.blendingMode = .behindWindow
-        root.state = .active
-        root.wantsLayer = true
-        root.layer?.cornerRadius = 12
-        root.layer?.masksToBounds = true
-        root.translatesAutoresizingMaskIntoConstraints = false
+        let content = NSView()
 
         let header = NSView()
         header.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(header)
+        content.addSubview(header)
         searchField.delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(searchField)
 
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(separator)
+        hairline.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(hairline)
+
+        emptyLabel.font = .systemFont(ofSize: 13)
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.alignment = .center
+        emptyLabel.lineBreakMode = .byTruncatingTail
+        emptyLabel.isHidden = true
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(emptyLabel)
 
         let column = NSTableColumn(identifier: ResultRowView.identifier)
         column.resizingMask = .autoresizingMask
@@ -65,7 +75,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.backgroundColor = .clear
         tableView.selectionHighlightStyle = .regular
-        tableView.style = .inset
+        tableView.style = .plain
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -75,34 +85,68 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         scrollView.documentView = tableView
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsetsZero
-        scrollView.hasVerticalScroller = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(scrollView)
+        content.addSubview(scrollView)
 
         scrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            header.topAnchor.constraint(equalTo: root.topAnchor),
+            header.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            header.topAnchor.constraint(equalTo: content.topAnchor),
             header.heightAnchor.constraint(equalToConstant: Self.fieldHeight),
-            searchField.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 14),
-            searchField.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -14),
+            searchField.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: Self.fieldPadding),
+            searchField.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -Self.fieldPadding),
             searchField.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            separator.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            separator.topAnchor.constraint(equalTo: header.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: separator.bottomAnchor, constant: Self.listPadding / 2),
+            hairline.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Self.hairlineInset),
+            hairline.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Self.hairlineInset),
+            hairline.topAnchor.constraint(equalTo: header.bottomAnchor),
+            hairline.heightAnchor.constraint(equalToConstant: Self.hairlineHeight),
+            scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Self.listInsetSide),
+            scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Self.listInsetSide),
+            scrollView.topAnchor.constraint(equalTo: hairline.bottomAnchor, constant: Self.listInsetTop),
             scrollHeight,
+            emptyLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Self.listInsetSide),
+            emptyLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Self.listInsetSide),
+            emptyLabel.centerYAnchor.constraint(equalTo: hairline.bottomAnchor, constant: Self.emptyStateHeight / 2),
         ])
+
+        let root: NSView
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = Self.cornerRadius
+            glass.contentView = content
+            root = glass
+        } else {
+            let blur = NSVisualEffectView()
+            blur.material = .popover
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.wantsLayer = true
+            blur.layer?.cornerRadius = Self.cornerRadius
+            blur.layer?.masksToBounds = true
+            blur.addSubview(content)
+            root = blur
+        }
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            content.topAnchor.constraint(equalTo: root.topAnchor),
+            content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+        root.translatesAutoresizingMaskIntoConstraints = false
         view = root
     }
 
     var preferredHeight: CGFloat {
+        if showsEmptyState { return Self.fieldHeight + Self.hairlineHeight + Self.emptyStateHeight }
         if results.isEmpty { return Self.fieldHeight }
-        return Self.fieldHeight + 1 + Self.listPadding / 2 + scrollHeight.constant
+        return Self.fieldHeight + Self.hairlineHeight + Self.listInsetTop + scrollHeight.constant + Self.listInsetBottom
     }
 
     func prepareForShow() {
@@ -130,13 +174,18 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     func refresh() {
         guard isViewLoaded else { return }
         let selectedID = selectedItem?.id
-        results = SearchEngine.search(query: searchField.stringValue, items: items, weights: weights, maxResults: maxResults)
+        let query = searchField.stringValue
+        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults)
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
-        let visible = min(rows, maxResults)
-        scrollHeight.constant = visible == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY + Self.listPadding / 2
-        separator.isHidden = rows == 0
+        let visible = min(rows, Self.visibleRowCap)
+        scrollHeight.constant = rows == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY
+        showsEmptyState = rows == 0 && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        emptyLabel.stringValue = showsEmptyState ? "No results for “\(query)”" : ""
+        emptyLabel.isHidden = !showsEmptyState
+        scrollView.isHidden = showsEmptyState
+        hairline.isHidden = rows == 0 && !showsEmptyState
         if rows > 0 {
             let row = selectedID.flatMap { id in results.firstIndex { $0.item.id == id } } ?? 0
             select(row: row)
@@ -160,7 +209,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private func submit() {
         let row = tableView.selectedRow
         guard row >= 0, row < results.count else { return }
-        onSubmit?(results[row].item, results[row].argument)
+        let result = results[row]
+        if case .script(let script) = result.item, let spec = script.argument, !spec.optional, result.argument == nil { return }
+        onSubmit?(result.item, result.argument)
     }
 
     @objc private func rowClicked(_ sender: Any?) {
@@ -201,8 +252,16 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let result = results[row]
         let item = result.item
         let line = detail(for: result)
-        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, icon: icons.icon(for: item))
+        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, chip: line?.chip, icon: icons.icon(for: item, size: 24))
         return cell
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        (tableView.makeView(withIdentifier: ResultRow.identifier, owner: nil) as? ResultRow) ?? {
+            let view = ResultRow()
+            view.identifier = ResultRow.identifier
+            return view
+        }()
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
@@ -213,6 +272,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         var detail: String
         var value: String?
         var tooltip: String?
+        var chip: ResultRowView.Chip?
     }
 
     private static let shortPlaceholderLimit = 24
@@ -224,12 +284,28 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
                 let short = !generic && spec.placeholder.count <= Self.shortPlaceholderLimit
                 return DetailLine(detail: (short ? spec.placeholder : "Argument") + ":", value: value, tooltip: short ? nil : spec.placeholder)
             }
-            let label = generic ? "Argument" : spec.placeholder
-            return DetailLine(detail: "\(label): \(spec.optional ? "optional" : "required")", value: nil, tooltip: nil)
+            let short = !generic && spec.placeholder.count <= Self.shortPlaceholderLimit
+            return DetailLine(detail: short ? spec.placeholder : "Argument", value: nil, tooltip: short ? nil : spec.placeholder, chip: spec.optional ? .optional : .required)
         }
         guard let plain = subtitles[result.item.id] else { return nil }
         return DetailLine(detail: plain, value: nil, tooltip: nil)
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { true }
+
+    @MainActor
+    private final class HairlineView: NSView {
+        override var wantsUpdateLayer: Bool { true }
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func updateLayer() {
+            layer?.backgroundColor = NSColor.separatorColor.cgColor
+        }
+    }
 }
