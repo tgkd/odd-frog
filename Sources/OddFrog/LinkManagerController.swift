@@ -39,7 +39,7 @@ final class LinkManagerController: NSWindowController, NSTableViewDataSource, NS
         guard let content = window?.contentView else { return }
         let title = NSTextField(labelWithString: "Links")
         title.font = .systemFont(ofSize: 17, weight: .semibold)
-        let helper = NSTextField(wrappingLabelWithString: "Web links open in your default browser. App links open in the app registered for that URL.")
+        let helper = NSTextField(wrappingLabelWithString: "Web links open in your default browser. App links open in the app registered for that URL. Put {query} in a URL to insert what you type after the alias, for example gh odd-frog.")
         helper.font = .systemFont(ofSize: 12)
         helper.textColor = .secondaryLabelColor
         let add = NSButton(title: "New Link", target: self, action: #selector(newLink))
@@ -198,7 +198,7 @@ final class LinkManagerController: NSWindowController, NSTableViewDataSource, NS
         guard links.indices.contains(row) else { return }
         original = links[row]
         nameField.stringValue = links[row].name
-        if case .url(let url) = links[row].action { urlField.stringValue = url.absoluteString }
+        if case .url(let url) = links[row].action { urlField.stringValue = URLTemplate.display(url) }
         aliasesField.stringValue = links[row].aliases.joined(separator: ", ")
         editorTitle.stringValue = "Edit link"
         saveButton.title = "Save Changes"
@@ -213,7 +213,7 @@ final class LinkManagerController: NSWindowController, NSTableViewDataSource, NS
         let text: String
         switch tableColumn?.identifier.rawValue {
         case "name": text = link.name
-        case "url": if case .url(let url) = link.action { text = url.absoluteString } else { text = "" }
+        case "url": if case .url(let url) = link.action { text = URLTemplate.display(url) } else { text = "" }
         default: text = link.aliases.joined(separator: ", ")
         }
         let cell = NSTableCellView()

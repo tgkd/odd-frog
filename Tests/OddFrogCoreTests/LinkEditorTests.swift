@@ -49,6 +49,17 @@ struct LinkEditorTests {
         #expect(deleted.contains("# Keep this comment and custom settings."))
     }
 
+    @Test func placeholderURLWritesLiteralQueryText() throws {
+        let added = try LinkEditor.updating(config, original: nil, draft: LinkDraft(
+            name: "GitHub Search", url: "https://github.com/search?q={query}", aliases: "ghs"
+        ))
+        #expect(added.contains("{query}"))
+        #expect(!added.contains("%7Bquery%7D"))
+        let parsed = try ConfigParser.parse(added)
+        let command = try #require(parsed.commands.last)
+        #expect(LauncherItem.command(command).acceptsArgument)
+    }
+
     @Test func validatesBeforeWriting() throws {
         for address in ["github.com", "https://", "https:///path", "https://git hub.com", ""] {
             #expect(throws: LinkEditError.self) {

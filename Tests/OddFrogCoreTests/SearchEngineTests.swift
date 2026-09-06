@@ -72,6 +72,31 @@ struct SearchEngineTests {
         #expect(results.map { $0.item.id } == again.map { $0.item.id })
     }
 
+    @Test func urlPlaceholderCommandAcceptsArgument() {
+        let search = LauncherItem.command(CommandItem(
+            name: "GitHub", aliases: ["gh"],
+            action: .url(URL(string: "https://github.com/search?q={query}")!),
+            cwd: nil, terminal: false
+        ))
+        let plain = LauncherItem.command(CommandItem(
+            name: "GitHub Home", aliases: ["ghh"],
+            action: .url(URL(string: "https://github.com")!),
+            cwd: nil, terminal: false
+        ))
+        let items = [search, plain]
+
+        let withArgument = SearchEngine.search(query: "gh odd-frog", items: items, weights: [:], maxResults: 8)
+        #expect(withArgument.first?.item.id == search.id)
+        #expect(withArgument.first?.argument == "odd-frog")
+
+        let withoutArgument = SearchEngine.search(query: "gh", items: items, weights: [:], maxResults: 8)
+        #expect(withoutArgument.first?.item.id == search.id)
+        #expect(withoutArgument.first?.argument == nil)
+
+        let plainSearch = SearchEngine.search(query: "ghh something", items: items, weights: [:], maxResults: 8)
+        #expect(plainSearch.allSatisfy { $0.item.id != plain.id })
+    }
+
     @Test func emptyQueryShowsRecentThenAlphabetical() {
         let items = [app("Zed"), app("Alpha"), app("Mid")]
         let results = SearchEngine.search(query: "  ", items: items, weights: ["/Applications/Mid.app": 2], maxResults: 2)

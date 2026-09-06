@@ -104,11 +104,18 @@ final class ActionExecutor {
             openApplication(app)
         case .command(let command):
             switch command.action {
-            case .path(let url), .url(let url):
+            case .path(let url):
                 if NSWorkspace.shared.open(url) {
                     record(item.id)
                 } else {
                     fail("\(command.name): could not open \(url.absoluteString)")
+                }
+            case .url(let url):
+                let target = URLTemplate.accepts(url) ? URLTemplate.resolve(url, query: argument ?? "") : url
+                if NSWorkspace.shared.open(target) {
+                    record(item.id)
+                } else {
+                    fail("\(command.name): could not open \(target.absoluteString)")
                 }
             case .shell(let text):
                 if command.terminal {

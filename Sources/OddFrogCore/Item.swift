@@ -118,7 +118,7 @@ public enum LauncherItem: Sendable, Hashable {
         guard let host = url.host, !host.isEmpty else { return url.absoluteString }
         var text = host + url.path
         while text.hasSuffix("/") { text.removeLast() }
-        return text
+        return text.replacingOccurrences(of: URLTemplate.encoded, with: URLTemplate.placeholder)
     }
 
     public static func abbreviate(_ path: String) -> String {
@@ -149,8 +149,15 @@ public enum LauncherItem: Sendable, Hashable {
     }
 
     public var acceptsArgument: Bool {
-        if case .script(let script) = self { return script.argument != nil }
-        return false
+        switch self {
+        case .script(let script):
+            return script.argument != nil
+        case .command(let command):
+            if case .url(let url) = command.action { return URLTemplate.accepts(url) }
+            return false
+        case .app:
+            return false
+        }
     }
 
     public var kindLabel: String? {
