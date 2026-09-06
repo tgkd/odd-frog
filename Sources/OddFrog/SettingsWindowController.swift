@@ -124,9 +124,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         refreshLogin()
         reloadFolders()
         let target = id.flatMap { targetID in items.first { $0.id == targetID } }
-        if let target {
-            filterField.stringValue = target.title
-        }
+        filterField.stringValue = target?.title ?? ""
         applyFilter()
         webSearchField.stringValue = settings.search.url
         resetWebSearchHelper()
