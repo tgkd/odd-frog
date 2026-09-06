@@ -16,7 +16,9 @@ Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a
 ## Usage
 
 Press `⌥Space` (default). Type. `↑`/`↓` to move, `↩` to run, `⎋` to hide. Clicking anywhere
-else hides the panel. With an empty query the list shows your most used items.
+else hides the panel. With an empty query the list shows your most used items. `⇥` completes
+the selected item into the search field. Return on a command that needs an argument fills the
+command in so you can type the value.
 
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
 
