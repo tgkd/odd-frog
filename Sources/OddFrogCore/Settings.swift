@@ -70,20 +70,50 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Window: Codable, Sendable, Equatable {
+        public var enabled: Bool
+        public var cascadeStep: Double
+
+        public init(enabled: Bool = false, cascadeStep: Double = 32) {
+            self.enabled = enabled
+            self.cascadeStep = (16...120).contains(cascadeStep) ? cascadeStep : 32
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case enabled
+            case cascadeStep = "cascade_step"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+            let step: Double
+            if let integer = try? container.decode(Int.self, forKey: .cascadeStep) {
+                step = Double(integer)
+            } else {
+                step = try container.decodeIfPresent(Double.self, forKey: .cascadeStep) ?? 32
+            }
+            self.init(enabled: enabled, cascadeStep: step)
+        }
+    }
+
     public var scripts: Scripts
     public var items: [ItemOverride]
     public var search: Search
+    public var window: Window
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search()) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), window: Window = Window()) {
         self.scripts = scripts
         self.items = items
         self.search = search
+        self.window = window
     }
 
     enum CodingKeys: String, CodingKey {
         case scripts
         case items
         case search
+        case window
     }
 
     public init(from decoder: Decoder) throws {
@@ -91,6 +121,7 @@ public struct Settings: Codable, Sendable, Equatable {
         scripts = try container.decodeIfPresent(Scripts.self, forKey: .scripts) ?? Scripts()
         items = try container.decodeIfPresent([ItemOverride].self, forKey: .items) ?? []
         search = try container.decodeIfPresent(Search.self, forKey: .search) ?? Search()
+        window = try container.decodeIfPresent(Window.self, forKey: .window) ?? Window()
     }
 
     public static let empty = Settings()

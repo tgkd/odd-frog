@@ -1,3 +1,4 @@
+SIGN     ?= -
 APP      := OddFrog
 BUILD    := build
 BUNDLE   := $(BUILD)/$(APP).app
@@ -17,7 +18,7 @@ bundle: build
 	cp Resources/config.example.toml $(CONTENTS)/Resources/
 	cp Resources/AppIcon.icns $(CONTENTS)/Resources/
 	printf 'APPL????' > $(CONTENTS)/PkgInfo
-	codesign --force --sign - --deep $(BUNDLE)
+	codesign --force --sign "$(SIGN)" --deep $(BUNDLE)
 
 run: bundle
 	pkill -x $(APP) || true

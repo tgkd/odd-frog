@@ -46,7 +46,20 @@ public enum SearchEngine {
         ranked.reserveCapacity(items.count)
         for item in items {
             let weight = weights[item.id] ?? 0
-            for (query, argument) in splits(of: trimmed, allowArgument: item.acceptsArgument) {
+            var queries = splits(of: trimmed, allowArgument: item.acceptsArgument)
+            if let kind = item.kindLabel {
+                if trimmed.caseInsensitiveCompare(kind) == .orderedSame {
+                    let exact = item.aliases.contains(trimmed.lowercased())
+                    ranked.append(RankedItem(item: item, lexical: 100, weight: weight, exactAlias: exact))
+                    continue
+                }
+                let prefix = kind + " "
+                if trimmed.lowercased().hasPrefix(prefix.lowercased()) {
+                    let itemQuery = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                    queries += splits(of: itemQuery, allowArgument: item.acceptsArgument)
+                }
+            }
+            for (query, argument) in queries {
                 guard let (lexical, exact) = match(query: query, item: item) else { continue }
                 ranked.append(RankedItem(item: item, lexical: lexical, weight: weight, exactAlias: exact, argument: argument))
                 break

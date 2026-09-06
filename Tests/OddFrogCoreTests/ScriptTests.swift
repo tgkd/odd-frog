@@ -82,10 +82,14 @@ struct ScriptTests {
         settings.setOverride(ItemOverride(id: "command:Build", aliases: ["bb"]))
         settings.setOverride(ItemOverride(id: "command:Noop"))
         settings.search.url = "https://www.google.com/search?q={query}"
+        settings.window.enabled = true
+        settings.window.cascadeStep = 40
         let text = try settings.serialized()
         let parsed = try Settings.parse(text)
         #expect(parsed == settings)
         #expect(parsed.items.count == 2)
+        #expect(parsed.window.enabled)
+        #expect(parsed.window.cascadeStep == 40)
         #expect(parsed.scriptFolders.first?.path == NSHomeDirectory() + "/Projects/raycast-scripts")
         #expect(parsed.search.url == "https://www.google.com/search?q={query}")
 
@@ -130,5 +134,14 @@ struct ScriptTests {
     @Test func emptySettingsParse() throws {
         let s = try Settings.parse("")
         #expect(s == .empty)
+        #expect(!s.window.enabled)
+        #expect(s.window.cascadeStep == 32)
+        #expect(try Settings.parse("[window]\nenabled = true").window == Settings.Window(enabled: true))
+        for step in ["15", "121", "-1", "nan", "inf", "-inf"] {
+            #expect(try Settings.parse("[window]\ncascade_step = " + step).window.cascadeStep == 32)
+        }
+        for step in [16.0, 40.5, 120.0] {
+            #expect(try Settings.parse("[window]\ncascade_step = \(step)").window.cascadeStep == step)
+        }
     }
 }

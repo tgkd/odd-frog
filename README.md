@@ -1,7 +1,7 @@
 # Odd Frog
 
 A small native macOS launcher: global hotkey, floating panel, fuzzy search over installed
-apps and your own commands, nothing else.
+apps, your own commands, and optional window management.
 
 ## Build and run
 
@@ -12,6 +12,13 @@ make test      # swift test
 ```
 
 Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a Makefile.
+
+`SIGN` defaults to an ad-hoc signature (`-`). Rebuilding changes that identity and can invalidate
+macOS Accessibility access, even if System Settings still shows it enabled. For a stable identity,
+create a self-signed code-signing certificate in Keychain Access → Certificate Assistant → Create
+a Certificate… (certificate type "Code Signing", name e.g. `OddFrog Dev`), then use
+`make run SIGN="OddFrog Dev"` or `make install SIGN="OddFrog Dev"`. If access stops working after
+an ad-hoc rebuild, remove Odd Frog from Accessibility and add the rebuilt app again.
 
 ## Usage
 
@@ -27,6 +34,18 @@ terminal, and scripts run in the terminal with full output.
 
 `⌘I` hides the panel and opens Settings › Items with the selected item found and its Aliases
 cell ready for editing. `⌘,` hides the panel and opens Settings unchanged.
+
+With window management enabled, ten "Window" items appear: Left ½, Right ½, Left ⅔, Right ⅔,
+Top ½, Bottom ½, Top ¾, Bottom ¾, Maximize, and Tidy Windows. Placements act on the focused
+window of the frontmost app, using that window's screen and leaving room for the menu bar and
+Dock. Tidy Windows cascades standard windows on that screen in the current Space diagonally,
+requesting the same size for each and preserving front-to-back order. The step compresses for
+many windows so the requested size stays at least half the screen on each axis; apps may enforce
+larger minimum sizes. Add aliases or disable individual actions in Settings › Items.
+
+Kind labels are searchable: `window` finds Window actions, and `window left` narrows them to
+the left placements. You can also prefix a name or alias with `script`, `folder`, `url`,
+`shell`, or `terminal`. Names and aliases still work on their own.
 
 When nothing matches, the panel offers a fallback instead of an empty list: "Open <url>" when
 the text looks like a URL, and "Search for “<text>”" that opens the web search configured in
@@ -97,9 +116,12 @@ Menu bar → Settings… (or edit `~/.config/odd-frog/settings.toml`, hot-reload
   script-command headers are honoured: `@raycast.title`, `@raycast.mode`, `@raycast.icon`,
   `@raycast.packageName`, `@raycast.argument1`. Scripts without a header use their filename.
   Compiled binaries and non-executable sources are skipped. "Watch folders" rescans on changes.
-- **Items**: every app, command and script with an enabled checkbox and extra aliases.
+- **Items**: every app, command, script and enabled Window action with an enabled checkbox and extra aliases.
 - **Web search**: the URL used for the "Search for …" fallback when nothing matches. Must
   contain `{query}`. Defaults to `https://duckduckgo.com/?q={query}`.
+- **Window management**: off by default, with no Accessibility checks while off. Turning it on
+  asks for Accessibility access; the helper shows the status and offers "Open System Settings"
+  when access is missing.
 
 ```toml
 [scripts]
@@ -116,9 +138,17 @@ aliases = ["kp"]
 
 [search]
 url = "https://duckduckgo.com/?q={query}"
+
+[window]
+enabled = true
+cascade_step = 32
 ```
 
-Item ids are the app bundle path, `command:<name>` for config commands, and `script:<path>`.
+`cascade_step` is the diagonal offset in points for Tidy Windows (16–120, default 32).
+Out-of-range values fall back to 32. This setting has no UI.
+
+Item ids are the app bundle path, `command:<name>` for config commands, `script:<path>`, and
+`window:place:<edge>:<numerator>-<denominator>`, `window:maximize`, or `window:tidy` for window actions.
 
 ### Links
 

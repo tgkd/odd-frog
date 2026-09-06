@@ -15,6 +15,67 @@ private func rank(lexical: Double, weight: Double, name: String = "x") -> Ranked
 }
 
 struct SearchEngineTests {
+    @Test func windowKindFindsAndNarrowsActions() {
+        let windows = WindowAction.all.map { LauncherItem.window(WindowItem(action: $0)) }
+        let items = windows + [app("Safari"), cmd("Build")]
+        let grouped = SearchEngine.search(query: "  WINDOW  ", items: items, weights: [:], maxResults: 20)
+        #expect(Set(grouped.map { $0.item.id }) == Set(windows.map(\.id)))
+        #expect(grouped.allSatisfy { !$0.exactAlias && $0.argument == nil })
+        let narrowed = SearchEngine.search(query: "Window   left", items: items, weights: [:], maxResults: 20)
+        #expect(Set(narrowed.map { $0.item.title }) == ["Left ½", "Left ⅔"])
+        let plain = SearchEngine.search(query: "left", items: items, weights: [:], maxResults: 20)
+        #expect(narrowed == plain)
+        #expect(SearchEngine.search(query: "windowed", items: windows, weights: [:], maxResults: 20).isEmpty)
+        #expect(SearchEngine.search(query: "window", items: windows, weights: [:], maxResults: 3).count == 3)
+    }
+
+    @Test func commandKindsAreSearchable() {
+        let folder = LauncherItem.command(CommandItem(name: "Projects", aliases: ["pj"], action: .path(URL(fileURLWithPath: "/tmp/projects")), cwd: nil, terminal: false))
+        let link = LauncherItem.command(CommandItem(name: "GitHub", aliases: ["gh"], action: .url(URL(string: "https://github.com")!), cwd: nil, terminal: false))
+        let shell = cmd("Build")
+        let terminal = LauncherItem.command(CommandItem(name: "Deploy", aliases: [], action: .shell("true"), cwd: nil, terminal: true))
+        let items = [folder, link, shell, terminal, app("Safari")]
+        for (query, expected) in [("folder", folder), ("folder pj", folder), ("URL gh", link), ("shell build", shell), ("terminal", terminal)] {
+            let results = SearchEngine.search(query: query, items: items, weights: [:], maxResults: 20)
+            #expect(results.map { $0.item.id } == [expected.id])
+        }
+    }
+
+    @Test func kindPrefixesPreserveArguments() {
+        let script = LauncherItem.script(ScriptItem(url: URL(fileURLWithPath: "/tmp/kill-port.sh"), title: "Kill Port", mode: .silent, icon: nil, package: nil, argument: ScriptArgument(placeholder: "port", optional: false), aliases: ["kp"]))
+        let link = LauncherItem.command(CommandItem(name: "GitHub", aliases: ["gh"], action: .url(URL(string: "https://github.com/search?q={query}")!), cwd: nil, terminal: false))
+        let items = [script, link]
+        for (query, expected, argument) in [("script kp 3000", script, "3000"), ("url gh odd frog", link, "odd frog")] {
+            let results = SearchEngine.search(query: query, items: items, weights: [:], maxResults: 20)
+            #expect(results.count == 1)
+            #expect(results.first?.item.id == expected.id)
+            #expect(results.first?.argument == argument)
+            #expect(results.first?.exactAlias == true)
+        }
+        let grouped = SearchEngine.search(query: "script", items: items, weights: [:], maxResults: 20)
+        #expect(grouped.first?.item.id == script.id)
+        #expect(grouped.first?.argument == nil)
+        #expect(SearchEngine.search(query: "script nonexistent", items: items, weights: [:], maxResults: 20).isEmpty)
+        let aliased = script.withAliases(["script stop"])
+        let originalAlias = SearchEngine.search(query: "script stop 3000", items: [aliased], weights: [:], maxResults: 20)
+        #expect(originalAlias.first?.item.id == script.id)
+        #expect(originalAlias.first?.argument == "3000")
+        #expect(originalAlias.first?.exactAlias == true)
+    }
+
+    @Test func explicitAliasesKeepPriorityOverKindMatches() {
+        let window = LauncherItem.window(WindowItem(action: .tidy, aliases: ["window arrange", "cascade"]))
+        let custom = cmd("Custom", aliases: ["window"])
+        let items = [window, custom]
+        let grouped = SearchEngine.search(query: "window", items: items, weights: [window.id: 1000], maxResults: 20)
+        #expect(grouped.first?.item.id == custom.id)
+        for query in ["window arrange", "window cascade", "cascade"] {
+            let results = SearchEngine.search(query: query, items: items, weights: [:], maxResults: 20)
+            #expect(results.first?.item.id == window.id)
+            #expect(results.first?.exactAlias == true)
+        }
+    }
+
     @Test func bonusIsBoundedAndSaturating() {
         #expect(SearchEngine.frecencyBonus(0) == 0)
         #expect(SearchEngine.frecencyBonus(3) == 7.5)

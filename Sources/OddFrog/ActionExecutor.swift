@@ -88,6 +88,8 @@ final class ActionExecutor {
     let frecency: FrecencyStore
     let notifier: Notifier
     let terminals = TerminalLauncher()
+    let windows = WindowManager()
+    var cascadeStep: CGFloat = 32
     var onFailure: ((String) -> Void)?
     var onRecorded: (() -> Void)?
     private var running: [UUID: BackgroundRun] = [:]
@@ -135,6 +137,13 @@ final class ActionExecutor {
             }
         case .script(let script):
             runScript(script, argument: argument)
+        case .window(let window):
+            switch windows.perform(window.action, cascadeStep: cascadeStep) {
+            case .done: record(window.id)
+            case .failed(let message): fail("\(item.title): \(message)")
+            case .needsAccessibility:
+                fail("Window management needs Accessibility access. Allow Odd Frog under System Settings › Privacy & Security › Accessibility.")
+            }
         case .quick(let quick):
             switch quick {
             case .openURL(let url), .webSearch(_, let url):
@@ -198,7 +207,7 @@ final class ActionExecutor {
             }
         case .script(let script):
             runScript(script, argument: argument, forceFullOutput: true)
-        case .quick:
+        case .quick, .window:
             run(item, argument: argument)
         }
     }

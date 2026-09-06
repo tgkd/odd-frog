@@ -78,11 +78,24 @@ public struct ScriptItem: Sendable, Hashable {
     public var id: String { "script:\(url.path)" }
 }
 
+public struct WindowItem: Sendable, Hashable {
+    public let action: WindowAction
+    public var aliases: [String]
+
+    public init(action: WindowAction, aliases: [String] = []) {
+        self.action = action
+        self.aliases = aliases
+    }
+
+    public var id: String { action.id }
+}
+
 public enum LauncherItem: Sendable, Hashable {
     case app(AppItem)
     case command(CommandItem)
     case script(ScriptItem)
     case quick(QuickAction)
+    case window(WindowItem)
 
     public var id: String {
         switch self {
@@ -90,6 +103,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .command(let command): command.id
         case .script(let script): script.id
         case .quick(let quick): quick.id
+        case .window(let item): item.action.id
         }
     }
 
@@ -99,6 +113,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .command(let command): command.name
         case .script(let script): script.title
         case .quick(let quick): quick.title
+        case .window(let item): item.action.title
         }
     }
 
@@ -116,6 +131,8 @@ public enum LauncherItem: Sendable, Hashable {
             script.package.flatMap { $0.caseInsensitiveCompare(script.title) == .orderedSame ? nil : $0 }
         case .quick(let quick):
             quick.subtitle
+        case .window(let item):
+            item.action.subtitle
         }
     }
 
@@ -151,6 +168,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .command(let command): command.aliases
         case .script(let script): script.aliases
         case .quick: []
+        case .window(let item): item.aliases
         }
     }
 
@@ -163,7 +181,7 @@ public enum LauncherItem: Sendable, Hashable {
             return false
         case .app:
             return false
-        case .quick:
+        case .quick, .window:
             return false
         }
     }
@@ -181,6 +199,8 @@ public enum LauncherItem: Sendable, Hashable {
             "Script"
         case .quick(let quick):
             quick.kindLabel
+        case .window(let item):
+            item.action.kindLabel
         }
     }
 
@@ -196,6 +216,9 @@ public enum LauncherItem: Sendable, Hashable {
         case .script(var script):
             script.aliases = merged(script.aliases, extra)
             return .script(script)
+        case .window(var item):
+            item.aliases = merged(item.aliases, extra)
+            return .window(item)
         case .quick:
             return self
         }

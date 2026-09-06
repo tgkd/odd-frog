@@ -84,6 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func wirePanel() {
         controller.maxResults = config.general.maxResults
         controller.searchTemplate = settings.search.url
+        executor.cascadeStep = CGFloat(settings.window.cascadeStep)
+        settingsWindow.update(windowSettings: settings.window)
         controller.onSubmit = { [weak self] item, argument, secondary in
             guard let self else { return }
             hidePanel()
@@ -224,6 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         rebuildItems()
         controller.searchTemplate = settings.search.url
+        executor.cascadeStep = CGFloat(settings.window.cascadeStep)
+        settingsWindow.update(windowSettings: settings.window)
     }
 
     private func rewatchScripts() {
@@ -275,6 +279,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildItems() {
         allItems = apps.map(LauncherItem.app) + config.commands.map(LauncherItem.command) + scripts.map(LauncherItem.script)
+        if settings.window.enabled {
+            allItems += WindowAction.all.map { .window(WindowItem(action: $0)) }
+        }
         let items = settings.apply(to: allItems)
         if items != controller.items {
             controller.items = items

@@ -55,6 +55,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let hotkeyHelper = NSTextField(labelWithString: "")
     private let webSearchField = NSTextField()
     private let webSearchHelper = NSTextField(labelWithString: "")
+    private let windowSwitch = NSSwitch()
+    private let windowAccessButton = NSButton(title: "Open System Settings", target: nil, action: nil)
+    private let windowHelper = NSTextField(wrappingLabelWithString: "")
     private let loginSwitch = NSSwitch()
     private let loginStatus = NSTextField(labelWithString: "")
     private let loginButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
@@ -87,18 +90,19 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     init(icons: IconCache) {
         self.icons = icons
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Odd Frog Settings"
-        window.minSize = NSSize(width: 560, height: 420)
+        window.minSize = NSSize(width: 920, height: 420)
         window.isReleasedWhenClosed = false
         window.backgroundColor = .windowBackgroundColor
         window.center()
         super.init(window: window)
         buildContent()
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
         icons.observeLoads { [weak self] path in
             guard let self, window.isVisible else { return }
             let rows = visibleItems.indices.filter { row in
@@ -127,6 +131,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         filterField.stringValue = target?.title ?? ""
         applyFilter()
         webSearchField.stringValue = settings.search.url
+        refreshWindowManagement()
         resetWebSearchHelper()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
@@ -151,6 +156,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         recomputeFolderCounts()
         folderTable.reloadData()
         applyFilter()
+    }
+
+    func update(windowSettings: Settings.Window) {
+        settings.window = windowSettings
+        if window?.isVisible == true { refreshWindowManagement() }
     }
 
     func refreshLogin() {
@@ -264,6 +274,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         loginControl.spacing = 8
         loginControl.alignment = .centerY
 
+        windowSwitch.target = self
+        windowSwitch.action = #selector(toggleWindowManagement)
+        style(helper: windowHelper)
+        windowAccessButton.target = self
+        windowAccessButton.action = #selector(openAccessibilitySettings)
+        windowAccessButton.bezelStyle = .rounded
+        windowAccessButton.controlSize = .small
+        windowAccessButton.font = .systemFont(ofSize: 11)
+        windowAccessButton.isHidden = true
+        let windowControl = NSStackView(views: [windowSwitch, windowAccessButton])
+        windowControl.orientation = .horizontal
+        windowControl.spacing = 8
+        windowControl.alignment = .centerY
+
         webSearchField.bezelStyle = .roundedBezel
         webSearchField.usesSingleLineMode = true
         webSearchField.lineBreakMode = .byTruncatingTail
@@ -276,7 +300,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let shortcut = settingBlock(title: "Shortcut", control: hotkeyRecorder, helper: hotkeyHelper)
         let login = settingBlock(title: "Launch at login", control: loginControl, helper: loginStatus)
         let webSearch = settingBlock(title: "Web search", control: webSearchField, helper: webSearchHelper)
-        let blocks = NSStackView(views: [shortcut, login, webSearch])
+        let windowManagement = settingBlock(title: "Window management", control: windowControl, helper: windowHelper)
+        let blocks = NSStackView(views: [shortcut, login, webSearch, windowManagement])
         blocks.orientation = .horizontal
         blocks.alignment = .top
         blocks.distribution = .fillEqually
@@ -294,6 +319,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             blocks.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             shortcut.heightAnchor.constraint(equalTo: login.heightAnchor),
             webSearch.heightAnchor.constraint(equalTo: login.heightAnchor),
+            windowManagement.heightAnchor.constraint(equalTo: login.heightAnchor),
         ])
         return container
     }
@@ -719,6 +745,44 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         folderTable.deselectAll(nil)
         reloadFolders()
         commit()
+    }
+
+    private func refreshWindowManagement() {
+        windowSwitch.state = settings.window.enabled ? .on : .off
+        windowHelper.textColor = .secondaryLabelColor
+        windowAccessButton.isHidden = true
+        guard settings.window.enabled else {
+            windowHelper.stringValue = "Adds Left ⅔, Top ¾, Tidy Windows and friends to the launcher. Needs Accessibility access."
+            return
+        }
+        if WindowManager.hasAccess {
+            windowHelper.stringValue = "Accessibility access granted."
+        } else {
+            windowHelper.stringValue = "Allow Odd Frog under Privacy & Security › Accessibility."
+            windowHelper.textColor = .systemRed
+            windowAccessButton.isHidden = false
+        }
+    }
+
+    @objc private func applicationDidBecomeActive(_ notification: Notification) {
+        guard window?.isVisible == true else { return }
+        refreshWindowManagement()
+    }
+
+    @objc private func toggleWindowManagement() {
+        settings.window.enabled = windowSwitch.state == .on
+        commit()
+        if settings.window.enabled && !WindowManager.hasAccess {
+            WindowManager.requestAccess()
+        }
+        refreshWindowManagement()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            MainActor.assumeIsolated { self.refreshWindowManagement() }
+        }
+    }
+
+    @objc private func openAccessibilitySettings() {
+        WindowManager.openAccessibilitySettings()
     }
 
     @objc private func toggleLogin() {

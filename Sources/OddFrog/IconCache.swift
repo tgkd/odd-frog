@@ -35,6 +35,16 @@ final class IconCache {
         case .script(let script):
             if let emoji = script.icon { return emojiImage(emoji, size: size) }
             return tile(name: "script", color: .systemGray, glyph: ">_", glyphSize: 10, size: size)
+        case .window(let item):
+            let symbol = switch item.action {
+            case .place(.left, _): "rectangle.lefthalf.filled"
+            case .place(.right, _): "rectangle.righthalf.filled"
+            case .place(.top, _): "rectangle.tophalf.filled"
+            case .place(.bottom, _): "rectangle.bottomhalf.filled"
+            case .maximize: "rectangle.fill"
+            case .tidy: "rectangle.stack.fill"
+            }
+            return tile(name: "window-" + symbol, color: .systemPurple, symbol: symbol, symbolSize: 13, size: size)
         case .quick(let quick):
             switch quick {
             case .openURL:
