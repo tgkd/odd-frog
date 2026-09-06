@@ -128,6 +128,18 @@ final class IconCache {
     }
 
     func prewarm(_ apps: [AppItem]) {
-        for app in apps { _ = icon(forFile: app.url.path, size: 24) }
+        let paths = apps.map(\.url.path).filter { path in
+            cache.object(forKey: "app:\(path)" as NSString) == nil && !pending.contains(path)
+        }
+        guard !paths.isEmpty else { return }
+        for path in paths { pending.insert(path) }
+        Task.detached(priority: .utility) {
+            for path in paths {
+                let boxed = Self.loadIcon(path: path)
+                await MainActor.run { [weak self] in
+                    self?.store(boxed, path: path)
+                }
+            }
+        }
     }
 }

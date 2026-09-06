@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let configWatcher = ConfigWatcher(path: ConfigLoader.defaultPath)
     private let settingsWatcher = ConfigWatcher(path: SettingsLoader.defaultPath)
     private let scriptWatcher = DirectoryWatcher()
+    private let appWatcher = DirectoryWatcher()
 
     private var config = Config.empty
     private var settings = Settings.empty
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var scripts: [ScriptItem] = []
     private var allItems: [LauncherItem] = []
     private var lastScriptScan: Date?
+    private var lastWeightsRefresh: Date?
     private var toggleSignal: DispatchSourceSignal?
     private var snapshotSignal: DispatchSourceSignal?
 
@@ -46,7 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         rewatchScripts()
-        Task { await refreshApps() }
+        Task {
+            await refreshApps()
+            rearmAppWatcher()
+        }
         Task { await refreshScripts(force: true) }
         Task { await refreshWeights() }
     }
@@ -130,7 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.onOpenLog = { NSWorkspace.shared.open(Log.url) }
         status.onRescan = { [weak self] in
             Task {
-                await self?.refreshApps(force: true)
+                await self?.refreshApps()
+                self?.rearmAppWatcher()
                 await self?.refreshScripts(force: true)
             }
         }
@@ -232,8 +238,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func refreshApps(force: Bool = false) async {
-        apps = force ? await indexer.refresh() : await indexer.refreshIfStale(olderThan: 60)
+    private func rearmAppWatcher() {
+        appWatcher.watch(AppScanner.watchedDirectories(roots: AppScanner.defaultRoots)) {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { _ = Task { await delegate.refreshApps() } }
+            }
+        }
+    }
+
+    private func refreshApps() async {
+        let result = await indexer.refresh()
+        guard result != apps else { return }
+        apps = result
         icons.prewarm(apps)
         rebuildItems()
     }
@@ -249,11 +265,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshWeights() async {
         controller.weights = await frecency.decayedWeights()
+        lastWeightsRefresh = Date()
+    }
+
+    private func refreshWeightsIfStale() {
+        if let lastWeightsRefresh, Date().timeIntervalSince(lastWeightsRefresh) < 600 { return }
+        Task { await refreshWeights() }
     }
 
     private func rebuildItems() {
         allItems = apps.map(LauncherItem.app) + config.commands.map(LauncherItem.command) + scripts.map(LauncherItem.script)
-        controller.items = settings.apply(to: allItems)
+        let items = settings.apply(to: allItems)
+        if items != controller.items {
+            controller.items = items
+        }
         if settingsWindow.window?.isVisible == true {
             settingsWindow.update(items: allItems)
         }
@@ -310,9 +335,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.present(height: controller.preferredHeight)
         let focused = controller.focusField()
         Log.write("panel shown key=\(panel.isKeyWindow) focus=\(focused) results=\(controller.results.count)")
-        Task { await refreshApps() }
-        Task { await refreshScripts() }
-        Task { await refreshWeights() }
+        if !settings.scripts.watch {
+            Task { await refreshScripts() }
+        }
+        refreshWeightsIfStale()
     }
 
     private func hidePanel() {

@@ -99,9 +99,15 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         window.center()
         super.init(window: window)
         buildContent()
-        icons.observeLoads { [weak self] _ in
+        icons.observeLoads { [weak self] path in
             guard let self, window.isVisible else { return }
-            itemTable.reloadData()
+            let rows = visibleItems.indices.filter { row in
+                guard case .app(let app) = visibleItems[row] else { return false }
+                return app.url.path == path
+            }
+            let column = itemTable.column(withIdentifier: Column.name)
+            guard !rows.isEmpty, column >= 0 else { return }
+            itemTable.reloadData(forRowIndexes: IndexSet(rows), columnIndexes: IndexSet(integer: column))
         }
     }
 

@@ -24,12 +24,18 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     var items: [LauncherItem] = [] {
         didSet {
+            guard items != oldValue else { return }
             subtitles = LauncherItem.subtitles(for: items)
             refresh(keepSelection: true)
         }
     }
     private var subtitles: [String: String] = [:]
-    var weights: [String: Double] = [:] { didSet { refresh(keepSelection: true) } }
+    var weights: [String: Double] = [:] {
+        didSet {
+            guard weights != oldValue else { return }
+            refresh(keepSelection: true)
+        }
+    }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
     var searchTemplate: String? { didSet { refresh(keepSelection: true) } }
     private(set) var results: [RankedItem] = []
@@ -44,7 +50,15 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     init(icons: IconCache) {
         self.icons = icons
         super.init(nibName: nil, bundle: nil)
-        icons.observeLoads { [weak self] _ in self?.tableView.reloadData(forRowIndexes: IndexSet(0..<(self?.results.count ?? 0)), columnIndexes: IndexSet(integer: 0)) }
+        icons.observeLoads { [weak self] path in
+            guard let self else { return }
+            let rows = results.indices.filter { row in
+                guard case .app(let app) = results[row].item else { return false }
+                return app.url.path == path
+            }
+            guard !rows.isEmpty else { return }
+            tableView.reloadData(forRowIndexes: IndexSet(rows), columnIndexes: IndexSet(integer: 0))
+        }
     }
 
     required init?(coder: NSCoder) { nil }
