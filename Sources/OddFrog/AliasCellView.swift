@@ -125,16 +125,16 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
 
     private func applyStyle() {
         let emphasized = backgroundStyle == .emphasized
-        let ink = SelectionPalette.onFill(effectiveAppearance)
-        let muted = emphasized ? ink.withAlphaComponent(0.7) : NSColor.tertiaryLabelColor
+        let ink = SelectionPalette.ink(effectiveAppearance)
+        let muted = emphasized ? ink.tertiary : NSColor.tertiaryLabelColor
         builtinLabel.textColor = muted
         if showsPlaceholder {
             customLabel.textColor = muted
         } else {
-            customLabel.textColor = emphasized ? ink : .labelColor
+            customLabel.textColor = emphasized ? ink.primary : .labelColor
         }
         if showsPlaceholder {
-            pill.fill = emphasized ? ink.withAlphaComponent(0.15) : NSColor.labelColor.withAlphaComponent(0.05)
+            pill.fill = emphasized ? ink.primary.withAlphaComponent(0.15) : NSColor.labelColor.withAlphaComponent(0.05)
         } else {
             pill.fill = nil
         }

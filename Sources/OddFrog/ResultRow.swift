@@ -41,7 +41,7 @@ final class ResultRow: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
-        NSColor.controlAccentColor.setFill()
+        SelectionPalette.fill.setFill()
         rowPath.fill()
     }
 

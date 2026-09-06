@@ -901,7 +901,7 @@ private final class FolderRowView: NSTableRowView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard isSelected else { return }
-        NSColor.controlAccentColor.setFill()
+        SelectionPalette.fill.setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
     }
 
@@ -955,10 +955,10 @@ private final class FolderCellView: NSTableCellView {
     required init?(coder: NSCoder) { nil }
 
     private func applyStyle() {
-        let ink = SelectionPalette.onFill(effectiveAppearance)
-        path.textColor = isRowSelected ? ink : .labelColor
-        count.textColor = isRowSelected ? ink.withAlphaComponent(0.75) : .tertiaryLabelColor
-        symbol.contentTintColor = isRowSelected ? ink : .systemTeal
+        let ink = SelectionPalette.ink(effectiveAppearance)
+        path.textColor = isRowSelected ? ink.primary : .labelColor
+        count.textColor = isRowSelected ? ink.tertiary : .tertiaryLabelColor
+        symbol.contentTintColor = isRowSelected ? ink.primary : .systemTeal
     }
 }
 

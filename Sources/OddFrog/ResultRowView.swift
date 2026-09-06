@@ -104,12 +104,12 @@ final class ResultRowView: NSTableCellView {
             chipView.tint = .tertiaryLabelColor
             return
         }
-        let ink = SelectionPalette.onFill(effectiveAppearance)
-        titleLabel.textColor = ink
-        subtitleLabel.textColor = ink.withAlphaComponent(0.85)
-        valueLabel.textColor = ink
-        kindLabel.textColor = ink.withAlphaComponent(0.72)
-        chipView.tint = ink.withAlphaComponent(0.8)
+        let ink = SelectionPalette.ink(effectiveAppearance)
+        titleLabel.textColor = ink.primary
+        subtitleLabel.textColor = ink.secondary
+        valueLabel.textColor = ink.primary
+        kindLabel.textColor = ink.tertiary
+        chipView.tint = ink.secondary
     }
 
     override func viewDidChangeEffectiveAppearance() {
