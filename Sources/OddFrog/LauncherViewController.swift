@@ -25,12 +25,12 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var items: [LauncherItem] = [] {
         didSet {
             subtitles = LauncherItem.subtitles(for: items)
-            refresh()
+            refresh(keepSelection: true)
         }
     }
     private var subtitles: [String: String] = [:]
-    var weights: [String: Double] = [:] { didSet { refresh() } }
-    var maxResults = 8 { didSet { refresh() } }
+    var weights: [String: Double] = [:] { didSet { refresh(keepSelection: true) } }
+    var maxResults = 8 { didSet { refresh(keepSelection: true) } }
     private(set) var results: [RankedItem] = []
 
     let icons: IconCache
@@ -171,9 +171,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         refresh()
     }
 
-    func refresh() {
+    func refresh(keepSelection: Bool = false) {
         guard isViewLoaded else { return }
-        let selectedID = selectedItem?.id
+        let selectedID = keepSelection ? selectedItem?.id : nil
         let query = searchField.stringValue
         results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults)
         tableView.reloadData()
@@ -206,11 +206,26 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         tableView.scrollRowToVisible(clamped)
     }
 
+    private func completion(for item: LauncherItem) -> String {
+        let base = item.aliases.first ?? item.title
+        return item.acceptsArgument ? base + " " : base
+    }
+
+    private func fill(with item: LauncherItem) {
+        searchField.stringValue = completion(for: item)
+        let length = (searchField.stringValue as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
+        refresh(keepSelection: true)
+    }
+
     private func submit() {
         let row = tableView.selectedRow
         guard row >= 0, row < results.count else { return }
         let result = results[row]
-        if case .script(let script) = result.item, let spec = script.argument, !spec.optional, result.argument == nil { return }
+        if case .script(let script) = result.item, let spec = script.argument, !spec.optional, result.argument == nil {
+            fill(with: result.item)
+            return
+        }
         onSubmit?(result.item, result.argument)
     }
 
@@ -239,6 +254,10 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             select(row: 0)
         case #selector(NSResponder.moveToEndOfDocument(_:)):
             select(row: results.count - 1)
+        case #selector(NSResponder.insertTab(_:)):
+            if let item = selectedItem { fill(with: item) }
+        case #selector(NSResponder.insertBacktab(_:)):
+            break
         default:
             return false
         }
