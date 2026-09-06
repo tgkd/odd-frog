@@ -31,6 +31,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private var subtitles: [String: String] = [:]
     var weights: [String: Double] = [:] { didSet { refresh(keepSelection: true) } }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
+    var searchTemplate: String? { didSet { refresh(keepSelection: true) } }
     private(set) var results: [RankedItem] = []
 
     let icons: IconCache
@@ -175,7 +176,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard isViewLoaded else { return }
         let selectedID = keepSelection ? selectedItem?.id : nil
         let query = searchField.stringValue
-        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults)
+        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate)
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
@@ -297,6 +298,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private static let shortPlaceholderLimit = 24
 
     private func detail(for result: RankedItem) -> DetailLine? {
+        if case .quick(let quick) = result.item {
+            return quick.subtitle.map { DetailLine(detail: $0) }
+        }
         if case .script(let script) = result.item, let spec = script.argument {
             let generic = spec.placeholder.lowercased() == "argument"
             if let value = result.argument {

@@ -32,11 +32,15 @@ public enum SearchEngine {
         query: String,
         items: [LauncherItem],
         weights: [String: Double],
-        maxResults: Int
+        maxResults: Int,
+        searchTemplate: String? = nil
     ) -> [RankedItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             return recent(items: items, weights: weights, maxResults: maxResults)
+        }
+        if trimmed.hasPrefix(">") {
+            return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
         }
         var ranked: [RankedItem] = []
         ranked.reserveCapacity(items.count)
@@ -49,7 +53,16 @@ public enum SearchEngine {
             }
         }
         ranked.sort(by: order)
+        guard !ranked.isEmpty else {
+            return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
+        }
         return Array(ranked.prefix(maxResults))
+    }
+
+    static func fallbackResults(for query: String, searchTemplate: String?, maxResults: Int) -> [RankedItem] {
+        let actions = QuickAction.fallbacks(for: query, searchTemplate: searchTemplate)
+            .map { RankedItem(item: .quick($0), lexical: 0, weight: 0, exactAlias: false) }
+        return Array(actions.prefix(maxResults))
     }
 
     static func match(query: String, item: LauncherItem) -> (lexical: Double, exact: Bool)? {
@@ -94,13 +107,6 @@ public enum SearchEngine {
                 return RankedItem(item: item, lexical: 0, weight: w, exactAlias: false)
             }
             .sorted(by: order)
-        if used.count >= maxResults { return Array(used.prefix(maxResults)) }
-        let usedIDs = Set(used.map { $0.item.id })
-        let fill = items
-            .filter { !usedIDs.contains($0.id) }
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            .prefix(maxResults - used.count)
-            .map { RankedItem(item: $0, lexical: 0, weight: 0, exactAlias: false) }
-        return used + fill
+        return Array(used.prefix(maxResults))
     }
 }

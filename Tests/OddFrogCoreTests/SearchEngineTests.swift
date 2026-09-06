@@ -97,9 +97,31 @@ struct SearchEngineTests {
         #expect(plainSearch.allSatisfy { $0.item.id != plain.id })
     }
 
-    @Test func emptyQueryShowsRecentThenAlphabetical() {
+    @Test func emptyQueryShowsOnlyUsedItems() {
         let items = [app("Zed"), app("Alpha"), app("Mid")]
         let results = SearchEngine.search(query: "  ", items: items, weights: ["/Applications/Mid.app": 2], maxResults: 2)
-        #expect(results.map { $0.item.title } == ["Mid", "Alpha"])
+        #expect(results.map { $0.item.title } == ["Mid"])
+    }
+
+    @Test func noMatchYieldsFallbacks() {
+        let items = [app("Zed")]
+        let template = "https://duckduckgo.com/?q={query}"
+        let results = SearchEngine.search(query: "zzzz", items: items, weights: [:], maxResults: 8, searchTemplate: template)
+        #expect(results.count == 1)
+        guard case .quick(let quick) = results[0].item, case .webSearch = quick else {
+            Issue.record("expected a webSearch fallback")
+            return
+        }
+    }
+
+    @Test func terminalPrefixBypassesItems() {
+        let items = [app("uptime")]
+        let results = SearchEngine.search(query: ">uptime", items: items, weights: [:], maxResults: 8)
+        #expect(results.count == 1)
+        guard case .quick(let quick) = results[0].item else {
+            Issue.record("expected a quick action")
+            return
+        }
+        #expect(quick == .terminal("uptime"))
     }
 }

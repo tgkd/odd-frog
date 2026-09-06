@@ -131,6 +131,17 @@ final class ActionExecutor {
             }
         case .script(let script):
             runScript(script, argument: argument)
+        case .quick(let quick):
+            switch quick {
+            case .openURL(let url), .webSearch(_, let url):
+                if NSWorkspace.shared.open(url) {
+                    record(item.id)
+                } else {
+                    fail("\(item.title): could not open \(url.absoluteString)")
+                }
+            case .terminal(let text):
+                runInTerminal(id: item.id, name: "Run in Terminal", command: text, cwd: nil)
+            }
         }
     }
 
@@ -222,6 +233,7 @@ final class ActionExecutor {
     }
 
     private func record(_ id: String) {
+        guard !id.hasPrefix("quick:") else { return }
         Task { [frecency, onRecorded] in
             await frecency.record(id)
             await MainActor.run { onRecorded?() }

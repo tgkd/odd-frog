@@ -16,9 +16,16 @@ Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a
 ## Usage
 
 Press `⌥Space` (default). Type. `↑`/`↓` to move, `↩` to run, `⎋` to hide. Clicking anywhere
-else hides the panel. With an empty query the list shows your most used items. `⇥` completes
-the selected item into the search field. Return on a command that needs an argument fills the
-command in so you can type the value.
+else hides the panel. With an empty query the list shows only items you have used before; on a
+fresh install it shows just the search field. `⇥` completes the selected item into the search
+field. Return on a command that needs an argument fills the command in so you can type the
+value.
+
+When nothing matches, the panel offers a fallback instead of an empty list: "Open <url>" when
+the text looks like a URL, and "Search for “<text>”" that opens the web search configured in
+Settings (DuckDuckGo by default). Typing `>` followed by text shows a single "Run in Terminal"
+row that runs the rest of the text; it bypasses item search entirely, even if an item would
+otherwise match. Fallback rows are never recorded, so they never appear under an empty query.
 
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
 
@@ -84,6 +91,8 @@ Menu bar → Settings… (or edit `~/.config/odd-frog/settings.toml`, hot-reload
   `@raycast.packageName`, `@raycast.argument1`. Scripts without a header use their filename.
   Compiled binaries and non-executable sources are skipped. "Watch folders" rescans on changes.
 - **Items**: every app, command and script with an enabled checkbox and extra aliases.
+- **Web search**: the URL used for the "Search for …" fallback when nothing matches. Must
+  contain `{query}`. Defaults to `https://duckduckgo.com/?q={query}`.
 
 ```toml
 [scripts]
@@ -97,6 +106,9 @@ enabled = false
 [[items]]
 id = "script:/Users/me/Projects/raycast-scripts/kill-port.sh"
 aliases = ["kp"]
+
+[search]
+url = "https://duckduckgo.com/?q={query}"
 ```
 
 Item ids are the app bundle path, `command:<name>` for config commands, and `script:<path>`.
