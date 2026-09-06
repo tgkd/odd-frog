@@ -1,0 +1,21 @@
+[general]
+hotkey = "alt+space"
+terminal = "agterm"
+shell = "/bin/zsh"
+max_results = 8
+
+[[commands]]
+name = "Open Projects"
+aliases = ["projects", "repos"]
+path = "~/Projects"
+
+[[commands]]
+name = "GitHub"
+aliases = ["gh"]
+url = "https://github.com"
+
+[[commands]]
+name = "Uptime"
+aliases = ["up"]
+command = "uptime"
+terminal = true
