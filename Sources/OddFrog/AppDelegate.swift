@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         TerminalLauncher.cleanupStaleFiles()
+        notifier.requestAuthorizationIfNeeded()
         loadInitialConfig()
         loadInitialSettings()
         wirePanel()
@@ -50,13 +51,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await refreshWeights() }
     }
 
+    private func report(_ message: String) {
+        status.lastFailure = message
+        notifier.failure(message)
+    }
+
     private func loadInitialConfig() {
         let template = Bundle.main.resourceURL?.appendingPathComponent("config.example.toml")
         do {
             try ConfigLoader.ensureExists(at: ConfigLoader.defaultPath, template: template)
             config = try ConfigLoader.load(from: ConfigLoader.defaultPath).config
         } catch {
-            notifier.failure("Config error: \(error). Using defaults.")
+            report("Config error: \(error). Using defaults.")
             config = .empty
         }
     }
@@ -66,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             settings = try SettingsLoader.load(from: SettingsLoader.defaultPath).settings
         } catch {
-            notifier.failure("Settings error: \(error). Ignoring settings.toml.")
+            report("Settings error: \(error). Ignoring settings.toml.")
         }
     }
 
@@ -84,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panel.onResignKey = { [weak self] in self?.hidePanel() }
         executor.onFailure = { [weak self] message in
-            self?.status.lastFailure = message.split(separator: "\n").first.map(String.init) ?? message
+            self?.status.lastFailure = message
         }
         executor.onRecorded = { [weak self] in Task { await self?.refreshWeights() } }
         settingsWindow.onChange = { [weak self] updated in self?.applySettings(updated, persist: true) }
@@ -109,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = try? ConfigLoader.ensureExists(at: ConfigLoader.defaultPath, template: template)
             NSWorkspace.shared.open(ConfigLoader.defaultPath)
         }
+        status.onOpenLog = { NSWorkspace.shared.open(Log.url) }
         status.onRescan = { [weak self] in
             Task {
                 await self?.refreshApps(force: true)
@@ -116,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         status.onToggleLogin = { [weak self] in
-            do { try LoginItem.toggle() } catch { self?.notifier.failure("Launch at Login: \(error.localizedDescription)") }
+            do { try LoginItem.toggle() } catch { self?.report("Launch at Login: \(error.localizedDescription)") }
         }
     }
 
@@ -126,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try hotkeys.apply(config.general.hotkey)
             Log.write("hotkey \(config.general.hotkey.description) registered")
         } catch {
-            notifier.failure("Hotkey: \(error)")
+            report("Hotkey: \(error)")
             if config.general.hotkey != .default {
                 try? hotkeys.apply(.default)
                 status.hotkeyDescription = Hotkey.default.description
@@ -153,14 +160,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             candidate = try ConfigParser.parse(text)
         } catch {
-            notifier.failure("Config not applied (\(source)): \(error)")
+            report("Config not applied (\(source)): \(error)")
             return
         }
         if candidate.general.hotkey != hotkeys.current {
             do {
                 try hotkeys.apply(candidate.general.hotkey)
             } catch {
-                notifier.failure("Config not applied (\(source)): hotkey \(error)")
+                report("Config not applied (\(source)): hotkey \(error)")
                 return
             }
         }
@@ -178,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applySettings(parsed, persist: false)
             Log.write("settings applied (file changed): \(parsed.scripts.folders.count) folders, \(parsed.items.count) overrides")
         } catch {
-            notifier.failure("Settings not applied: \(error)")
+            report("Settings not applied: \(error)")
         }
     }
 
@@ -190,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let data = try SettingsLoader.save(settings, to: SettingsLoader.defaultPath)
                 settingsWatcher.markApplied(data)
             } catch {
-                notifier.failure("Could not save settings: \(error.localizedDescription)")
+                report("Could not save settings: \(error.localizedDescription)")
             }
         }
         if foldersChanged {
@@ -277,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configWatcher.markApplied(data)
             Log.write("hotkey \(hotkey.description) set from settings and written to config")
         } catch {
-            notifier.failure("Hotkey applied but config.toml could not be updated: \(error.localizedDescription)")
+            report("Hotkey applied but config.toml could not be updated: \(error.localizedDescription)")
         }
     }
 
