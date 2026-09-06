@@ -19,9 +19,13 @@ public enum AppScanner {
             guard let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
-                options: [.skipsPackageDescendants, .skipsHiddenFiles]
+                options: [.skipsPackageDescendants]
             ) else { continue }
             while let url = enumerator.nextObject() as? URL {
+                if url.lastPathComponent.hasPrefix(".") {
+                    enumerator.skipDescendants()
+                    continue
+                }
                 if enumerator.level > maxDepth {
                     enumerator.skipDescendants()
                     continue
@@ -32,7 +36,7 @@ public enum AppScanner {
                 var isDirectory: ObjCBool = false
                 guard fm.fileExists(atPath: canonical, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
                 guard seen.insert(canonical).inserted else { continue }
-                items.append(makeItem(URL(fileURLWithPath: canonical)))
+                items.append(makeItem(url.standardizedFileURL))
             }
         }
         return items.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
