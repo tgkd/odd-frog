@@ -57,11 +57,18 @@ terminal = true                  # runs in the configured terminal
 name = "GitHub"
 aliases = ["gh"]
 url = "https://github.com"
+
+[[commands]]
+name = "GitHub Search"
+aliases = ["ghs"]
+url = "https://github.com/search?q={query}"  # {query} becomes what you type after the alias
 ```
 
 Each command has exactly one of `command`, `path`, `url`. Aliases must be unique; typing an
-alias exactly always puts that command first. A config that fails to parse is reported and the
-previous config stays active, including the hotkey.
+alias exactly always puts that command first. A `url` containing `{query}` takes the rest of the
+typed text as an argument, so `ghs odd-frog` opens `https://github.com/search?q=odd-frog`. A
+config that fails to parse is reported and the previous config stays active, including the
+hotkey.
 
 ## Settings
 
@@ -104,6 +111,7 @@ Changes are saved immediately to `config.toml` and appear in the launcher withou
 `https://` and `http://` links open in your default browser. App URLs such as `obsidian://open`
 open in the app registered for that scheme. Names and command aliases must be unique.
 Extra aliases added in the Items table remain available when a link is edited or renamed.
+Put `{query}` in a URL to insert what you type after the alias, for example `gh odd-frog`.
 
 ### Scripts
 

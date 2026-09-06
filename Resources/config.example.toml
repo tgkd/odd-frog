@@ -15,6 +15,11 @@ aliases = ["gh"]
 url = "https://github.com"
 
 [[commands]]
+name = "GitHub Search"
+aliases = ["ghs"]
+url = "https://github.com/search?q={query}"
+
+[[commands]]
 name = "Uptime"
 aliases = ["up"]
 command = "uptime"

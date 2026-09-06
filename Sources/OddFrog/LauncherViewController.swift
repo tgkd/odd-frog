@@ -306,6 +306,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             let short = !generic && spec.placeholder.count <= Self.shortPlaceholderLimit
             return DetailLine(detail: short ? spec.placeholder : "Argument", value: nil, tooltip: short ? nil : spec.placeholder, chip: spec.optional ? .optional : .required)
         }
+        if case .command = result.item, let argument = result.argument {
+            return DetailLine(detail: "Query:", value: argument, tooltip: nil)
+        }
         guard let plain = subtitles[result.item.id] else { return nil }
         return DetailLine(detail: plain, value: nil, tooltip: nil)
     }

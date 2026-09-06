@@ -102,7 +102,7 @@ public enum LinkEditor {
             let url: String
         }
         guard case .url(let url) = command.action else { return "" }
-        let value = Entry(name: command.name, aliases: command.aliases, url: url.absoluteString)
+        let value = Entry(name: command.name, aliases: command.aliases, url: URLTemplate.display(url))
         return "[[commands]]\n" + (try TOMLEncoder().encode(value)) + "\n\n"
     }
 
