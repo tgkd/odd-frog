@@ -134,10 +134,15 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
             customLabel.textColor = emphasized ? ink.primary : .labelColor
         }
         if showsPlaceholder {
-            pill.fill = emphasized ? ink.primary.withAlphaComponent(0.15) : NSColor.labelColor.withAlphaComponent(0.05)
+            pill.fill = emphasized ? nil : NSColor.labelColor.withAlphaComponent(0.05)
         } else {
             pill.fill = nil
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyStyle()
     }
 
     private func buildLayout() {

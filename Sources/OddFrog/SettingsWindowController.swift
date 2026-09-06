@@ -960,6 +960,11 @@ private final class FolderCellView: NSTableCellView {
         count.textColor = isRowSelected ? ink.tertiary : .tertiaryLabelColor
         symbol.contentTintColor = isRowSelected ? ink.primary : .systemTeal
     }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyStyle()
+    }
 }
 
 @MainActor
