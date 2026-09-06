@@ -78,12 +78,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wirePanel() {
         controller.maxResults = config.general.maxResults
-        controller.onSubmit = { [weak self] item, argument in
+        controller.onSubmit = { [weak self] item, argument, secondary in
             guard let self else { return }
             hidePanel()
-            executor.run(item, argument: argument)
+            executor.run(item, argument: argument, secondary: secondary)
         }
         controller.onDismiss = { [weak self] in self?.hidePanel() }
+        panel.onKeyEquivalent = { [weak self] event in self?.controller.handleKeyEquivalent(event) ?? false }
         controller.onHeightChange = { [weak self] height in
             guard let self, panel.isVisible else { return }
             panel.resize(height: height)

@@ -98,7 +98,11 @@ final class ActionExecutor {
         self.notifier = notifier
     }
 
-    func run(_ item: LauncherItem, argument: String? = nil) {
+    func run(_ item: LauncherItem, argument: String? = nil, secondary: Bool = false) {
+        if secondary {
+            runSecondary(item, argument: argument)
+            return
+        }
         switch item {
         case .app(let app):
             openApplication(app)
@@ -134,20 +138,54 @@ final class ActionExecutor {
         }
     }
 
-    private func runScript(_ script: ScriptItem, argument: String?) {
+    private func runScript(_ script: ScriptItem, argument: String?, forceFullOutput: Bool = false) {
         if let spec = script.argument, !spec.optional, argument == nil {
             notifier.post(title: script.title, body: "Needs an argument (\(spec.placeholder)): type the command, a space, then the value.")
             return
         }
-        let arguments = argument.map { [$0] } ?? []
         let cwd = script.url.deletingLastPathComponent()
-        switch script.mode {
-        case .fullOutput:
-            var command = ShellCommand.quote(script.url.path)
-            if let argument { command += " " + ShellCommand.quote(argument) }
-            runInTerminal(id: script.id, name: script.title, command: command, cwd: cwd)
-        case .silent, .inline:
+        guard script.mode == .fullOutput || forceFullOutput else {
+            let arguments = argument.map { [$0] } ?? []
             spawn(id: script.id, name: script.title, executable: script.url, arguments: arguments, cwd: cwd, reportOutput: true)
+            return
+        }
+        var command = ShellCommand.quote(script.url.path)
+        if let argument { command += " " + ShellCommand.quote(argument) }
+        runInTerminal(id: script.id, name: script.title, command: command, cwd: cwd)
+    }
+
+    private func runSecondary(_ item: LauncherItem, argument: String?) {
+        switch item {
+        case .app(let app):
+            NSWorkspace.shared.activateFileViewerSelecting([app.url])
+            record(item.id)
+        case .command(let command):
+            switch command.action {
+            case .path(let url):
+                var isDirectory: ObjCBool = false
+                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                if isDirectory.boolValue {
+                    runInTerminal(
+                        id: command.id, name: command.name,
+                        command: "exec \(ShellCommand.quote(config.general.shell)) -l", cwd: url
+                    )
+                } else {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    record(item.id)
+                }
+            case .url(let url):
+                let text = (argument != nil && URLTemplate.accepts(url))
+                    ? URLTemplate.resolve(url, query: argument!).absoluteString
+                    : URLTemplate.display(url)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                record(item.id)
+                Log.write("copied URL for \(command.name)")
+            case .shell(let text):
+                runInTerminal(id: command.id, name: command.name, command: text, cwd: command.cwd)
+            }
+        case .script(let script):
+            runScript(script, argument: argument, forceFullOutput: true)
         }
     }
 

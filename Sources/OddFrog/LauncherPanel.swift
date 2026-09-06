@@ -8,6 +8,7 @@ final class LauncherPanel: NSPanel {
     static let appearRise: CGFloat = 4
 
     var onResignKey: (() -> Void)?
+    var onKeyEquivalent: ((NSEvent) -> Bool)?
 
     init(contentViewController controller: NSViewController) {
         super.init(
@@ -35,6 +36,14 @@ final class LauncherPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           let onKeyEquivalent, onKeyEquivalent(event) {
+            return
+        }
+        super.sendEvent(event)
+    }
 
     func present(height: CGFloat) {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main ?? NSScreen.screens[0]

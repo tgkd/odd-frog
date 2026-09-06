@@ -18,7 +18,11 @@ Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a
 Press `⌥Space` (default). Type. `↑`/`↓` to move, `↩` to run, `⎋` to hide. Clicking anywhere
 else hides the panel. With an empty query the list shows your most used items. `⇥` completes
 the selected item into the search field. Return on a command that needs an argument fills the
-command in so you can type the value.
+command in so you can type the value. `⌘1`–`⌘9` runs the first through ninth visible row.
+
+`⌘↩` runs the selected item's secondary action: apps reveal in Finder, folder commands open
+in the configured terminal, URL commands copy the URL, background shell commands run in the
+terminal, and scripts run in the terminal with full output.
 
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
 

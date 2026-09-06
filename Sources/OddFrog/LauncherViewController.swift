@@ -34,7 +34,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private(set) var results: [RankedItem] = []
 
     let icons: IconCache
-    var onSubmit: ((LauncherItem, String?) -> Void)?
+    var onSubmit: ((LauncherItem, String?, Bool) -> Void)?
     var onDismiss: (() -> Void)?
     var onHeightChange: ((CGFloat) -> Void)?
 
@@ -218,7 +218,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         refresh(keepSelection: true)
     }
 
-    private func submit() {
+    private func submit(secondary: Bool = false) {
         let row = tableView.selectedRow
         guard row >= 0, row < results.count else { return }
         let result = results[row]
@@ -226,7 +226,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             fill(with: result.item)
             return
         }
-        onSubmit?(result.item, result.argument)
+        onSubmit?(result.item, result.argument, secondary)
     }
 
     @objc private func rowClicked(_ sender: Any?) {
@@ -234,6 +234,22 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard row >= 0 else { return }
         select(row: row)
         submit()
+    }
+
+    func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        if event.keyCode == 36 || event.keyCode == 76 {
+            submit(secondary: true)
+            return true
+        }
+        if let characters = event.charactersIgnoringModifiers, characters.count == 1,
+           let digit = characters.first, let n = digit.wholeNumberValue, (1...9).contains(n) {
+            if results.count >= n {
+                select(row: n - 1)
+                submit()
+            }
+            return true
+        }
+        return false
     }
 
     func controlTextDidChange(_ obj: Notification) {
