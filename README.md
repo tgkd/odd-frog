@@ -20,8 +20,8 @@ else hides the panel. With an empty query the list shows your most used items.
 
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
 
-The menu bar item offers Show, Reload Config, Open Config, Rescan Apps, the last failed
-command, and Launch at Login.
+The menu bar item offers Show, Settings…, Reload Config, Open Config, Open Log, Rescan Apps,
+the last failure (click to copy), and Launch at Login.
 
 ## Config
 

@@ -15,6 +15,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     var onRescan: (() -> Void)?
     var onToggleLogin: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onOpenLog: (() -> Void)?
 
     override init() {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -31,8 +32,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(action("Show  \(hotkeyDescription)", #selector(show)))
         menu.addItem(.separator())
         if let lastFailure {
-            let failure = NSMenuItem(title: "Last failure: \(lastFailure)", action: nil, keyEquivalent: "")
-            failure.isEnabled = false
+            let firstLine = lastFailure.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? lastFailure
+            let truncated = firstLine.count > 60 ? String(firstLine.prefix(60)) + "…" : firstLine
+            let failure = action("Last failure: \(truncated)", #selector(copyFailure))
+            failure.toolTip = lastFailure
             menu.addItem(failure)
             menu.addItem(.separator())
         }
@@ -41,6 +44,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(settings)
         menu.addItem(action("Reload Config", #selector(reload)))
         menu.addItem(action("Open Config", #selector(openConfig)))
+        menu.addItem(action("Open Log", #selector(openLog)))
         menu.addItem(action("Rescan Apps", #selector(rescan)))
         menu.addItem(.separator())
         let login = action(loginTitle, #selector(toggleLogin))
@@ -69,6 +73,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func openSettings() { onSettings?() }
     @objc private func reload() { onReloadConfig?() }
     @objc private func openConfig() { onOpenConfig?() }
+    @objc private func openLog() { onOpenLog?() }
     @objc private func rescan() { onRescan?() }
     @objc private func toggleLogin() { onToggleLogin?() }
+
+    @objc private func copyFailure() {
+        guard let lastFailure else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lastFailure, forType: .string)
+    }
 }

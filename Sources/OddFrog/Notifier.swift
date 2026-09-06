@@ -6,6 +6,14 @@ final class Notifier {
     private let enabled = Bundle.main.bundleIdentifier != nil
     private var requested = false
 
+    func requestAuthorizationIfNeeded() {
+        guard enabled, !requested else { return }
+        requested = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, error in
+            if let error { Log.write("notification authorization failed: \(error)") }
+        }
+    }
+
     func post(title: String, body: String) {
         Log.write("notify: \(title) — \(body)")
         guard enabled else { return }
