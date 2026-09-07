@@ -21,7 +21,7 @@ final class GroupBox: NSView {
     private func configureLayer() {
         wantsLayer = true
         guard let layer else { return }
-        layer.cornerRadius = 10
+        layer.cornerRadius = 12
         layer.cornerCurve = .continuous
         layer.borderWidth = 0.5
         layer.masksToBounds = true

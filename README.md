@@ -126,7 +126,9 @@ hotkey.
 
 ## Settings
 
-Menu bar → Settings… (or edit `~/.config/odd-frog/settings.toml`, hot-reloaded):
+Menu bar → Settings…. The window has a sidebar with three panes: **General** (keyboard shortcut,
+launch at login, web search, window management, currency), **Script Folders**, and **Items**.
+Everything can also be edited in `~/.config/odd-frog/settings.toml`, which is hot-reloaded:
 
 - **Hotkey**: click the recorder, press a combination. It is applied immediately and written
   into `config.toml`.

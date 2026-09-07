@@ -12,36 +12,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let folder = NSUserInterfaceItemIdentifier("folder")
     }
 
-    private struct Metrics {
-        let padding: CGFloat
-        let gap: CGFloat
-        let folderRow: CGFloat
-        let folderBar: CGFloat
-        let searchWidth: CGFloat
-        let itemsMinHeight: CGFloat
-        let showsItemsHelper: Bool
-
-        static let regular = Metrics(
-            padding: 20,
-            gap: 18,
-            folderRow: 28,
-            folderBar: 32,
-            searchWidth: 200,
-            itemsMinHeight: 150,
-            showsItemsHelper: true
-        )
-
-        static let compact = Metrics(
-            padding: 16,
-            gap: 14,
-            folderRow: 26,
-            folderBar: 30,
-            searchWidth: 160,
-            itemsMinHeight: 130,
-            showsItemsHelper: false
-        )
-    }
-
     private let linkManager = LinkManagerController()
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
 
@@ -69,16 +39,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let folderEmptyLabel = NSTextField(labelWithString: "No script folders yet. Click + to add one.")
     private let itemsHelper = NSTextField(labelWithString: "Grey aliases are built in. Click a cell to add your own; Return saves.")
     private let itemsEmptyLabel = NSTextField(labelWithString: "")
+    private let sidebar = SettingsSidebar()
+    private let paneTitle = NSTextField(labelWithString: "")
+    private let accessLine = NSView()
 
-    private var gapConstraints: [NSLayoutConstraint] = []
-    private var paddingLeading: NSLayoutConstraint?
-    private var paddingTrailing: NSLayoutConstraint?
-    private var paddingBottom: NSLayoutConstraint?
+    private var panes: [SettingsPane: NSView] = [:]
+    private var currentPane = SettingsPane.general
     private var folderListHeight: NSLayoutConstraint?
-    private var folderBarHeight: NSLayoutConstraint?
-    private var searchFieldWidth: NSLayoutConstraint?
-    private var itemsBoxHeight: NSLayoutConstraint?
-    private var isCompact = false
     private var selectedItemRow = -1
     private weak var editingAliasCell: AliasCellView?
 
@@ -92,15 +59,22 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     init(icons: IconCache) {
         self.icons = icons
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 640),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Odd Frog Settings"
-        window.minSize = NSSize(width: 920, height: 420)
+        window.minSize = NSSize(width: 760, height: 560)
         window.isReleasedWhenClosed = false
         window.backgroundColor = .windowBackgroundColor
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.titlebarSeparatorStyle = .none
+        let toolbar = NSToolbar(identifier: "settings")
+        toolbar.showsBaselineSeparator = false
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
         window.center()
         super.init(window: window)
         buildContent()
@@ -138,6 +112,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         if let target, let row = visibleItems.firstIndex(where: { $0.id == target.id }) {
+            showPane(.items)
             itemTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             itemTable.scrollRowToVisible(row)
             window?.initialFirstResponder = itemTable
@@ -146,11 +121,22 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             layoutColumns()
             beginAliasEdit(row: row)
         } else {
-            window?.initialFirstResponder = filterField
+            window?.initialFirstResponder = currentPane == .items ? filterField : nil
             window?.makeKeyAndOrderFront(nil)
-            window?.makeFirstResponder(filterField)
+            window?.makeFirstResponder(currentPane == .items ? filterField : nil)
             layoutColumns()
         }
+    }
+
+    private func showPane(_ pane: SettingsPane) {
+        if currentPane == .items, pane != .items { endAliasEdit(commit: true) }
+        currentPane = pane
+        sidebar.selected = pane
+        paneTitle.stringValue = pane.title
+        for (key, view) in panes { view.isHidden = key != pane }
+        guard pane == .items else { return }
+        layoutColumns()
+        window?.makeFirstResponder(filterField)
     }
 
     func update(items: [LauncherItem]) {
@@ -183,7 +169,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             loginStatus.stringValue = "Move Odd Frog to your Applications folder to enable this."
         default:
             loginSwitch.state = .off
-            loginStatus.stringValue = "Open Odd Frog automatically when you log in."
+            loginStatus.stringValue = ""
         }
     }
 
@@ -203,50 +189,63 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private func buildContent() {
         guard let content = window?.contentView else { return }
         window?.delegate = self
+        sidebar.onSelect = { [weak self] pane in self?.showPane(pane) }
 
-        let general = makeGeneralGroup()
-        let folders = makeFoldersGroup()
-        let items = makeItemsGroup()
-        general.setContentHuggingPriority(.defaultHigh, for: .vertical)
-        folders.setContentHuggingPriority(.defaultHigh, for: .vertical)
-        items.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .vertical)
-        items.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
-
-        for group in [general, folders, items] {
-            group.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(group)
-        }
-
-        let leading = general.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Metrics.regular.padding)
-        let trailing = general.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Metrics.regular.padding)
-        let bottom = items.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -Metrics.regular.padding)
-        let foldersGap = folders.topAnchor.constraint(equalTo: general.bottomAnchor, constant: Metrics.regular.gap)
-        let itemsGap = items.topAnchor.constraint(equalTo: folders.bottomAnchor, constant: Metrics.regular.gap)
-        paddingLeading = leading
-        paddingTrailing = trailing
-        paddingBottom = bottom
-        gapConstraints = [foldersGap, itemsGap]
-
-        NSLayoutConstraint.activate([
-            leading,
-            trailing,
-            bottom,
-            foldersGap,
-            itemsGap,
-            general.topAnchor.constraint(equalTo: content.topAnchor, constant: 4),
-            folders.leadingAnchor.constraint(equalTo: general.leadingAnchor),
-            folders.trailingAnchor.constraint(equalTo: general.trailingAnchor),
-            items.leadingAnchor.constraint(equalTo: general.leadingAnchor),
-            items.trailingAnchor.constraint(equalTo: general.trailingAnchor),
-        ])
-
-        apply(Metrics.regular)
-    }
-
-    private func makeGeneralGroup() -> NSView {
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
-        let title = groupTitle("General")
+        paneTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        paneTitle.isSelectable = false
+        paneTitle.translatesAutoresizingMaskIntoConstraints = false
+
+        content.addSubview(sidebar)
+        content.addSubview(host)
+        host.addSubview(paneTitle)
+        host.addSubview(container)
+
+        panes = [
+            .general: makeGeneralPane(),
+            .folders: makeFoldersPane(),
+            .items: makeItemsPane(),
+        ]
+        for (pane, view) in panes {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: container.topAnchor),
+                view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            ])
+            if pane == .items {
+                view.bottomAnchor.constraint(equalTo: container.bottomAnchor).isActive = true
+            } else {
+                view.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor).isActive = true
+            }
+        }
+
+        NSLayoutConstraint.activate([
+            sidebar.topAnchor.constraint(equalTo: content.topAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: 200),
+            host.topAnchor.constraint(equalTo: content.topAnchor),
+            host.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            host.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            host.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            paneTitle.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 20),
+            paneTitle.trailingAnchor.constraint(lessThanOrEqualTo: host.trailingAnchor, constant: -20),
+            paneTitle.centerYAnchor.constraint(equalTo: host.topAnchor, constant: 26),
+            container.topAnchor.constraint(equalTo: host.topAnchor, constant: 52),
+            container.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 20),
+            container.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -20),
+            container.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -20),
+        ])
+
+        showPane(.general)
+    }
+
+    private func makeGeneralPane() -> NSView {
         hotkeyRecorder.translatesAutoresizingMaskIntoConstraints = false
         hotkeyRecorder.onRecord = { [weak self] hotkey in self?.onHotkey?(hotkey) }
         hotkeyRecorder.onRecordingChanged = { [weak self] recording in
@@ -262,6 +261,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         style(helper: hotkeyHelper)
         hotkeyHelper.stringValue = "Click, then press a new combination."
 
+        loginSwitch.controlSize = .small
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLogin)
         style(helper: loginStatus)
@@ -276,24 +276,17 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         loginControl.spacing = 8
         loginControl.alignment = .centerY
 
+        windowSwitch.controlSize = .small
         windowSwitch.target = self
         windowSwitch.action = #selector(toggleWindowManagement)
         style(helper: windowHelper)
-        windowAccessButton.target = self
-        windowAccessButton.action = #selector(openAccessibilitySettings)
-        windowAccessButton.bezelStyle = .rounded
-        windowAccessButton.controlSize = .small
-        windowAccessButton.font = .systemFont(ofSize: 11)
-        windowAccessButton.isHidden = true
-        let windowControl = NSStackView(views: [windowSwitch, windowAccessButton])
-        windowControl.orientation = .horizontal
-        windowControl.spacing = 8
-        windowControl.alignment = .centerY
+        windowHelper.stringValue = "Move and resize the front window from the launcher."
 
+        currencySwitch.controlSize = .small
         currencySwitch.target = self
         currencySwitch.action = #selector(toggleCurrency)
         style(helper: currencyHelper)
-        refreshCurrencyHelper()
+        currencyHelper.stringValue = "Rates from exchangerate-api.com."
 
         webSearchField.bezelStyle = .roundedBezel
         webSearchField.usesSingleLineMode = true
@@ -301,39 +294,71 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         webSearchField.placeholderString = Settings.Search.defaultURL
         webSearchField.font = .systemFont(ofSize: 13)
         webSearchField.delegate = self
+        webSearchField.translatesAutoresizingMaskIntoConstraints = false
+        webSearchField.widthAnchor.constraint(equalToConstant: 290).isActive = true
         style(helper: webSearchHelper)
         resetWebSearchHelper()
 
-        let shortcut = settingBlock(title: "Shortcut", control: hotkeyRecorder, helper: hotkeyHelper)
-        let login = settingBlock(title: "Launch at login", control: loginControl, helper: loginStatus)
-        let webSearch = settingBlock(title: "Web search", control: webSearchField, helper: webSearchHelper)
-        let windowManagement = settingBlock(title: "Window management", control: windowControl, helper: windowHelper)
-        let currency = settingBlock(title: "Currency", control: currencySwitch, helper: currencyHelper)
-        let blocks = NSStackView(views: [shortcut, login, webSearch, windowManagement, currency])
-        blocks.orientation = .horizontal
-        blocks.alignment = .top
-        blocks.distribution = .fillEqually
-        blocks.spacing = 12
-        blocks.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(title)
-        container.addSubview(blocks)
+        buildAccessLine()
 
-        NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: container.topAnchor),
-            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            blocks.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
-            blocks.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            blocks.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            blocks.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            shortcut.heightAnchor.constraint(equalTo: login.heightAnchor),
-            webSearch.heightAnchor.constraint(equalTo: login.heightAnchor),
-            windowManagement.heightAnchor.constraint(equalTo: login.heightAnchor),
-            currency.heightAnchor.constraint(equalTo: login.heightAnchor),
+        let shortcuts = groupedBox([
+            settingRow(title: "Keyboard shortcut", subtitle: hotkeyHelper, control: hotkeyRecorder),
+            hairline(),
+            settingRow(title: "Launch at login", subtitle: loginStatus, control: loginControl),
         ])
-        return container
+        let search = groupedBox([
+            settingRow(title: "Web search", subtitle: webSearchHelper, control: webSearchField),
+        ])
+        let extras = groupedBox([
+            settingRow(title: "Window management", subtitle: windowHelper, control: windowSwitch),
+            accessLine,
+            hairline(),
+            settingRow(title: "Currency conversion", subtitle: currencyHelper, control: currencySwitch),
+        ])
+
+        return stackedPane([
+            shortcuts,
+            sectionHeader("Search"),
+            search,
+            sectionHeader("Extras"),
+            extras,
+        ])
     }
 
-    private func makeFoldersGroup() -> NSView {
+    private func buildAccessLine() {
+        accessLine.translatesAutoresizingMaskIntoConstraints = false
+        accessLine.isHidden = true
+        let label = NSTextField(wrappingLabelWithString: "Allow Odd Frog under Privacy & Security › Accessibility.")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .systemRed
+        label.isSelectable = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        windowAccessButton.title = "Open System Settings…"
+        windowAccessButton.target = self
+        windowAccessButton.action = #selector(openAccessibilitySettings)
+        windowAccessButton.bezelStyle = .rounded
+        windowAccessButton.controlSize = .small
+        windowAccessButton.font = .systemFont(ofSize: 11)
+        windowAccessButton.translatesAutoresizingMaskIntoConstraints = false
+        windowAccessButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        accessLine.addSubview(label)
+        accessLine.addSubview(windowAccessButton)
+        let collapse = accessLine.heightAnchor.constraint(equalToConstant: 32)
+        collapse.priority = NSLayoutConstraint.Priority(250)
+        NSLayoutConstraint.activate([
+            accessLine.heightAnchor.constraint(greaterThanOrEqualToConstant: 32),
+            collapse,
+            label.leadingAnchor.constraint(equalTo: accessLine.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: windowAccessButton.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: windowAccessButton.leadingAnchor, constant: -16),
+            windowAccessButton.trailingAnchor.constraint(equalTo: accessLine.trailingAnchor, constant: -16),
+            windowAccessButton.topAnchor.constraint(greaterThanOrEqualTo: accessLine.topAnchor),
+            windowAccessButton.bottomAnchor.constraint(equalTo: accessLine.bottomAnchor, constant: -10),
+        ])
+    }
+
+    private func makeFoldersPane() -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         let title = groupTitle("Script Folders")
@@ -346,7 +371,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         folderTable.headerView = nil
         folderTable.dataSource = self
         folderTable.delegate = self
-        folderTable.rowHeight = Metrics.regular.folderRow
+        folderTable.rowHeight = 28
         folderTable.intercellSpacing = .zero
         folderTable.selectionHighlightStyle = .none
         folderTable.allowsEmptySelection = true
@@ -405,10 +430,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         container.addSubview(box)
         container.addSubview(helper)
 
-        let listHeight = folderScroll.heightAnchor.constraint(equalToConstant: Metrics.regular.folderRow)
-        let barHeight = bar.heightAnchor.constraint(equalToConstant: Metrics.regular.folderBar)
+        let listHeight = folderScroll.heightAnchor.constraint(equalToConstant: 28)
+        let barHeight = bar.heightAnchor.constraint(equalToConstant: 32)
         folderListHeight = listHeight
-        folderBarHeight = barHeight
 
         NSLayoutConstraint.activate([
             title.topAnchor.constraint(equalTo: container.topAnchor),
@@ -442,7 +466,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return container
     }
 
-    private func makeItemsGroup() -> NSView {
+    private func makeItemsPane() -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         let title = groupTitle("Items")
@@ -521,11 +545,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         container.addSubview(header)
         container.addSubview(box)
 
-        let boxHeight = box.heightAnchor.constraint(greaterThanOrEqualToConstant: Metrics.regular.itemsMinHeight)
+        let boxHeight = box.heightAnchor.constraint(greaterThanOrEqualToConstant: 150)
         boxHeight.priority = NSLayoutConstraint.Priority(999)
-        let fieldWidth = filterField.widthAnchor.constraint(equalToConstant: Metrics.regular.searchWidth)
-        itemsBoxHeight = boxHeight
-        searchFieldWidth = fieldWidth
+        let fieldWidth = filterField.widthAnchor.constraint(equalToConstant: 200)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: container.topAnchor),
@@ -547,32 +569,112 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return container
     }
 
-    private func settingBlock(title: String, control: NSView, helper: NSTextField) -> NSView {
-        let box = GroupBox()
-        box.translatesAutoresizingMaskIntoConstraints = false
-        let caption = groupTitle(title)
-        helper.lineBreakMode = .byWordWrapping
-        helper.maximumNumberOfLines = 0
-        helper.cell?.wraps = true
-        helper.cell?.isScrollable = false
+    private func settingRow(title: String, subtitle: NSTextField, control: NSView) -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let caption = NSTextField(labelWithString: title)
+        caption.font = .systemFont(ofSize: 13)
+        caption.isSelectable = false
+        caption.lineBreakMode = .byTruncatingTail
+        caption.translatesAutoresizingMaskIntoConstraints = false
+        caption.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        subtitle.lineBreakMode = .byWordWrapping
+        subtitle.maximumNumberOfLines = 0
+        subtitle.cell?.wraps = true
+        subtitle.cell?.isScrollable = false
         control.translatesAutoresizingMaskIntoConstraints = false
-        for view in [caption, control, helper] { box.addSubview(view) }
+        control.setContentHuggingPriority(.required, for: .horizontal)
+        control.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let text = NSView()
+        text.translatesAutoresizingMaskIntoConstraints = false
+        text.addSubview(caption)
+        text.addSubview(subtitle)
+        row.addSubview(text)
+        row.addSubview(control)
+        let collapse = row.heightAnchor.constraint(equalToConstant: 44)
+        collapse.priority = NSLayoutConstraint.Priority(250)
 
         NSLayoutConstraint.activate([
-            caption.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
-            caption.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
-            caption.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -12),
-            control.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: 8),
-            control.leadingAnchor.constraint(equalTo: caption.leadingAnchor),
-            control.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -12),
-            control.heightAnchor.constraint(equalToConstant: 24),
-            helper.topAnchor.constraint(equalTo: control.bottomAnchor, constant: 8),
-            helper.leadingAnchor.constraint(equalTo: caption.leadingAnchor),
-            helper.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
-            helper.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
-            helper.heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            caption.topAnchor.constraint(equalTo: text.topAnchor),
+            caption.leadingAnchor.constraint(equalTo: text.leadingAnchor),
+            caption.trailingAnchor.constraint(lessThanOrEqualTo: text.trailingAnchor),
+            subtitle.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: 2),
+            subtitle.leadingAnchor.constraint(equalTo: text.leadingAnchor),
+            subtitle.trailingAnchor.constraint(equalTo: text.trailingAnchor),
+            subtitle.bottomAnchor.constraint(equalTo: text.bottomAnchor),
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            collapse,
+            text.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            text.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 8),
+            text.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -8),
+            text.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            control.leadingAnchor.constraint(equalTo: text.trailingAnchor, constant: 16),
+            control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
+            control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
         ])
+        return row
+    }
+
+    private func groupedBox(_ rows: [NSView]) -> NSView {
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 0
+        stack.distribution = .fill
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: box.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        ])
+        for row in rows { row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         return box
+    }
+
+    private func hairline() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let line = Hairline()
+        line.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(line)
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 0.5),
+            line.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            line.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            line.topAnchor.constraint(equalTo: container.topAnchor),
+            line.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        return container
+    }
+
+    private func sectionHeader(_ text: String) -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let label = groupTitle(text)
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        return container
+    }
+
+    private func stackedPane(_ views: [NSView]) -> NSView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.distribution = .fill
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for view in views { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        return stack
     }
 
     private func groupTitle(_ text: String) -> NSTextField {
@@ -590,19 +692,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         field.lineBreakMode = .byTruncatingTail
         field.translatesAutoresizingMaskIntoConstraints = false
         field.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
-    }
-
-    private func apply(_ metrics: Metrics) {
-        paddingLeading?.constant = metrics.padding
-        paddingTrailing?.constant = -metrics.padding
-        paddingBottom?.constant = -metrics.padding
-        for gap in gapConstraints { gap.constant = metrics.gap }
-        folderTable.rowHeight = metrics.folderRow
-        folderBarHeight?.constant = metrics.folderBar
-        searchFieldWidth?.constant = metrics.searchWidth
-        itemsBoxHeight?.constant = metrics.itemsMinHeight
-        itemsHelper.isHidden = !metrics.showsItemsHelper
-        updateFolderListHeight()
     }
 
     private func updateFolderListHeight() {
@@ -712,7 +801,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func resetWebSearchHelper() {
-        webSearchHelper.stringValue = "Used when nothing matches. {query} is replaced with what you typed."
+        webSearchHelper.stringValue = "Used when nothing matches. {query} is replaced with your search."
         webSearchHelper.textColor = .secondaryLabelColor
     }
 
@@ -758,21 +847,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func refreshWindowManagement() {
         currencySwitch.state = settings.currency.enabled ? .on : .off
-        refreshCurrencyHelper()
         windowSwitch.state = settings.window.enabled ? .on : .off
-        windowHelper.textColor = .secondaryLabelColor
-        windowAccessButton.isHidden = true
-        guard settings.window.enabled else {
-            windowHelper.stringValue = "Adds Left ⅔, Top ¾, Tidy Windows and friends to the launcher. Needs Accessibility access."
-            return
-        }
-        if WindowManager.hasAccess {
-            windowHelper.stringValue = "Accessibility access granted."
-        } else {
-            windowHelper.stringValue = "Allow Odd Frog under Privacy & Security › Accessibility."
-            windowHelper.textColor = .systemRed
-            windowAccessButton.isHidden = false
-        }
+        accessLine.isHidden = !(settings.window.enabled && !WindowManager.hasAccess)
     }
 
     @objc private func applicationDidBecomeActive(_ notification: Notification) {
@@ -780,15 +856,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         refreshWindowManagement()
     }
 
-    private func refreshCurrencyHelper() {
-        currencyHelper.stringValue = currencySwitch.state == .on
-            ? "Rates from exchangerate-api.com."
-            : "No currency row, no network."
-    }
-
     @objc private func toggleCurrency() {
         settings.currency.enabled = currencySwitch.state == .on
-        refreshCurrencyHelper()
         commit()
     }
 
@@ -844,12 +913,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     func windowDidResize(_ notification: Notification) {
-        guard let window else { return }
-        let wantsCompact = window.frame.width < 600
-        if wantsCompact != isCompact {
-            isCompact = wantsCompact
-            apply(wantsCompact ? Metrics.compact : Metrics.regular)
-        }
         layoutColumns()
     }
 
