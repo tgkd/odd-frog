@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotKeyManager()
     private let indexer = AppIndexer()
     private let frecency = FrecencyStore(url: FrecencyStore.defaultURL)
+    private let rates = CurrencyRateStore(url: CurrencyRateStore.defaultURL, provider: ExchangeRateAPIProvider())
     private let status = StatusMenu()
     private lazy var controller = LauncherViewController(icons: icons)
     lazy var panel = LauncherPanel(contentViewController: controller)
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         TerminalLauncher.cleanupStaleFiles()
+        installMainMenu()
         notifier.requestAuthorizationIfNeeded()
         loadInitialConfig()
         loadInitialSettings()
@@ -54,6 +56,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Task { await refreshScripts(force: true) }
         Task { await refreshWeights() }
+        Task { await refreshRates() }
+    }
+
+    private func installMainMenu() {
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(redo)
+        edit.addItem(.separator())
+        edit.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        edit.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        edit.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        edit.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        let editItem = NSMenuItem()
+        editItem.submenu = edit
+        let main = NSMenu()
+        main.addItem(NSMenuItem())
+        main.addItem(editItem)
+        NSApp.mainMenu = main
     }
 
     private func report(_ message: String) {
@@ -226,6 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         rebuildItems()
         controller.searchTemplate = settings.search.url
+        Task { await refreshRates() }
         executor.cascadeStep = CGFloat(settings.window.cascadeStep)
         settingsWindow.update(windowSettings: settings.window)
     }
@@ -270,6 +293,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshWeights() async {
         controller.weights = await frecency.decayedWeights()
         lastWeightsRefresh = Date()
+    }
+
+    private func refreshRates() async {
+        guard settings.currency.enabled else {
+            controller.rates = nil
+            return
+        }
+        if let cached = await rates.current(), controller.rates != cached {
+            controller.rates = cached
+        }
+        guard let table = await rates.refreshIfStale(), controller.rates != table else { return }
+        controller.rates = table
+        Log.write("rates: \(table.rates.count) currencies, updated \(table.timestamp)")
     }
 
     private func refreshWeightsIfStale() {
@@ -346,6 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await refreshScripts() }
         }
         refreshWeightsIfStale()
+        Task { await refreshRates() }
     }
 
     private func hidePanel() {

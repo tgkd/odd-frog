@@ -185,4 +185,28 @@ struct SearchEngineTests {
         }
         #expect(quick == .terminal("uptime"))
     }
+
+    @Test func calculatorRowComesFirst() {
+        let items = [cmd("Double It", aliases: ["2+2"])]
+        let results = SearchEngine.search(query: "2+2", items: items, weights: [:], maxResults: 8)
+        #expect(results.count == 2)
+        guard case .quick(let quick) = results[0].item, case .calculation = quick else {
+            Issue.record("expected a calculation row first")
+            return
+        }
+        #expect(quick.title == "4")
+        #expect(results[1].item.id == "command:Double It")
+    }
+
+    @Test func calculatorRowReplacesFallbacks() {
+        let template = "https://duckduckgo.com/?q={query}"
+        let results = SearchEngine.search(query: "2*3", items: [app("Zed")], weights: [:], maxResults: 8, searchTemplate: template)
+        #expect(results.count == 1)
+        #expect(results[0].item.title == "6")
+    }
+
+    @Test func bareNumberStillSearches() {
+        let results = SearchEngine.search(query: "1", items: [app("1Password")], weights: [:], maxResults: 8)
+        #expect(results.map { $0.item.title } == ["1Password"])
+    }
 }

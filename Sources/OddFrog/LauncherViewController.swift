@@ -38,6 +38,12 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
     var searchTemplate: String? { didSet { refresh(keepSelection: true) } }
+    var rates: CurrencyRates? {
+        didSet {
+            guard rates != oldValue else { return }
+            refresh(keepSelection: true)
+        }
+    }
     private(set) var results: [RankedItem] = []
 
     let icons: IconCache
@@ -192,7 +198,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard isViewLoaded else { return }
         let selectedID = keepSelection ? selectedItem?.id : nil
         let query = searchField.stringValue
-        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate)
+        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate, rates: rates)
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count

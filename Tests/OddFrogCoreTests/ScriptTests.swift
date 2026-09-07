@@ -82,6 +82,7 @@ struct ScriptTests {
         settings.setOverride(ItemOverride(id: "command:Build", aliases: ["bb"]))
         settings.setOverride(ItemOverride(id: "command:Noop"))
         settings.search.url = "https://www.google.com/search?q={query}"
+        settings.currency.enabled = false
         settings.window.enabled = true
         settings.window.cascadeStep = 40
         let text = try settings.serialized()
@@ -92,6 +93,8 @@ struct ScriptTests {
         #expect(parsed.window.cascadeStep == 40)
         #expect(parsed.scriptFolders.first?.path == NSHomeDirectory() + "/Projects/raycast-scripts")
         #expect(parsed.search.url == "https://www.google.com/search?q={query}")
+        #expect(parsed.currency.enabled == false)
+        #expect(Settings.empty.currency.enabled)
 
         let xcode = LauncherItem.app(AppItem(url: URL(fileURLWithPath: "/Applications/Xcode.app"), name: "Xcode", bundleID: nil))
         let build = LauncherItem.command(CommandItem(name: "Build", aliases: ["b"], action: .shell("make"), cwd: nil, terminal: false))

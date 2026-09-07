@@ -18,7 +18,8 @@ let package = Package(
         ),
         .testTarget(
             name: "OddFrogCoreTests",
-            dependencies: ["OddFrogCore"]
+            dependencies: ["OddFrogCore"],
+            resources: [.copy("Fixtures")]
         ),
     ]
 )

@@ -1,15 +1,23 @@
 import Foundation
 
+public enum CalculationKind: Sendable, Hashable {
+    case arithmetic
+    case measurement(result: String)
+    case currency(result: String, updated: Date)
+}
+
 public enum QuickAction: Sendable, Hashable {
     case openURL(URL)
     case webSearch(query: String, url: URL)
     case terminal(String)
+    case calculation(input: String, value: Double, kind: CalculationKind)
 
     public var id: String {
         switch self {
         case .openURL(let url): "quick:url:\(url.absoluteString)"
         case .webSearch(let query, _): "quick:search:\(query)"
         case .terminal(let text): "quick:terminal:\(text)"
+        case .calculation(let input, _, _): "quick:calc:\(input)"
         }
     }
 
@@ -18,6 +26,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL(let url): "Open \(Self.displayHostPath(url))"
         case .webSearch(let query, _): "Search for “\(query)”"
         case .terminal: "Run in Terminal"
+        case .calculation(_, let value, let kind): Self.title(value: value, kind: kind)
         }
     }
 
@@ -26,6 +35,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL: nil
         case .webSearch(_, let url): url.host
         case .terminal(let text): text
+        case .calculation(let input, _, let kind): Self.subtitle(input: input, kind: kind)
         }
     }
 
@@ -34,7 +44,57 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL: "URL"
         case .webSearch: "Search"
         case .terminal: "Terminal"
+        case .calculation(_, _, let kind):
+            switch kind {
+            case .arithmetic: "Calculator"
+            case .measurement: "Units"
+            case .currency: "Currency"
+            }
         }
+    }
+
+    public var copyText: String? {
+        switch self {
+        case .openURL, .webSearch, .terminal: nil
+        case .calculation(_, let value, let kind): Self.copyText(value: value, kind: kind)
+        }
+    }
+
+    private static func title(value: Double, kind: CalculationKind) -> String {
+        switch kind {
+        case .arithmetic: value.formatted(.number.precision(.fractionLength(0...6)))
+        case .measurement(let result): result
+        case .currency(let result, _): result
+        }
+    }
+
+    private static func subtitle(input: String, kind: CalculationKind) -> String {
+        switch kind {
+        case .arithmetic, .measurement: input
+        case .currency(_, let updated): "\(input) · rate updated \(updated.formatted(.relative(presentation: .numeric)))"
+        }
+    }
+
+    private static func copyText(value: Double, kind: CalculationKind) -> String {
+        switch kind {
+        case .arithmetic, .measurement: value.formatted(.number.grouping(.never).precision(.fractionLength(0...6)))
+        case .currency: value.formatted(.number.grouping(.never).precision(.fractionLength(2)))
+        }
+    }
+
+    public static func calculation(for query: String, rates: CurrencyRates? = nil) -> QuickAction? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        if let value = Arithmetic.evaluate(trimmed) {
+            return .calculation(input: trimmed, value: value, kind: .arithmetic)
+        }
+        if let conversion = UnitConversion.evaluate(trimmed) {
+            return .calculation(input: conversion.input, value: conversion.value, kind: .measurement(result: conversion.result))
+        }
+        if let rates, let exchange = CurrencyConversion.evaluate(trimmed, rates: rates) {
+            return .calculation(input: exchange.input, value: exchange.value, kind: .currency(result: exchange.result, updated: exchange.updated))
+        }
+        return nil
     }
 
     private static func displayHostPath(_ url: URL) -> String {

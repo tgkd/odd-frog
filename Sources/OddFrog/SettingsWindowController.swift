@@ -55,6 +55,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let hotkeyHelper = NSTextField(labelWithString: "")
     private let webSearchField = NSTextField()
     private let webSearchHelper = NSTextField(labelWithString: "")
+    private let currencySwitch = NSSwitch()
+    private let currencyHelper = NSTextField(labelWithString: "")
     private let windowSwitch = NSSwitch()
     private let windowAccessButton = NSButton(title: "Open System Settings", target: nil, action: nil)
     private let windowHelper = NSTextField(wrappingLabelWithString: "")
@@ -288,6 +290,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         windowControl.spacing = 8
         windowControl.alignment = .centerY
 
+        currencySwitch.target = self
+        currencySwitch.action = #selector(toggleCurrency)
+        style(helper: currencyHelper)
+        refreshCurrencyHelper()
+
         webSearchField.bezelStyle = .roundedBezel
         webSearchField.usesSingleLineMode = true
         webSearchField.lineBreakMode = .byTruncatingTail
@@ -301,7 +308,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let login = settingBlock(title: "Launch at login", control: loginControl, helper: loginStatus)
         let webSearch = settingBlock(title: "Web search", control: webSearchField, helper: webSearchHelper)
         let windowManagement = settingBlock(title: "Window management", control: windowControl, helper: windowHelper)
-        let blocks = NSStackView(views: [shortcut, login, webSearch, windowManagement])
+        let currency = settingBlock(title: "Currency", control: currencySwitch, helper: currencyHelper)
+        let blocks = NSStackView(views: [shortcut, login, webSearch, windowManagement, currency])
         blocks.orientation = .horizontal
         blocks.alignment = .top
         blocks.distribution = .fillEqually
@@ -320,6 +328,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             shortcut.heightAnchor.constraint(equalTo: login.heightAnchor),
             webSearch.heightAnchor.constraint(equalTo: login.heightAnchor),
             windowManagement.heightAnchor.constraint(equalTo: login.heightAnchor),
+            currency.heightAnchor.constraint(equalTo: login.heightAnchor),
         ])
         return container
     }
@@ -748,6 +757,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func refreshWindowManagement() {
+        currencySwitch.state = settings.currency.enabled ? .on : .off
+        refreshCurrencyHelper()
         windowSwitch.state = settings.window.enabled ? .on : .off
         windowHelper.textColor = .secondaryLabelColor
         windowAccessButton.isHidden = true
@@ -767,6 +778,18 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     @objc private func applicationDidBecomeActive(_ notification: Notification) {
         guard window?.isVisible == true else { return }
         refreshWindowManagement()
+    }
+
+    private func refreshCurrencyHelper() {
+        currencyHelper.stringValue = currencySwitch.state == .on
+            ? "Rates from exchangerate-api.com."
+            : "No currency row, no network."
+    }
+
+    @objc private func toggleCurrency() {
+        settings.currency.enabled = currencySwitch.state == .on
+        refreshCurrencyHelper()
+        commit()
     }
 
     @objc private func toggleWindowManagement() {

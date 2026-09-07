@@ -53,6 +53,27 @@ Settings (DuckDuckGo by default). Typing `>` followed by text shows a single "Ru
 row that runs the rest of the text; it bypasses item search entirely, even if an item would
 otherwise match. Fallback rows are never recorded, so they never appear under an empty query.
 
+An arithmetic expression shows a "Calculator" row above everything else: `+`, `-`, `*`, `/`,
+`^`, `%`, parentheses, `x` or `×` for multiplication, and `of`. A percentage after `+` or `-`
+is relative, so `500 + 20%` is `600`, while `500 * 20%` and `20% of 500` are both `100`.
+Return copies the result to the clipboard. A bare number is never treated as a calculation, so
+`1` still searches.
+
+The same row converts units: `100 km in mi`, `20 c in f`, `512 gb in gib`, `1.5h in min`.
+Length, mass, temperature, data storage, duration, volume, speed and area are covered, with
+`in`, `to`, `as`, `->` or `=` between the units, or nothing at all (`100km mi`). Conversion
+factors come from the system, and a query that mixes dimensions, such as `100 kg in miles`,
+shows no row at all.
+
+Currency works the same way: `100 usd in eur`, `200 eur to rsd`, `$100 in eur`, `100 usd eur`.
+The row shows the converted amount, the ISO code, and how old the rate is. Rates come from
+[Exchange Rate API](https://www.exchangerate-api.com) through its keyless open endpoint,
+which publishes once a day. The app downloads the whole table and converts locally, so what
+you type is never sent anywhere. A fetch happens at most once every six hours, in the
+background, never while you type. The table is cached in
+`~/Library/Application Support/odd-frog/rates.json`, so conversion keeps working offline.
+Until that file exists, a currency query just searches as usual.
+
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
 
 The menu bar item offers Show, Settings…, Reload Config, Open Config, Open Log, Rescan Apps,
@@ -119,6 +140,8 @@ Menu bar → Settings… (or edit `~/.config/odd-frog/settings.toml`, hot-reload
 - **Items**: every app, command, script and enabled Window action with an enabled checkbox and extra aliases.
 - **Web search**: the URL used for the "Search for …" fallback when nothing matches. Must
   contain `{query}`. Defaults to `https://duckduckgo.com/?q={query}`.
+- **Currency**: on by default. Turning it off removes the currency row and stops every network
+  request; arithmetic and unit conversion keep working offline.
 - **Window management**: off by default, with no Accessibility checks while off. Turning it on
   asks for Accessibility access; the helper shows the status and offers "Open System Settings"
   when access is missing.
@@ -138,6 +161,9 @@ aliases = ["kp"]
 
 [search]
 url = "https://duckduckgo.com/?q={query}"
+
+[currency]
+enabled = true
 
 [window]
 enabled = true

@@ -154,6 +154,11 @@ final class ActionExecutor {
                 }
             case .terminal(let text):
                 runInTerminal(id: item.id, name: "Run in Terminal", command: text, cwd: nil)
+            case .calculation:
+                guard let text = quick.copyText else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                Log.write("copied calculator result \(text)")
             }
         }
     }

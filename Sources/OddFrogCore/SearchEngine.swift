@@ -33,7 +33,8 @@ public enum SearchEngine {
         items: [LauncherItem],
         weights: [String: Double],
         maxResults: Int,
-        searchTemplate: String? = nil
+        searchTemplate: String? = nil,
+        rates: CurrencyRates? = nil
     ) -> [RankedItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
@@ -42,6 +43,7 @@ public enum SearchEngine {
         if trimmed.hasPrefix(">") {
             return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
         }
+        let calculation = QuickAction.calculation(for: trimmed, rates: rates)
         var ranked: [RankedItem] = []
         ranked.reserveCapacity(items.count)
         for item in items {
@@ -66,6 +68,10 @@ public enum SearchEngine {
             }
         }
         ranked.sort(by: order)
+        if let calculation {
+            let row = RankedItem(item: .quick(calculation), lexical: 0, weight: 0, exactAlias: false)
+            return [row] + ranked.prefix(max(0, maxResults - 1))
+        }
         guard !ranked.isEmpty else {
             return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
         }

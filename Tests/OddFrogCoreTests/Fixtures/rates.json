@@ -1,0 +1,14 @@
+{
+  "result": "success",
+  "provider": "https://www.exchangerate-api.com",
+  "base_code": "USD",
+  "time_last_update_unix": 1788739351,
+  "time_next_update_unix": 1788826621,
+  "rates": {
+    "USD": 1,
+    "EUR": 0.861072,
+    "RSD": 100.993275,
+    "GBP": 0.74,
+    "JPY": 147.2
+  }
+}

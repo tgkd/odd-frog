@@ -39,4 +39,37 @@ struct QuickActionTests {
         let actions = QuickAction.fallbacks(for: "odd frog", searchTemplate: nil)
         #expect(actions.isEmpty)
     }
+
+    @Test func arithmeticQueryBecomesACalculatorAction() {
+        guard let action = QuickAction.calculation(for: "2+2") else {
+            Issue.record("expected a calculation action")
+            return
+        }
+        #expect(action.title == "4")
+        #expect(action.subtitle == "2+2")
+        #expect(action.kindLabel == "Calculator")
+        #expect(action.id == "quick:calc:2+2")
+        #expect(action.copyText == "4")
+    }
+
+    @Test func calculatorTitleRoundsToSixPlaces() {
+        #expect(QuickAction.calculation(for: "0.1+0.2")?.title == "0.3")
+    }
+
+    @Test func unitQueryBecomesAUnitsAction() {
+        guard let action = QuickAction.calculation(for: "100 km in mi") else {
+            Issue.record("expected a calculation action")
+            return
+        }
+        #expect(action.title == "62.1371 mi")
+        #expect(action.subtitle == "100 km → mi")
+        #expect(action.kindLabel == "Units")
+        #expect(action.copyText == "62.137119")
+        #expect(QuickAction.calculation(for: "2+2")?.kindLabel == "Calculator")
+    }
+
+    @Test func plainTextAndBareNumbersAreNotCalculations() {
+        #expect(QuickAction.calculation(for: "safari") == nil)
+        #expect(QuickAction.calculation(for: "42") == nil)
+    }
 }

@@ -70,6 +70,23 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Currency: Codable, Sendable, Equatable {
+        public var enabled: Bool
+
+        public init(enabled: Bool = true) {
+            self.enabled = enabled
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case enabled
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        }
+    }
+
     public struct Window: Codable, Sendable, Equatable {
         public var enabled: Bool
         public var cascadeStep: Double
@@ -100,12 +117,14 @@ public struct Settings: Codable, Sendable, Equatable {
     public var scripts: Scripts
     public var items: [ItemOverride]
     public var search: Search
+    public var currency: Currency
     public var window: Window
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), window: Window = Window()) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window()) {
         self.scripts = scripts
         self.items = items
         self.search = search
+        self.currency = currency
         self.window = window
     }
 
@@ -113,6 +132,7 @@ public struct Settings: Codable, Sendable, Equatable {
         case scripts
         case items
         case search
+        case currency
         case window
     }
 
@@ -121,6 +141,7 @@ public struct Settings: Codable, Sendable, Equatable {
         scripts = try container.decodeIfPresent(Scripts.self, forKey: .scripts) ?? Scripts()
         items = try container.decodeIfPresent([ItemOverride].self, forKey: .items) ?? []
         search = try container.decodeIfPresent(Search.self, forKey: .search) ?? Search()
+        currency = try container.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         window = try container.decodeIfPresent(Window.self, forKey: .window) ?? Window()
     }
 

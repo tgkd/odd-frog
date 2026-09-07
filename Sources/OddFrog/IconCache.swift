@@ -53,6 +53,15 @@ final class IconCache {
                 return tile(name: "search", color: .systemIndigo, symbol: "magnifyingglass", symbolSize: 13, size: size)
             case .terminal:
                 return tile(name: "shell", color: NSColor(white: 0.16, alpha: 1), glyph: "$", glyphSize: 13, size: size)
+            case .calculation(_, _, let kind):
+                switch kind {
+                case .arithmetic:
+                    return tile(name: "calc", color: .systemOrange, symbol: "plus.forwardslash.minus", symbolSize: 13, size: size)
+                case .measurement:
+                    return tile(name: "units", color: .systemGreen, symbol: "ruler", symbolSize: 13, size: size)
+                case .currency:
+                    return tile(name: "currency", color: .systemMint, symbol: "dollarsign", symbolSize: 13, size: size)
+                }
             }
         }
     }
