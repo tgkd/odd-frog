@@ -2,8 +2,8 @@ import AppKit
 
 @MainActor
 final class HoverRowView: NSTableRowView {
-    static let cornerRadius: CGFloat = 6
-    static let sideInset: CGFloat = 2
+    static let cornerRadius: CGFloat = 7
+    static let sideInset: CGFloat = 0
 
     var onHoverChange: ((Bool) -> Void)?
 

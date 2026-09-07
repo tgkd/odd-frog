@@ -149,7 +149,7 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
         pill.translatesAutoresizingMaskIntoConstraints = false
 
         for label in [builtinLabel, customLabel] {
-            label.font = .systemFont(ofSize: 12)
+            label.font = .systemFont(ofSize: 13)
             label.lineBreakMode = .byTruncatingTail
             label.isSelectable = false
             label.translatesAutoresizingMaskIntoConstraints = false
@@ -164,7 +164,7 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
         labels.addArrangedSubview(builtinLabel)
         labels.addArrangedSubview(customLabel)
 
-        editor.font = .systemFont(ofSize: 12)
+        editor.font = .systemFont(ofSize: 13)
         editor.controlSize = .small
         editor.isBordered = true
         editor.isBezeled = true
@@ -190,14 +190,14 @@ final class AliasCellView: NSTableCellView, NSTextFieldDelegate {
             pill.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             pill.centerYAnchor.constraint(equalTo: centerYAnchor),
-            pill.heightAnchor.constraint(equalToConstant: 20),
+            pill.heightAnchor.constraint(equalToConstant: 22),
             labels.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 6),
             labels.trailingAnchor.constraint(lessThanOrEqualTo: pill.trailingAnchor, constant: -6),
             labels.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
             editor.leadingAnchor.constraint(equalTo: pill.leadingAnchor),
             editor.trailingAnchor.constraint(equalTo: pill.trailingAnchor),
             editor.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
-            editor.heightAnchor.constraint(equalToConstant: 22),
+            editor.heightAnchor.constraint(equalToConstant: 24),
         ])
     }
 }

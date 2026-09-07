@@ -359,19 +359,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func makeFoldersPane() -> NSView {
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        let title = groupTitle("Script Folders")
-        let box = GroupBox()
-        box.translatesAutoresizingMaskIntoConstraints = false
-
         let column = NSTableColumn(identifier: Column.folder)
         column.resizingMask = .autoresizingMask
         folderTable.addTableColumn(column)
         folderTable.headerView = nil
         folderTable.dataSource = self
         folderTable.delegate = self
-        folderTable.rowHeight = 28
+        folderTable.rowHeight = 44
         folderTable.intercellSpacing = .zero
         folderTable.selectionHighlightStyle = .none
         folderTable.allowsEmptySelection = true
@@ -393,13 +387,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         folderEmptyLabel.font = .systemFont(ofSize: 13)
         folderEmptyLabel.alignment = .center
 
-        let bar = FolderBar()
-        bar.translatesAutoresizingMaskIntoConstraints = false
         addFolderButton.target = self
         addFolderButton.action = #selector(addFolder)
         removeFolderButton.target = self
         removeFolderButton.action = #selector(removeFolder)
         removeFolderButton.isEnabled = false
+        let bar = NSView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
         for button in [addFolderButton, removeFolderButton] {
             button.bezelStyle = .rounded
             button.controlSize = .small
@@ -408,116 +402,137 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             button.widthAnchor.constraint(equalToConstant: 26).isActive = true
             button.centerYAnchor.constraint(equalTo: bar.centerYAnchor).isActive = true
         }
-        let watchLabel = NSTextField(labelWithString: "Watch for changes")
-        watchLabel.font = .systemFont(ofSize: 13)
-        watchLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        watchSwitch.controlSize = .small
         watchSwitch.target = self
         watchSwitch.action = #selector(toggleWatch)
-        watchSwitch.translatesAutoresizingMaskIntoConstraints = false
-        bar.addSubview(watchLabel)
-        bar.addSubview(watchSwitch)
+        let watchHelper = NSTextField(labelWithString: "Rescan when a script is added, removed or edited.")
+        style(helper: watchHelper)
 
-        let helper = NSTextField(wrappingLabelWithString: "Executable scripts in these folders appear in the launcher. Raycast script metadata is optional.")
-        helper.font = .systemFont(ofSize: 11)
-        helper.textColor = .secondaryLabelColor
-        helper.isSelectable = false
-        helper.translatesAutoresizingMaskIntoConstraints = false
+        let listBox = GroupBox()
+        listBox.translatesAutoresizingMaskIntoConstraints = false
+        let line = hairline()
+        listBox.addSubview(folderScroll)
+        listBox.addSubview(folderEmptyLabel)
+        listBox.addSubview(line)
+        listBox.addSubview(bar)
 
-        box.addSubview(folderScroll)
-        box.addSubview(folderEmptyLabel)
-        box.addSubview(bar)
-        container.addSubview(title)
-        container.addSubview(box)
-        container.addSubview(helper)
-
-        let listHeight = folderScroll.heightAnchor.constraint(equalToConstant: 28)
-        let barHeight = bar.heightAnchor.constraint(equalToConstant: 32)
+        let listHeight = folderScroll.heightAnchor.constraint(equalToConstant: 44)
         folderListHeight = listHeight
 
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: container.topAnchor),
-            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            box.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 7),
-            box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            helper.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 6),
-            helper.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            helper.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            helper.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            folderScroll.topAnchor.constraint(equalTo: box.topAnchor, constant: 4),
-            folderScroll.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
-            folderScroll.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
+            folderScroll.topAnchor.constraint(equalTo: listBox.topAnchor),
+            folderScroll.leadingAnchor.constraint(equalTo: listBox.leadingAnchor),
+            folderScroll.trailingAnchor.constraint(equalTo: listBox.trailingAnchor),
             listHeight,
             folderEmptyLabel.centerXAnchor.constraint(equalTo: folderScroll.centerXAnchor),
             folderEmptyLabel.centerYAnchor.constraint(equalTo: folderScroll.centerYAnchor),
-            bar.topAnchor.constraint(equalTo: folderScroll.bottomAnchor, constant: 4),
-            bar.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            bar.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: box.bottomAnchor),
-            barHeight,
-            addFolderButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 4),
-            removeFolderButton.leadingAnchor.constraint(equalTo: addFolderButton.trailingAnchor, constant: 4),
-            watchSwitch.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -6),
-            watchSwitch.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            watchLabel.trailingAnchor.constraint(equalTo: watchSwitch.leadingAnchor, constant: -6),
-            watchLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            watchLabel.leadingAnchor.constraint(greaterThanOrEqualTo: removeFolderButton.trailingAnchor, constant: 8),
+            line.topAnchor.constraint(equalTo: folderScroll.bottomAnchor),
+            line.leadingAnchor.constraint(equalTo: listBox.leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: listBox.trailingAnchor),
+            bar.topAnchor.constraint(equalTo: line.bottomAnchor),
+            bar.leadingAnchor.constraint(equalTo: listBox.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: listBox.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: listBox.bottomAnchor),
+            bar.heightAnchor.constraint(equalToConstant: 40),
+            addFolderButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
+            removeFolderButton.leadingAnchor.constraint(equalTo: addFolderButton.trailingAnchor, constant: 6),
         ])
-        return container
+
+        return stackedPane([
+            makeFoldersIntro(),
+            sectionHeader("Folders"),
+            listBox,
+            groupedBox([settingRow(title: "Watch for changes", subtitle: watchHelper, control: watchSwitch)]),
+        ])
+    }
+
+    private func makeFoldersIntro() -> NSView {
+        let box = GroupBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        let tile = IconTile(color: .systemTeal, symbol: "folder.fill", side: 28, radius: 7, pointSize: 15)
+        let title = NSTextField(labelWithString: "Script Folders")
+        title.font = .systemFont(ofSize: 13)
+        title.isSelectable = false
+        title.lineBreakMode = .byTruncatingTail
+        title.translatesAutoresizingMaskIntoConstraints = false
+        let summary = NSTextField(wrappingLabelWithString: "Executable scripts in these folders appear in the launcher. Raycast script metadata is optional.")
+        style(helper: summary)
+        summary.lineBreakMode = .byWordWrapping
+        summary.maximumNumberOfLines = 0
+        summary.cell?.wraps = true
+        summary.cell?.isScrollable = false
+        box.addSubview(tile)
+        box.addSubview(title)
+        box.addSubview(summary)
+        NSLayoutConstraint.activate([
+            tile.topAnchor.constraint(equalTo: box.topAnchor, constant: 14),
+            tile.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 16),
+            title.topAnchor.constraint(equalTo: box.topAnchor, constant: 14),
+            title.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: 12),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -16),
+            summary.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 3),
+            summary.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            summary.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -16),
+            summary.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -14),
+        ])
+        return box
     }
 
     private func makeItemsPane() -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
-        let title = groupTitle("Items")
         style(helper: itemsHelper)
         itemsHelper.lineBreakMode = .byTruncatingTail
         itemsHelper.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
         itemsHelper.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(1), for: .horizontal)
 
         filterField.placeholderString = "Filter"
-        filterField.controlSize = .small
-        filterField.font = .systemFont(ofSize: 11)
+        filterField.controlSize = .regular
+        filterField.font = .systemFont(ofSize: 13)
         filterField.delegate = self
         filterField.translatesAutoresizingMaskIntoConstraints = false
-        filterField.setContentHuggingPriority(.required, for: .horizontal)
 
         let manageLinks = NSButton(title: "Manage Links…", target: self, action: #selector(showLinks))
         manageLinks.bezelStyle = .rounded
-        manageLinks.controlSize = .small
+        manageLinks.controlSize = .regular
+        manageLinks.font = .systemFont(ofSize: 13)
         manageLinks.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let header = NSStackView(views: [title, itemsHelper, manageLinks, filterField])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.distribution = .fill
-        header.spacing = 8
-        header.translatesAutoresizingMaskIntoConstraints = false
+        manageLinks.setContentHuggingPriority(.required, for: .horizontal)
+        let footer = NSStackView(views: [itemsHelper, manageLinks])
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.distribution = .fill
+        footer.spacing = 12
+        footer.translatesAutoresizingMaskIntoConstraints = false
 
         for (id, columnTitle, width) in [
-            (Column.enabled, "", CGFloat(30)),
+            (Column.enabled, "", CGFloat(32)),
             (Column.name, "Item", CGFloat(260)),
-            (Column.kind, "Kind", CGFloat(68)),
+            (Column.kind, "Kind", CGFloat(64)),
             (Column.aliases, "Aliases", CGFloat(200)),
         ] {
             let column = NSTableColumn(identifier: id)
             column.title = columnTitle
             column.width = width
-            column.minWidth = id == Column.enabled ? 30 : 60
+            column.minWidth = id == Column.enabled ? 32 : 60
+            column.resizingMask = id == Column.name || id == Column.aliases ? .autoresizingMask : []
             if id == Column.enabled {
-                column.maxWidth = 30
+                column.maxWidth = 32
                 column.headerToolTip = "Show in launcher"
             }
-            if id == Column.kind { column.maxWidth = 68 }
+            if id == Column.kind { column.maxWidth = 64 }
             if id == Column.aliases { column.headerToolTip = "Comma separated. Built-in aliases from config are kept." }
             itemTable.addTableColumn(column)
         }
         itemTable.dataSource = self
         itemTable.delegate = self
-        itemTable.rowHeight = 28
+        itemTable.rowHeight = 36
+        itemTable.intercellSpacing = NSSize(width: 0, height: 0)
         itemTable.usesAlternatingRowBackgroundColors = false
         itemTable.allowsEmptySelection = true
         itemTable.backgroundColor = .clear
-        itemTable.style = .fullWidth
+        itemTable.style = .plain
         itemTable.columnAutoresizingStyle = .noColumnAutoresizing
         itemTable.target = self
         itemTable.action = #selector(itemTableClicked)
@@ -542,26 +557,29 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         box.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(itemScroll)
         box.addSubview(itemsEmptyLabel)
-        container.addSubview(header)
+        container.addSubview(filterField)
         container.addSubview(box)
+        container.addSubview(footer)
 
         let boxHeight = box.heightAnchor.constraint(greaterThanOrEqualToConstant: 150)
         boxHeight.priority = NSLayoutConstraint.Priority(999)
-        let fieldWidth = filterField.widthAnchor.constraint(equalToConstant: 200)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: container.topAnchor),
-            header.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
-            header.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            fieldWidth,
-            box.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 7),
+            filterField.topAnchor.constraint(equalTo: container.topAnchor),
+            filterField.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            filterField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            filterField.heightAnchor.constraint(equalToConstant: 22),
+            box.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 12),
             box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             box.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            box.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             boxHeight,
+            footer.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 12),
+            footer.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+            footer.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             itemScroll.topAnchor.constraint(equalTo: box.topAnchor),
-            itemScroll.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            itemScroll.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            itemScroll.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
+            itemScroll.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
             itemScroll.bottomAnchor.constraint(equalTo: box.bottomAnchor),
             itemsEmptyLabel.centerXAnchor.constraint(equalTo: box.centerXAnchor),
             itemsEmptyLabel.centerYAnchor.constraint(equalTo: box.centerYAnchor, constant: -12),
@@ -695,7 +713,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func updateFolderListHeight() {
-        let rows = max(1, min(settings.scripts.folders.count, 3))
+        let rows = max(1, min(settings.scripts.folders.count, 5))
         folderListHeight?.constant = folderTable.rowHeight * CGFloat(rows)
     }
 
@@ -703,10 +721,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         window?.contentView?.layoutSubtreeIfNeeded()
         let columns = Dictionary(uniqueKeysWithValues: itemTable.tableColumns.map { ($0.identifier, $0) })
         guard let name = columns[Column.name], let aliases = columns[Column.aliases] else { return }
-        let spacing = itemTable.intercellSpacing.width * 4
-        let available = max(160, itemScroll.contentSize.width - 30 - 68 - spacing)
-        name.width = available * 2 / 3.6
-        aliases.width = available * 1.6 / 3.6
+        let available = max(160, itemScroll.contentSize.width - 16 - 32 - 64)
+        name.width = available * 2 / 3.4
+        aliases.width = available * 1.4 / 3.4
     }
 
     private func recomputeFolderCounts() {
@@ -995,7 +1012,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         case Column.name:
             let enabled = override?.enabled ?? true
             let cell = textCell(tableView, id: id, withIcon: true)
-            cell.imageView?.image = icons.icon(for: item, size: 16)
+            cell.imageView?.image = icons.icon(for: item, size: 20)
             cell.imageView?.alphaValue = enabled ? 1 : 0.45
             cell.textField?.font = .systemFont(ofSize: 13)
             cell.textField?.stringValue = item.title
@@ -1003,7 +1020,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             return cell
         case Column.kind:
             let cell = textCell(tableView, id: id)
-            cell.textField?.font = .systemFont(ofSize: 12)
+            cell.textField?.font = .systemFont(ofSize: 13)
             cell.textField?.stringValue = item.kindLabel ?? "App"
             cell.textField?.textColor = (override?.enabled ?? true) ? .secondaryLabelColor : .tertiaryLabelColor
             return cell
@@ -1033,10 +1050,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             cell.addSubview(image)
             cell.imageView = image
             NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                image.widthAnchor.constraint(equalToConstant: 16),
-                image.heightAnchor.constraint(equalToConstant: 16),
+                image.widthAnchor.constraint(equalToConstant: 20),
+                image.heightAnchor.constraint(equalToConstant: 20),
             ])
             leading = field.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8)
         }
@@ -1093,7 +1110,7 @@ private final class FolderRowView: NSTableRowView {
         super.draw(dirtyRect)
         guard isSelected else { return }
         SelectionPalette.fill.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
+        bounds.fill()
     }
 
     private func applySelection() {
@@ -1120,7 +1137,7 @@ private final class FolderCellView: NSTableCellView {
         path.font = .systemFont(ofSize: 13)
         path.lineBreakMode = .byTruncatingMiddle
         path.translatesAutoresizingMaskIntoConstraints = false
-        count.font = .systemFont(ofSize: 11)
+        count.font = .systemFont(ofSize: 13)
         count.alignment = .right
         count.setContentCompressionResistancePriority(.required, for: .horizontal)
         count.setContentHuggingPriority(.required, for: .horizontal)
@@ -1131,13 +1148,13 @@ private final class FolderCellView: NSTableCellView {
         textField = path
         imageView = symbol
         NSLayoutConstraint.activate([
-            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             symbol.centerYAnchor.constraint(equalTo: centerYAnchor),
             symbol.widthAnchor.constraint(equalToConstant: 18),
-            path.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 8),
+            path.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 12),
             path.centerYAnchor.constraint(equalTo: centerYAnchor),
             count.leadingAnchor.constraint(greaterThanOrEqualTo: path.trailingAnchor, constant: 8),
-            count.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            count.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             count.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         applyStyle()
@@ -1155,15 +1172,5 @@ private final class FolderCellView: NSTableCellView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyStyle()
-    }
-}
-
-@MainActor
-private final class FolderBar: NSView {
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.labelColor.withAlphaComponent(0.05).setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: bounds.maxY - 0.5, width: bounds.width, height: 0.5).fill()
     }
 }
