@@ -260,6 +260,15 @@ Put `{query}` in a URL to insert what you type after the alias, for example `gh 
 `fullOutput` scripts open in the configured terminal. A script with `@raycast.argument1` takes
 the argument from the query after the command name: `kill 3000`, `kp 3000`.
 
+`examples/scripts/` holds ready-made script commands; add that folder (or a copy of a single
+script) under Settings → Script Folders to use them.
+
+- **Toggle Theme** switches macOS between light and dark. With no argument it flips the current
+  appearance; `toggle theme light` and `toggle theme dark` set it directly. The new appearance is
+  shown as a notification. The first run asks to let Odd Frog control System Events; without that
+  permission the script reports where to grant it in System Settings → Privacy & Security →
+  Automation.
+
 ### Using ⌘Space
 
 Spotlight keeps its own binding, so both would fire. Disable Spotlight's shortcut first:

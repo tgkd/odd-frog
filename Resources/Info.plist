@@ -30,6 +30,8 @@
     <true/>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Odd Frog reads your calendar events to show your agenda and meeting links when you use the Calendar plugin.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Odd Frog sends Apple events on behalf of the scripts you run from the launcher, such as changing the system appearance.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Odd Frog reads your reminders to list what is due when you use the Reminders plugin.</string>
     <key>NSPrincipalClass</key>
