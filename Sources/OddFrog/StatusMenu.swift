@@ -11,6 +11,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     var lastFailure: String?
     var onShow: (() -> Void)?
     var onReloadConfig: (() -> Void)?
+    var onReloadPlugins: (() -> Void)?
     var onOpenConfig: (() -> Void)?
     var onRescan: (() -> Void)?
     var onToggleLogin: (() -> Void)?
@@ -43,6 +44,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         settings.keyEquivalent = ","
         menu.addItem(settings)
         menu.addItem(action("Reload Config", #selector(reload)))
+        menu.addItem(action("Reload Plugins", #selector(reloadPlugins)))
         menu.addItem(action("Open Config", #selector(openConfig)))
         menu.addItem(action("Open Log", #selector(openLog)))
         menu.addItem(action("Rescan Apps", #selector(rescan)))
@@ -72,6 +74,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     @objc private func show() { onShow?() }
     @objc private func openSettings() { onSettings?() }
     @objc private func reload() { onReloadConfig?() }
+    @objc private func reloadPlugins() { onReloadPlugins?() }
     @objc private func openConfig() { onOpenConfig?() }
     @objc private func openLog() { onOpenLog?() }
     @objc private func rescan() { onRescan?() }

@@ -4,11 +4,13 @@ enum SettingsPane: Int, CaseIterable {
     case general
     case folders
     case items
+    case plugins
 
     var title: String {
         switch self {
         case .general: return "General"
         case .folders: return "Script Folders"
+        case .plugins: return "Plugins"
         case .items: return "Items"
         }
     }
@@ -17,6 +19,7 @@ enum SettingsPane: Int, CaseIterable {
         switch self {
         case .general: return "gearshape.fill"
         case .folders: return "folder.fill"
+        case .plugins: return "puzzlepiece.extension"
         case .items: return "square.grid.2x2.fill"
         }
     }
@@ -25,6 +28,7 @@ enum SettingsPane: Int, CaseIterable {
         switch self {
         case .general: return .systemGray
         case .folders: return .systemTeal
+        case .plugins: return .systemGray
         case .items: return .controlAccentColor
         }
     }

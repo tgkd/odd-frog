@@ -92,6 +92,7 @@ final class ActionExecutor {
     var cascadeStep: CGFloat = 32
     var onFailure: ((String) -> Void)?
     var onRecorded: (() -> Void)?
+    var onPluginAction: ((PluginResult, Bool) -> Void)?
     private var running: [UUID: BackgroundRun] = [:]
 
     init(config: Config, frecency: FrecencyStore, notifier: Notifier) {
@@ -106,6 +107,8 @@ final class ActionExecutor {
             return
         }
         switch item {
+        case .plugin(let result):
+            onPluginAction?(result, false)
         case .app(let app):
             openApplication(app)
         case .command(let command):
@@ -181,6 +184,8 @@ final class ActionExecutor {
 
     private func runSecondary(_ item: LauncherItem, argument: String?) {
         switch item {
+        case .plugin(let result):
+            onPluginAction?(result, true)
         case .app(let app):
             NSWorkspace.shared.activateFileViewerSelecting([app.url])
             record(item.id)

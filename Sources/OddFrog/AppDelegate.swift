@@ -1,8 +1,28 @@
 import AppKit
 import OddFrogCore
+import OddFrogPluginAPI
+import EventKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let calendarService = CalendarService()
+    private let remindersService = RemindersService()
+    private lazy var plugins = makePluginCoordinator()
+
+    private func makePluginCoordinator() -> PluginCoordinator {
+        let calendar = calendarService
+        let reminders = remindersService
+        return PluginCoordinator(readCalendar: { range in
+            try await calendar.snapshot(for: range)
+        }, readReminders: { scope in
+            try await reminders.snapshot(for: scope)
+        }, exchange: { executable, request in
+            try await PluginProcess.exchange(executable: executable, request: request)
+        })
+    }
+
+    private var pluginTimer: Timer?
+    private var calendarObserver: (any NSObjectProtocol)?
     private let icons = IconCache()
     private let notifier = Notifier()
     private let hotkeys = HotKeyManager()
@@ -36,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadInitialConfig()
         loadInitialSettings()
         wirePanel()
+        wirePlugins()
         wireStatusMenu()
         wireHotkey()
         wireSignals()
@@ -142,6 +163,121 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow.onHotkey = { [weak self] hotkey in self?.setHotkey(hotkey) }
     }
 
+    private func wirePlugins() {
+        controller.pluginQuery = { [weak self] query, limit in
+            guard let self, panel.isVisible else { return nil }
+            return plugins.query(query, maxResults: limit)
+        }
+        plugins.onChange = { [weak self] in
+            guard let self else { return }
+            updatePluginsPane()
+            if panel.isVisible { controller.refresh(keepSelection: true) }
+        }
+        executor.onPluginAction = { [weak self] result, secondary in self?.runPluginAction(result, secondary: secondary) }
+        settingsWindow.pluginsPane.onReload = { [weak self] in self?.reloadPlugins() }
+        settingsWindow.pluginsPane.onToggle = { [weak self] id, enabled in
+            guard let self else { return }
+            var updated = settings
+            updated.plugins.removeAll { $0.id == id }
+            updated.plugins.append(PluginSetting(id: id, enabled: enabled))
+            applySettings(updated, persist: true)
+        }
+        status.onReloadPlugins = { [weak self] in self?.reloadPlugins() }
+        calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.storeDidChange() }
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(storeDidChange), name: NSApplication.didBecomeActiveNotification, object: nil)
+        pluginTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.panel.isVisible else { return }
+                self.plugins.invalidate()
+            }
+        }
+        reloadPlugins()
+    }
+
+    private func reloadPlugins() {
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("Plugins", isDirectory: true)
+        let user = ConfigLoader.defaultDirectory.appendingPathComponent("plugins", isDirectory: true)
+        plugins.reload(discovery: PluginDiscovery.scan(bundled: bundled, user: user), settings: settings.plugins)
+    }
+
+    private func updatePluginsPane() {
+        settingsWindow.update(pluginSettings: settings.plugins)
+        settingsWindow.pluginsPane.update(packages: plugins.packages, settings: settings.plugins,
+                                          failures: plugins.failures, errors: plugins.discoveryErrors)
+    }
+
+    @objc private func storeDidChange() {
+        Task {
+            await calendarService.invalidate()
+            await remindersService.invalidate()
+            plugins.invalidate()
+        }
+    }
+
+    private func runPluginAction(_ result: PluginResult, secondary: Bool) {
+        guard let action = secondary ? (result.item.secondary ?? result.item.primary) : result.item.primary else { return }
+        do { try plugins.authorize(action, pluginID: result.pluginID) }
+        catch { report(String(describing: error)); return }
+        switch action.kind {
+        case .requestCalendarAccess:
+            Task {
+                do { _ = try await calendarService.requestAccess() }
+                catch { report("Calendar access: \(error.localizedDescription)") }
+                plugins.invalidate()
+            }
+        case .requestRemindersAccess:
+            Task {
+                do { _ = try await remindersService.requestAccess() }
+                catch { report("Reminders access: \(error.localizedDescription)") }
+                plugins.invalidate()
+            }
+        case .completeReminder:
+            Task {
+                do {
+                    let title = try await remindersService.complete(id: action.value)
+                    notifier.post(title: "Completed", body: title, log: false)
+                } catch {
+                    report("Reminders: \(error.localizedDescription)")
+                }
+                plugins.invalidate()
+            }
+        case .createReminder:
+            Task {
+                do {
+                    let list = try await remindersService.create(title: action.value)
+                    notifier.post(title: "Added to \(list)", body: action.value, log: false)
+                } catch {
+                    report("Reminders: \(error.localizedDescription)")
+                }
+                plugins.invalidate()
+            }
+        case .openURL:
+            guard let url = URL(string: action.value), NSWorkspace.shared.open(url) else {
+                report("Could not open the plugin's URL.")
+                return
+            }
+        case .openApplication:
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: action.value) else {
+                report("Application \(action.value) was not found.")
+                return
+            }
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+                if let error { Task { @MainActor in self?.report(error.localizedDescription) } }
+            }
+        case .copy:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(action.value, forType: .string)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        plugins.cancel()
+        pluginTimer?.invalidate()
+        if let calendarObserver { NotificationCenter.default.removeObserver(calendarObserver) }
+    }
+
     private func wireStatusMenu() {
         status.hotkeyDescription = config.general.hotkey.description
         status.onShow = { [weak self] in self?.togglePanel() }
@@ -232,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applySettings(_ updated: Settings, persist: Bool) {
+        let pluginsChanged = updated.plugins != settings.plugins
         let foldersChanged = updated.scripts.folders != settings.scripts.folders || updated.scripts.watch != settings.scripts.watch
         settings = updated
         if persist {
@@ -242,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 report("Could not save settings: \(error.localizedDescription)")
             }
         }
+        if pluginsChanged { reloadPlugins() }
         if foldersChanged {
             rewatchScripts()
             Task { await refreshScripts(force: true) }
@@ -386,6 +524,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func hidePanel() {
+        plugins.cancel()
+        controller.clearTransientResults()
         panel.dismiss()
     }
 

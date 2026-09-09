@@ -1,0 +1,7 @@
+id = "calendar"
+name = "Calendar"
+version = "0.1.0"
+api_version = 1
+executable = "OddFrogCalendar"
+keyword = "cal"
+services = ["calendar.events"]

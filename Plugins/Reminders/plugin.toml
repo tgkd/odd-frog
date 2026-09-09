@@ -1,0 +1,7 @@
+id = "reminders"
+name = "Reminders"
+version = "0.1.0"
+api_version = 1
+executable = "OddFrogReminders"
+keyword = "rem"
+services = ["reminders.items"]

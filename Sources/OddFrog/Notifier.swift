@@ -14,8 +14,8 @@ final class Notifier {
         }
     }
 
-    func post(title: String, body: String) {
-        Log.write("notify: \(title) — \(body)")
+    func post(title: String, body: String, log: Bool = true) {
+        if log { Log.write("notify: \(title) — \(body)") }
         guard enabled else { return }
         let deliver: @Sendable () -> Void = {
             let content = UNMutableNotificationContent()

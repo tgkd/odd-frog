@@ -28,6 +28,10 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Odd Frog reads your calendar events to show your agenda and meeting links when you use the Calendar plugin.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Odd Frog reads your reminders to list what is due when you use the Reminders plugin.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

@@ -9,6 +9,7 @@ apps, your own commands, and optional window management.
 make run       # build, bundle build/OddFrog.app, relaunch
 make install   # copy to ~/Applications (needed for Launch at Login)
 make test      # swift test
+make calendar-plugin  # build/sign build/plugins/calendar without rebuilding the host
 ```
 
 Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a Makefile.
@@ -75,6 +76,69 @@ background, never while you type. The table is cached in
 Until that file exists, a currency query just searches as usual.
 
 Scripts can toggle the panel with `pkill -USR1 -x OddFrog`.
+
+## Calendar, Reminders, and plugins
+
+The bundled Calendar plugin shows a live agenda in the normal launcher list:
+
+- `cal` or `cal today`: remaining events today, including ongoing and all-day events.
+- `cal tomorrow`: tomorrow's events.
+- `cal week`: the next seven calendar days, including today.
+- `cal 12d`: the next 12 calendar days, including today; any number up to 30 works.
+- `cal design`: search titles, calendar names, and locations over the next 30 calendar days.
+- `cal tomorrow design`, `cal week design`, and `cal 12d design`: search within that period.
+
+On first use, choose **Allow Calendar access** and respond to the macOS prompt. Reading events
+requires Full Access; the plugin does not create or modify events. Denied access offers a link to
+Calendar privacy settings. Calendars are those available through macOS EventKit.
+
+Return opens the Calendar app (it does not select the event). Command-Return joins an HTTPS Zoom,
+Google Meet, Teams, or Webex link from the event's URL/location, when present; otherwise it opens
+Calendar. Event notes are not read. Results use local time, stay chronological, and do not enter
+launcher history. Snapshots are cached in memory for up to 30 seconds and invalidated on store changes.
+
+The bundled Reminders plugin lists incomplete reminders from Apple Reminders:
+
+- `rem` or `rem today`: overdue reminders plus everything due before the end of today.
+- `rem tomorrow`: tomorrow's reminders only, without overdue ones.
+- `rem week`: overdue plus everything due in the next seven calendar days, including today.
+- `rem 12d`: the same for the next 12 calendar days; any number up to 30 works.
+- `rem all`: every incomplete reminder, including ones with no due date.
+- `rem milk`: search titles and list names across every incomplete reminder.
+- `rem week design` and `rem 12d design`: search within that period.
+- `rem add Buy milk`: create a reminder in the default list. A search that matches nothing offers
+  the same row, so `rem call the plumber` turns straight into a new reminder.
+
+On first use, choose **Allow Reminders access** and respond to the macOS prompt. Reading reminders
+requires Full Access. The plugin can mark a reminder completed and create new ones; it never edits
+or deletes them, and it does not read reminder notes. Denied access offers a link to Reminders
+privacy settings.
+
+Return opens the Reminders app. Command-Return marks the selected reminder completed and posts a
+notification. Rows show the due date, the list, and a high-priority marker; overdue rows are
+labelled. An all-day reminder counts as overdue only once its day has passed. Reminders are read
+at most every 30 seconds and are invalidated when the store changes.
+
+**Settings → Plugins** enables/disables packages and displays discovery/runtime errors. **Reload
+Plugins**, available there and in the menu bar, rereads packages and clears failures. Changing a
+package on disk requires Reload. Calendar's executable is bundled separately from the host.
+
+Install trusted local packages into `~/.config/odd-frog/plugins/<folder>/` (or under
+`$XDG_CONFIG_HOME/odd-frog/plugins`). Each contains `plugin.toml` and its executable. User packages
+start disabled, including replacements for bundled packages; enable them in Settings → Plugins.
+A user package with the same manifest ID overrides the bundled package. Settings are stored as:
+
+```toml
+[[plugins]]
+id = "calendar"
+enabled = true
+```
+
+For independent Calendar replacement, run `make calendar-plugin`, copy `build/plugins/calendar/`
+to that user-plugin directory, then Reload and enable it. The host binary stays unchanged.
+`make reminders-plugin` does the same for Reminders, producing `build/plugins/reminders/`.
+This is a base query-plugin system; existing built-in features retain their current implementation.
+See [the Calendar plan](docs/calendar-plugin.md) and [the protocol](docs/query-plugins.md).
 
 The menu bar item offers Show, Settings…, Reload Config, Open Config, Open Log, Rescan Apps,
 the last failure (click to copy), and Launch at Login.

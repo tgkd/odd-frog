@@ -52,6 +52,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var onHeightChange: ((CGFloat) -> Void)?
     var onReveal: ((LauncherItem) -> Void)?
     var onSettings: (() -> Void)?
+    var pluginQuery: ((String, Int) -> [PluginResult]?)?
 
     init(icons: IconCache) {
         self.icons = icons
@@ -172,6 +173,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         return Self.fieldHeight + Self.hairlineHeight + Self.listInsetTop + scrollHeight.constant + Self.listInsetBottom
     }
 
+    func clearTransientResults() {
+        results.removeAll { if case .plugin = $0.item { true } else { false } }
+        if isViewLoaded { tableView.reloadData() }
+    }
+
     func prepareForShow() {
         searchField.stringValue = ""
         refresh()
@@ -198,7 +204,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard isViewLoaded else { return }
         let selectedID = keepSelection ? selectedItem?.id : nil
         let query = searchField.stringValue
-        results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate, rates: rates)
+        if let live = pluginQuery?(query, maxResults) {
+            results = live.map { RankedItem(item: .plugin($0), lexical: 0, weight: 0, exactAlias: false) }
+        } else {
+            results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate, rates: rates)
+        }
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
@@ -230,6 +240,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     private func completion(for item: LauncherItem) -> String {
+        if case .plugin(let result) = item { return result.item.completion ?? searchField.stringValue }
         let base = item.aliases.first ?? item.title
         return item.acceptsArgument ? base + " " : base
     }
@@ -245,6 +256,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let row = tableView.selectedRow
         guard row >= 0, row < results.count else { return }
         let result = results[row]
+        if case .plugin(let live) = result.item, live.item.primary == nil { return }
         if case .script(let script) = result.item, let spec = script.argument, !spec.optional, result.argument == nil {
             fill(with: result.item)
             return
@@ -287,6 +299,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     private func isQuick(_ item: LauncherItem) -> Bool {
         if case .quick = item { return true }
+        if case .plugin = item { return true }
         return false
     }
 
@@ -351,6 +364,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private static let shortPlaceholderLimit = 24
 
     private func detail(for result: RankedItem) -> DetailLine? {
+        if case .plugin(let live) = result.item { return live.item.subtitle.map { DetailLine(detail: $0) } }
         if case .quick(let quick) = result.item {
             return quick.subtitle.map { DetailLine(detail: $0) }
         }

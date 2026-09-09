@@ -32,6 +32,8 @@ final class IconCache {
             case .url:
                 return tile(name: "url", color: .systemTeal, symbol: "link", symbolSize: 14, size: size)
             }
+        case .plugin(let result):
+            return NSImage(systemSymbolName: result.item.symbol ?? "puzzlepiece.extension", accessibilityDescription: nil)
         case .script(let script):
             if let emoji = script.icon { return emojiImage(emoji, size: size) }
             return tile(name: "script", color: .systemGray, glyph: ">_", glyphSize: 10, size: size)

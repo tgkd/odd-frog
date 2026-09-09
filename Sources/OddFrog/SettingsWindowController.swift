@@ -12,6 +12,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let folder = NSUserInterfaceItemIdentifier("folder")
     }
 
+    let pluginsPane = PluginsPane()
     private let linkManager = LinkManagerController()
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
 
@@ -146,6 +147,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         applyFilter()
     }
 
+    func update(pluginSettings: [PluginSetting]) { settings.plugins = pluginSettings }
+
     func update(windowSettings: Settings.Window) {
         settings.window = windowSettings
         if window?.isVisible == true { refreshWindowManagement() }
@@ -208,6 +211,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             .general: makeGeneralPane(),
             .folders: makeFoldersPane(),
             .items: makeItemsPane(),
+            .plugins: pluginsPane,
         ]
         for (pane, view) in panes {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -217,7 +221,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
                 view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
                 view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             ])
-            if pane == .items {
+            if pane == .items || pane == .plugins {
                 view.bottomAnchor.constraint(equalTo: container.bottomAnchor).isActive = true
             } else {
                 view.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor).isActive = true

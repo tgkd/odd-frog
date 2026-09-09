@@ -96,6 +96,7 @@ public enum LauncherItem: Sendable, Hashable {
     case script(ScriptItem)
     case quick(QuickAction)
     case window(WindowItem)
+    case plugin(PluginResult)
 
     public var id: String {
         switch self {
@@ -104,6 +105,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .script(let script): script.id
         case .quick(let quick): quick.id
         case .window(let item): item.action.id
+        case .plugin(let result): result.id
         }
     }
 
@@ -114,6 +116,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .script(let script): script.title
         case .quick(let quick): quick.title
         case .window(let item): item.action.title
+        case .plugin(let result): result.item.title
         }
     }
 
@@ -133,6 +136,7 @@ public enum LauncherItem: Sendable, Hashable {
             quick.subtitle
         case .window(let item):
             item.action.subtitle
+        case .plugin(let result): result.item.subtitle
         }
     }
 
@@ -167,7 +171,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .app(let app): app.aliases
         case .command(let command): command.aliases
         case .script(let script): script.aliases
-        case .quick: []
+        case .quick, .plugin: []
         case .window(let item): item.aliases
         }
     }
@@ -181,7 +185,7 @@ public enum LauncherItem: Sendable, Hashable {
             return false
         case .app:
             return false
-        case .quick, .window:
+        case .quick, .window, .plugin:
             return false
         }
     }
@@ -201,6 +205,7 @@ public enum LauncherItem: Sendable, Hashable {
             quick.kindLabel
         case .window(let item):
             item.action.kindLabel
+        case .plugin(let result): result.item.kind
         }
     }
 
@@ -219,7 +224,7 @@ public enum LauncherItem: Sendable, Hashable {
         case .window(var item):
             item.aliases = merged(item.aliases, extra)
             return .window(item)
-        case .quick:
+        case .quick, .plugin:
             return self
         }
     }
