@@ -9,7 +9,6 @@ apps, your own commands, and optional window management.
 make run       # build, bundle build/OddFrog.app, relaunch
 make install   # copy to ~/Applications (needed for Launch at Login)
 make test      # swift test
-make calendar-plugin  # build/sign build/plugins/calendar without rebuilding the host
 ```
 
 Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a Makefile.
@@ -121,31 +120,27 @@ at most every 30 seconds and are invalidated when the store changes.
 
 **Settings → Plugins** enables/disables packages and displays discovery/runtime errors. **Reload
 Plugins**, available there and in the menu bar, rereads packages and clears failures. Changing a
-package on disk requires Reload. Calendar's executable is bundled separately from the host.
+package on disk requires Reload.
 
-Install trusted local packages into `~/.config/odd-frog/plugins/<folder>/` (or under
-`$XDG_CONFIG_HOME/odd-frog/plugins`). Each contains `plugin.toml` and its executable. User packages
-start disabled, including replacements for bundled packages; enable them in Settings → Plugins.
-A user package with the same manifest ID overrides the bundled package. Settings are stored as:
+Every feature is its own package, including Applications, Commands/Links, Scripts, Calculator,
+Windows, Web, Terminal, Calendar, and Reminders. The bundled ones are compiled into the host and run
+inside it; each still enables and disables independently in Settings → Plugins, which removes its
+results and stops its background work. The host keeps UI, ranking, history, storage, and macOS services.
 
-```toml
-[[plugins]]
-id = "calendar"
-enabled = true
-```
+Install trusted local packages in `~/.config/odd-frog/v2/plugins/<folder>/` (respecting `XDG_CONFIG_HOME`).
+They run as separate processes speaking the API 2 protocol over stdin/stdout. A user package with a
+bundled ID replaces the built-in one and runs in its own process, but needs explicit enablement for
+its source path. Packages can publish catalogs, answer queries, declare settings, and handle their own
+callbacks. API 1 packages remain visible with an upgrade error.
+See [the API 2 protocol and examples](docs/query-plugins.md).
 
-For independent Calendar replacement, run `make calendar-plugin`, copy `build/plugins/calendar/`
-to that user-plugin directory, then Reload and enable it. The host binary stays unchanged.
-`make reminders-plugin` does the same for Reminders, producing `build/plugins/reminders/`.
-This is a base query-plugin system; existing built-in features retain their current implementation.
-See [the Calendar plan](docs/calendar-plugin.md) and [the protocol](docs/query-plugins.md).
-
-The menu bar item offers Show, Settings…, Reload Config, Open Config, Open Log, Rescan Apps,
-the last failure (click to copy), and Launch at Login.
+On first launch, legacy configuration and application-support files are staged, validated, and migrated
+to `v2`. Original files stay intact. Migration errors offer Retry Migration in the status menu; a completed
+v2 configuration is never overwritten. See [migration details](docs/plugin-system-rework.md).
 
 ## Config
 
-`~/.config/odd-frog/config.toml` (created from a template on first launch, hot-reloaded on save):
+`~/.config/odd-frog/v2/config.toml` (created from a template on first launch, hot-reloaded on save):
 
 ```toml
 [general]
@@ -190,57 +185,15 @@ hotkey.
 
 ## Settings
 
-Menu bar → Settings…. The window has a sidebar with three panes: **General** (keyboard shortcut,
-launch at login, web search, window management, currency), **Script Folders**, and **Items**.
-Everything can also be edited in `~/.config/odd-frog/settings.toml`, which is hot-reloaded:
+Settings has General (hotkey and login), Items (catalog visibility and aliases), and Plugins.
+Plugin controls are generated from each manifest: booleans, strings, numbers, choices, and folder lists.
+Scripts owns folder/watch settings, Web owns its URL template, Calculator owns currency conversion,
+and Windows owns its cascade step. Invalid external settings edits retain the last valid settings.
 
-- **Hotkey**: click the recorder, press a combination. It is applied immediately and written
-  into `config.toml`.
-- **Launch at login**: available once the app lives in `/Applications` or `~/Applications`
-  (`make install`). macOS may ask you to approve it in System Settings → Login Items.
-
-- **Script folders**: every executable script in these folders becomes a launcher item. Raycast
-  script-command headers are honoured: `@raycast.title`, `@raycast.mode`, `@raycast.icon`,
-  `@raycast.packageName`, `@raycast.argument1`. Scripts without a header use their filename.
-  Compiled binaries and non-executable sources are skipped. "Watch folders" rescans on changes.
-- **Items**: every app, command, script and enabled Window action with an enabled checkbox and extra aliases.
-- **Web search**: the URL used for the "Search for …" fallback when nothing matches. Must
-  contain `{query}`. Defaults to `https://duckduckgo.com/?q={query}`.
-- **Currency**: on by default. Turning it off removes the currency row and stops every network
-  request; arithmetic and unit conversion keep working offline.
-- **Window management**: off by default, with no Accessibility checks while off. Turning it on
-  asks for Accessibility access; the helper shows the status and offers "Open System Settings"
-  when access is missing.
-
-```toml
-[scripts]
-folders = ["~/Projects/raycast-scripts"]
-watch = true
-
-[[items]]
-id = "/Applications/Xcode-Beta.app"
-enabled = false
-
-[[items]]
-id = "script:/Users/me/Projects/raycast-scripts/kill-port.sh"
-aliases = ["kp"]
-
-[search]
-url = "https://duckduckgo.com/?q={query}"
-
-[currency]
-enabled = true
-
-[window]
-enabled = true
-cascade_step = 32
-```
-
-`cascade_step` is the diagonal offset in points for Tidy Windows (16–120, default 32).
-Out-of-range values fall back to 32. This setting has no UI.
-
-Item ids are the app bundle path, `command:<name>` for config commands, `script:<path>`, and
-`window:place:<edge>:<numerator>-<denominator>`, `window:maximize`, or `window:tidy` for window actions.
+`~/.config/odd-frog/v2/settings.toml` is hot-reloaded. Plugin enable approvals include both ID and source;
+use the UI to enable a package. Each plugin entry can contain a `values` table with its declared settings.
+Item overrides use `plugin:<plugin-id>:<local-id>` identities. Configured command/link IDs remain stable
+when renamed in Manage Links.
 
 ### Links
 
@@ -261,7 +214,7 @@ Put `{query}` in a URL to insert what you type after the alias, for example `gh 
 the argument from the query after the command name: `kill 3000`, `kp 3000`.
 
 `examples/scripts/` holds ready-made script commands; add that folder (or a copy of a single
-script) under Settings → Script Folders to use them.
+script) under Settings → Plugins → Scripts to use them.
 
 - **Toggle Theme** switches macOS between light and dark. With no argument it flips the current
   appearance; `toggle theme light` and `toggle theme dark` set it directly. The new appearance is

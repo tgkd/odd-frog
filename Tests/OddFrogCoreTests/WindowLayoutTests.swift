@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 @testable import OddFrogCore
+import BundledFeatures
 
 struct WindowLayoutTests {
     private let visible = CGRect(x: 0, y: 25, width: 1000, height: 600)
@@ -72,12 +73,12 @@ struct WindowLayoutTests {
         let items = WindowAction.all.map { LauncherItem.window(WindowItem(action: $0)) }
         #expect(items.allSatisfy { $0.kindLabel == "Window" && !$0.acceptsArgument })
         var settings = Settings()
-        settings.setOverride(ItemOverride(id: "window:maximize", enabled: false))
-        settings.setOverride(ItemOverride(id: "window:tidy", aliases: ["cascade", "cascade"]))
+        settings.setOverride(ItemOverride(id: "plugin:windows:maximize", enabled: false))
+        settings.setOverride(ItemOverride(id: "plugin:windows:tidy", aliases: ["cascade", "cascade"]))
         let applied = settings.apply(to: items)
         #expect(applied.count == 9)
-        #expect(!applied.contains { $0.id == "window:maximize" })
+        #expect(!applied.contains { $0.id == "plugin:windows:maximize" })
         #expect(applied.last?.aliases == ["cascade"])
-        #expect(SearchEngine.search(query: "cascade", items: applied, weights: [:], maxResults: 8).first?.item.id == "window:tidy")
+        #expect(SearchEngine.search(query: "cascade", items: applied, weights: [:], maxResults: 8).first?.item.id == "plugin:windows:tidy")
     }
 }

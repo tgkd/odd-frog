@@ -43,7 +43,8 @@ public enum LinkEditor {
     // hand-edited settings stay byte-for-byte intact.
     public static func updating(_ text: String, original: CommandItem?, draft: LinkDraft?) throws -> String {
         let config = try ConfigParser.parse(text)
-        let replacement = try draft?.command()
+        var replacement = try draft?.command()
+        if let original { replacement?.stableID = original.stableID }
         var commands = config.commands
         var index: Int?
         if let original {
@@ -97,12 +98,13 @@ public enum LinkEditor {
 
     private static func serialized(_ command: CommandItem) throws -> String {
         struct Entry: Encodable {
+            let id: String
             let name: String
             let aliases: [String]
             let url: String
         }
         guard case .url(let url) = command.action else { return "" }
-        let value = Entry(name: command.name, aliases: command.aliases, url: URLTemplate.display(url))
+        let value = Entry(id: command.stableID, name: command.name, aliases: command.aliases, url: URLTemplate.display(url))
         return "[[commands]]\n" + (try TOMLEncoder().encode(value)) + "\n\n"
     }
 

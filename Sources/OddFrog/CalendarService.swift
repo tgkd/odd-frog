@@ -1,6 +1,7 @@
 import Foundation
 import EventKit
 import OddFrogPluginAPI
+import OddFrogHostServicesAPI
 
 /// EKObjects never leave this actor. Plugins receive plain, immutable event snapshots.
 actor CalendarService {
@@ -10,6 +11,7 @@ actor CalendarService {
     func invalidate() { cached = nil }
 
     func requestAccess() async throws -> Bool {
+        try Task.checkCancellation()
         cached = nil
         return try await withCheckedThrowingContinuation { continuation in
             store.requestFullAccessToEvents { granted, error in

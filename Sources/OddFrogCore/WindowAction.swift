@@ -34,6 +34,16 @@ public enum WindowAction: Sendable, Hashable {
     case maximize
     case tidy
 
+    public static func serviceAction(_ id: String) -> WindowAction? {
+        if id == "maximize" { return .maximize }
+        if id == "tidy" { return .tidy }
+        let fields = id.split(separator: ":")
+        guard fields.count == 3, fields[0] == "place", let edge = WindowEdge(rawValue: String(fields[1])) else { return nil }
+        let parts = fields[2].split(separator: "-")
+        guard parts.count == 2, let numerator = Int(parts[0]), let denominator = Int(parts[1]),
+              numerator > 0, denominator >= numerator, denominator <= 100 else { return nil }
+        return .place(edge, WindowFraction(numerator: numerator, denominator: denominator))
+    }
     public var id: String {
         switch self {
         case .place(let edge, let fraction): "window:place:\(edge.rawValue):\(fraction.slug)"
@@ -42,35 +52,6 @@ public enum WindowAction: Sendable, Hashable {
         }
     }
 
-    public var title: String {
-        switch self {
-        case .place(let edge, let fraction): "\(edge.rawValue.capitalized) \(fraction.label)"
-        case .maximize: "Maximize"
-        case .tidy: "Tidy Windows"
-        }
-    }
-
-    public var subtitle: String? {
-        switch self {
-        case .place, .maximize: nil
-        case .tidy: "Cascade every window on this screen"
-        }
-    }
-
-    public var kindLabel: String { "Window" }
-
-    public static let all: [WindowAction] = [
-        .place(.left, WindowFraction(numerator: 1, denominator: 2)),
-        .place(.right, WindowFraction(numerator: 1, denominator: 2)),
-        .place(.left, WindowFraction(numerator: 2, denominator: 3)),
-        .place(.right, WindowFraction(numerator: 2, denominator: 3)),
-        .place(.top, WindowFraction(numerator: 1, denominator: 2)),
-        .place(.bottom, WindowFraction(numerator: 1, denominator: 2)),
-        .place(.top, WindowFraction(numerator: 3, denominator: 4)),
-        .place(.bottom, WindowFraction(numerator: 3, denominator: 4)),
-        .maximize,
-        .tidy,
-    ]
 }
 
 public enum WindowLayout {

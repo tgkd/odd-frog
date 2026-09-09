@@ -9,9 +9,7 @@ enum LaunchOutcome: Sendable {
 
 @MainActor
 final class TerminalLauncher {
-    static let scratchDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("odd-frog", isDirectory: true)
-        .appendingPathComponent("tmp", isDirectory: true)
+    static let scratchDirectory = StoragePaths.support.appendingPathComponent("tmp", isDirectory: true)
 
     func launch(command: String, cwd: URL?, name: String, kind: TerminalKind, shell: String) async -> LaunchOutcome {
         let directory = cwd?.path ?? FileManager.default.homeDirectoryForCurrentUser.path

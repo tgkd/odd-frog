@@ -45,7 +45,7 @@ final class WindowManager {
             guard setFrame(WindowLayout.flipped(target, primaryHeight: primaryHeight), of: window) else {
                 return .failed("The app could not move or resize this window")
             }
-            Log.write("window: \(action.title) → \(target.integral)")
+            Log.write("window: \(action.id) → \(target.integral)")
             return .done
         }
         let windows = windows(on: screen, screens: screens, primaryHeight: primaryHeight).reversed()

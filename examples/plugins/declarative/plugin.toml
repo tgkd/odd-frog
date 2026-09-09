@@ -1,0 +1,12 @@
+id = "example.docs"
+name = "Documentation"
+version = "1.0.0"
+api_version = 2
+mode = "declarative"
+[[commands]]
+id = "docs"
+title = "Open Swift Documentation"
+kind = "URL"
+aliases = ["swift docs"]
+history = true
+primary = { kind = "openURL", value = "https://www.swift.org/documentation/" }

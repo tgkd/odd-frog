@@ -2,7 +2,7 @@ import Foundation
 
 public enum URLTemplate {
     public static let placeholder = "{query}"
-    static let encoded = "%7Bquery%7D"
+    public static let encoded = "%7Bquery%7D"
 
     public static func accepts(_ url: URL) -> Bool {
         url.absoluteString.contains(encoded)

@@ -9,21 +9,24 @@ let package = Package(
     ],
     targets: [
         .target(name: "OddFrogPluginAPI"),
-        .target(name: "CalendarPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Calendar/Sources/CalendarPluginCore"),
-        .executableTarget(name: "OddFrogCalendar", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Sources/OddFrogCalendar"),
-        .target(name: "RemindersPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Reminders/Sources/RemindersPluginCore"),
-        .executableTarget(name: "OddFrogReminders", dependencies: ["RemindersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Reminders/Sources/OddFrogReminders"),
+        .executableTarget(name: "OddFrogPackage", dependencies: ["OddFrogCore"]),
+        .target(name: "OddFrogHostServicesAPI"),
+        .target(name: "BundledFeatures", dependencies: ["OddFrogCore", "OddFrogPluginAPI"], path: "Plugins/Shared/Sources/BundledFeatures"),
+        .target(name: "CalendarPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Calendar/Sources/CalendarPluginCore"),
+        .target(name: "RemindersPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Reminders/Sources/RemindersPluginCore"),
+        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
             dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
         ),
         .executableTarget(
             name: "OddFrog",
-            dependencies: ["OddFrogCore"]
+            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "OddFrogBuiltins"]
         ),
+        .testTarget(name: "BundledFeatureTests", dependencies: ["BundledFeatures", "OddFrogCore"], path: "Plugins/Shared/Tests", resources: [.copy("Fixtures")]),
         .testTarget(
             name: "OddFrogCoreTests",
-            dependencies: ["OddFrogCore"],
+            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "BundledFeatures", "OddFrogBuiltins"],
             resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "CalendarPluginTests", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Tests"),

@@ -1,7 +1,8 @@
 id = "reminders"
 name = "Reminders"
 version = "0.1.0"
-api_version = 1
-executable = "OddFrogReminders"
+api_version = 2
 keyword = "rem"
-services = ["reminders.items"]
+mode = "persistent"
+activation = "exclusive"
+capabilities = ["reminders.read@1", "reminders.access@1", "reminders.complete@1", "reminders.create@1"]

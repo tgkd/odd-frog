@@ -37,7 +37,7 @@ public final class DirectoryWatcher: @unchecked Sendable {
     private func makeSource(path: String) -> DispatchSourceFileSystemObject? {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete, .revoke, .attrib, .extend], queue: queue)
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete, .revoke, .extend], queue: queue)
         source.setEventHandler { [weak self] in self?.fire(path: path) }
         source.setCancelHandler { close(fd) }
         source.resume()

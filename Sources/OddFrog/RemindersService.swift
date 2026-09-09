@@ -1,6 +1,7 @@
 import Foundation
 import EventKit
 import OddFrogPluginAPI
+import OddFrogHostServicesAPI
 
 actor RemindersService {
     private lazy var store = EKEventStore()
@@ -9,6 +10,7 @@ actor RemindersService {
     func invalidate() { cached = nil }
 
     func requestAccess() async throws -> Bool {
+        try Task.checkCancellation()
         cached = nil
         return try await withCheckedThrowingContinuation { continuation in
             store.requestFullAccessToReminders { granted, error in
@@ -47,6 +49,7 @@ actor RemindersService {
     }
 
     func complete(id: String) throws -> String {
+        try Task.checkCancellation()
         try requireAccess()
         guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder, !reminder.isCompleted else {
             throw RemindersServiceError.notFound
@@ -59,6 +62,7 @@ actor RemindersService {
     }
 
     func create(title: String) throws -> String {
+        try Task.checkCancellation()
         try requireAccess()
         guard let list = store.defaultCalendarForNewReminders() else { throw RemindersServiceError.noDefaultList }
         let reminder = EKReminder(eventStore: store)

@@ -32,18 +32,12 @@ public enum SearchEngine {
         query: String,
         items: [LauncherItem],
         weights: [String: Double],
-        maxResults: Int,
-        searchTemplate: String? = nil,
-        rates: CurrencyRates? = nil
+        maxResults: Int
     ) -> [RankedItem] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             return recent(items: items, weights: weights, maxResults: maxResults)
         }
-        if trimmed.hasPrefix(">") {
-            return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
-        }
-        let calculation = QuickAction.calculation(for: trimmed, rates: rates)
         var ranked: [RankedItem] = []
         ranked.reserveCapacity(items.count)
         for item in items {
@@ -68,20 +62,7 @@ public enum SearchEngine {
             }
         }
         ranked.sort(by: order)
-        if let calculation {
-            let row = RankedItem(item: .quick(calculation), lexical: 0, weight: 0, exactAlias: false)
-            return [row] + ranked.prefix(max(0, maxResults - 1))
-        }
-        guard !ranked.isEmpty else {
-            return fallbackResults(for: trimmed, searchTemplate: searchTemplate, maxResults: maxResults)
-        }
         return Array(ranked.prefix(maxResults))
-    }
-
-    static func fallbackResults(for query: String, searchTemplate: String?, maxResults: Int) -> [RankedItem] {
-        let actions = QuickAction.fallbacks(for: query, searchTemplate: searchTemplate)
-            .map { RankedItem(item: .quick($0), lexical: 0, weight: 0, exactAlias: false) }
-        return Array(actions.prefix(maxResults))
     }
 
     static func match(query: String, item: LauncherItem) -> (lexical: Double, exact: Bool)? {

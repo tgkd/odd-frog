@@ -1,80 +1,261 @@
 import AppKit
 import OddFrogCore
+import OddFrogPluginAPI
 
 @MainActor
 final class PluginsPane: NSView {
     var onToggle: ((String, Bool) -> Void)?
     var onReload: (() -> Void)?
-    private let stack = NSStackView()
-    private var ids: [String] = []
+    var onSetting: ((String, String, JSONValue) -> Void)?
+    var onManageLinks: (() -> Void)?
+
+    private let scroll = NSScrollView()
+    private let content = NSStackView()
+    private let helper = SettingsLayout.helper("Local packages are trusted code. Enable user packages explicitly; changes to a package restart its providers.")
+    private let message = SettingsLayout.helper()
+    private var bindings: [SettingBinding] = []
+    private var lastPackages: [PluginPackage] = []
+    private var lastSettings: [PluginSetting] = []
+    private var lastFailures: [String: String] = [:]
+    private var lastErrors: [String] = []
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 12
+        content.distribution = .fill
+        content.translatesAutoresizingMaskIntoConstraints = false
+
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(content)
+        scroll.documentView = document
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        helper.lineBreakMode = .byTruncatingTail
+        helper.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        message.textColor = .systemRed
+        message.isHidden = true
         let reload = NSButton(title: "Reload Plugins", target: self, action: #selector(reloadPlugins))
         reload.bezelStyle = .rounded
-        let helper = NSTextField(wrappingLabelWithString: "Enable a plugin, then type its keyword in the launcher. Calendar and Reminders permission is requested when you choose the Allow access row.")
-        helper.textColor = .secondaryLabelColor
-        helper.font = .systemFont(ofSize: 12)
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 16
-        scroll.documentView = stack
-        for view in [reload, helper, scroll] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
-        }
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        reload.controlSize = .regular
+        reload.font = .systemFont(ofSize: 13)
+        reload.setContentCompressionResistancePriority(.required, for: .horizontal)
+        reload.setContentHuggingPriority(.required, for: .horizontal)
+        let footer = NSStackView(views: [helper, reload])
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.distribution = .fill
+        footer.spacing = 12
+        footer.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(scroll)
+        addSubview(message)
+        addSubview(footer)
         NSLayoutConstraint.activate([
-            reload.topAnchor.constraint(equalTo: topAnchor),
-            reload.leadingAnchor.constraint(equalTo: leadingAnchor),
-            helper.topAnchor.constraint(equalTo: reload.bottomAnchor, constant: 12),
-            helper.leadingAnchor.constraint(equalTo: leadingAnchor),
-            helper.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: helper.bottomAnchor, constant: 20),
+            scroll.topAnchor.constraint(equalTo: topAnchor),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            content.topAnchor.constraint(equalTo: document.topAnchor),
+            content.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -2),
+            content.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -12),
+            message.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
+            message.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            message.trailingAnchor.constraint(equalTo: trailingAnchor),
+            footer.topAnchor.constraint(equalTo: message.bottomAnchor, constant: 8),
+            footer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            footer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
     required init?(coder: NSCoder) { nil }
 
     func update(packages: [PluginPackage], settings: [PluginSetting], failures: [String: String], errors: [String]) {
-        for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
-        ids = packages.map { $0.manifest.id }
-        for (index, package) in packages.enumerated() {
-            let enabled = package.isEnabled(settings: settings)
-            let button = NSButton(checkboxWithTitle: package.manifest.name, target: self, action: #selector(toggled(_:)))
-            button.tag = index
-            button.state = enabled ? .on : .off
-            stack.addArrangedSubview(button)
-            let source = package.bundled ? "Bundled" : "User installed"
-            let state = enabled ? (failures[package.manifest.id] ?? "Ready") : "Disabled"
-            let text = "\(package.manifest.keyword) · \(source) · \(state)"
-            addLabel(text, error: enabled && failures[package.manifest.id] != nil)
+        guard packages != lastPackages || settings != lastSettings || failures != lastFailures || errors != lastErrors else { return }
+        lastPackages = packages
+        lastSettings = settings
+        lastFailures = failures
+        lastErrors = errors
+        for view in content.arrangedSubviews {
+            content.removeArrangedSubview(view)
+            view.removeFromSuperview()
         }
-        for error in errors { addLabel(error, error: true) }
-        if packages.isEmpty, errors.isEmpty { addLabel("No plugins found. Build the app bundle to include bundled plugins.", error: false) }
+        bindings = []
+        message.isHidden = true
+
+        var sections: [NSView] = []
+        let bundled = packages.filter(\.bundled)
+        let installed = packages.filter { !$0.bundled }
+        if !installed.isEmpty, !bundled.isEmpty { sections.append(SettingsLayout.sectionHeader("Bundled")) }
+        sections += bundled.map { box(for: $0, settings: settings, failures: failures) }
+        if !installed.isEmpty {
+            sections.append(SettingsLayout.sectionHeader("Installed"))
+            sections += installed.map { box(for: $0, settings: settings, failures: failures) }
+        }
+        if packages.isEmpty, errors.isEmpty {
+            sections.append(SettingsLayout.helper("No plugins found. Build the app bundle to include bundled plugins."))
+        }
+        for error in errors {
+            let label = NSTextField(wrappingLabelWithString: error)
+            SettingsLayout.style(helper: label)
+            label.lineBreakMode = .byWordWrapping
+            label.textColor = .systemRed
+            sections.append(label)
+        }
+        for view in sections {
+            content.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        }
     }
 
-    private func addLabel(_ text: String, error: Bool) {
-        let label = NSTextField(wrappingLabelWithString: text)
-        label.font = .systemFont(ofSize: 12)
-        label.textColor = error ? .systemRed : .secondaryLabelColor
-        stack.addArrangedSubview(label)
-        label.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20).isActive = true
+    private func box(for package: PluginPackage, settings: [PluginSetting], failures: [String: String]) -> NSView {
+        let manifest = package.manifest
+        let enabled = package.isEnabled(settings: settings)
+        let failure = failures[manifest.id]
+        let toggle = SettingBinding { [weak self] value in self?.onToggle?(manifest.id, value.bool ?? false) }
+        bindings.append(toggle)
+        let control = SettingsLayout.smallSwitch(target: toggle, action: #selector(SettingBinding.flip(_:)))
+        control.state = enabled ? .on : .off
+        let state = failure ?? (enabled ? "Ready" : "Off")
+        let source = package.bundled ? "Bundled" : LauncherItem.abbreviate(package.directory.path)
+        let status = SettingsLayout.helper("\(manifest.version) · \(source) · \(state)")
+        if failure != nil { status.textColor = .systemRed }
+        var rows: [NSView] = [SettingsLayout.settingRow(title: manifest.name, subtitle: status, control: control)]
+
+        let values = package.setting(in: settings)?.values ?? [:]
+        for definition in manifest.settings {
+            rows.append(SettingsLayout.hairline())
+            rows.append(row(for: definition, value: values[definition.key] ?? definition.defaultValue, package: package))
+        }
+        if enabled, failure == nil, manifest.capabilities.contains("links.manage@1") {
+            let button = SettingsLayout.smallButton("Manage Links…", target: self, action: #selector(manageLinks))
+            rows.append(SettingsLayout.hairline())
+            rows.append(SettingsLayout.settingRow(title: "Links", subtitle: SettingsLayout.helper("Add, edit and remove URL commands."), control: button))
+        }
+        return SettingsLayout.groupedBox(rows)
     }
 
-    @objc private func toggled(_ sender: NSButton) {
-        guard ids.indices.contains(sender.tag) else { return }
-        onToggle?(ids[sender.tag], sender.state == .on)
+    private func row(for definition: PluginSettingDefinition, value: JSONValue, package: PluginPackage) -> NSView {
+        let binding = SettingBinding { [weak self] value in
+            guard let self else { return }
+            do {
+                try definition.validate(value)
+                message.isHidden = true
+                onSetting?(package.manifest.id, definition.key, value)
+            } catch {
+                message.stringValue = "\(package.manifest.name): \(error)"
+                message.isHidden = false
+            }
+        }
+        binding.kind = definition.type
+        bindings.append(binding)
+        let subtitle = SettingsLayout.helper()
+        let control: NSView
+        switch definition.type {
+        case .boolean:
+            let field = SettingsLayout.smallSwitch(target: binding, action: #selector(SettingBinding.flip(_:)))
+            field.state = value.bool == true ? .on : .off
+            control = field
+        case .choice:
+            let field = NSPopUpButton()
+            field.controlSize = .small
+            field.font = .systemFont(ofSize: 11)
+            field.addItems(withTitles: definition.choices ?? [])
+            field.selectItem(withTitle: value.string ?? "")
+            field.target = binding
+            field.action = #selector(SettingBinding.choose(_:))
+            control = field
+        case .folders:
+            binding.folders = (value.array ?? []).compactMap(\.string)
+            subtitle.stringValue = binding.folders.isEmpty ? "No folders yet." : binding.folders.map(LauncherItem.abbreviate).joined(separator: "\n")
+            let add = SettingsLayout.smallButton("Add…", target: binding, action: #selector(SettingBinding.addFolders(_:)))
+            let clear = SettingsLayout.smallButton("Clear", target: binding, action: #selector(SettingBinding.clearFolders))
+            clear.isEnabled = !binding.folders.isEmpty
+            let buttons = NSStackView(views: [add, clear])
+            buttons.orientation = .horizontal
+            buttons.spacing = 6
+            control = buttons
+        case .string, .number:
+            let field = NSTextField()
+            field.bezelStyle = .roundedBezel
+            field.usesSingleLineMode = true
+            field.lineBreakMode = .byTruncatingTail
+            field.font = .systemFont(ofSize: 13)
+            field.placeholderString = definition.defaultValue.string ?? definition.defaultValue.number.map { Self.format($0) } ?? ""
+            field.stringValue = value.string ?? value.number.map { Self.format($0) } ?? ""
+            field.delegate = binding
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: definition.type == .number ? 90 : 290).isActive = true
+            if definition.type == .number, let minimum = definition.minimum, let maximum = definition.maximum {
+                subtitle.stringValue = "\(Self.format(minimum)) – \(Self.format(maximum))"
+            }
+            control = field
+        }
+        return SettingsLayout.settingRow(title: definition.title, subtitle: subtitle, control: control)
+    }
+
+    private static func format(_ number: Double) -> String {
+        number == number.rounded() ? String(Int(number)) : String(number)
     }
 
     @objc private func reloadPlugins() { onReload?() }
+    @objc private func manageLinks() { onManageLinks?() }
+}
+
+@MainActor
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+@MainActor
+private final class SettingBinding: NSObject, NSTextFieldDelegate {
+    var kind = PluginSettingDefinition.Kind.string
+    var folders: [String] = []
+    let commit: (JSONValue) -> Void
+
+    init(_ commit: @escaping (JSONValue) -> Void) { self.commit = commit }
+
+    @objc func flip(_ control: NSSwitch) { commit(.bool(control.state == .on)) }
+    @objc func choose(_ button: NSPopUpButton) { commit(.string(button.titleOfSelectedItem ?? "")) }
+
+    @objc func addFolders(_ sender: NSButton) {
+        guard let window = sender.window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK else { return }
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            var seen = Set(folders)
+            for url in panel.urls {
+                var path = url.path
+                if path.hasPrefix(home) { path = "~" + path.dropFirst(home.count) }
+                if seen.insert(path).inserted { folders.append(path) }
+            }
+            commit(.array(folders.map(JSONValue.string)))
+        }
+    }
+
+    @objc func clearFolders() {
+        folders = []
+        commit(.array([]))
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        switch kind {
+        case .number: commit(Double(field.stringValue.trimmingCharacters(in: .whitespaces)).map(JSONValue.number) ?? .null)
+        default: commit(.string(field.stringValue))
+        }
+    }
 }

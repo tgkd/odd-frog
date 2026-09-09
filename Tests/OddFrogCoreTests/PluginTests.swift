@@ -4,217 +4,244 @@ import OddFrogPluginAPI
 @testable import OddFrogCore
 
 struct PluginTests {
-    private func manifest(id: String = "fixture", keyword: String = "fixture", service: String? = nil) -> String {
-        """
-        id = "\(id)"
-        name = "Fixture"
-        version = "1.0.0"
-        api_version = 1
-        executable = "provider"
-        keyword = "\(keyword)"
-        services = \(service.map { "[\"\($0)\"]" } ?? "[]")
-        """
+    func temp() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("odd-frog-api2-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); return root
     }
-
-    private func temp() throws -> URL {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("odd-frog-plugin-test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }
-
-    private func fixture(in root: URL, source: String) throws -> URL {
+    func fixture(_ root: URL, source: String) throws -> URL {
         let url = root.appendingPathComponent("provider")
         try ("#!/usr/bin/python3\n" + source + "\n").write(to: url, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-        return url
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path); return url
     }
-
-    @Test func discoveryOverridesBundledDefaultsAndRejectsDuplicates() throws {
-        let root = try temp()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let shipped = root.appendingPathComponent("bundled")
-        let user = root.appendingPathComponent("user")
-        for parent in [shipped, user] {
-            let folder = parent.appendingPathComponent("one")
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try manifest().write(to: folder.appendingPathComponent("plugin.toml"), atomically: true, encoding: .utf8)
-            _ = try fixture(in: folder, source: "pass")
-        }
-        let bundled = PluginDiscovery.scan(bundled: shipped, user: root.appendingPathComponent("missing"))
-        #expect(bundled.packages[0].isEnabled(settings: []))
-        let override = PluginDiscovery.scan(bundled: shipped, user: user)
-        #expect(override.packages.count == 1)
-        #expect(!override.packages[0].bundled)
-        #expect(!override.packages[0].isEnabled(settings: []))
-        #expect(override.packages[0].isEnabled(settings: [PluginSetting(id: "fixture", enabled: true)]))
-        try FileManager.default.copyItem(at: user.appendingPathComponent("one"), to: user.appendingPathComponent("two"))
-        let ambiguous = PluginDiscovery.scan(bundled: nil, user: user)
-        #expect(ambiguous.packages.isEmpty)
-        #expect(ambiguous.errors.count == 1)
+    func manifest(id: String = "fixture", mode: String = "persistent", extra: String = "activation = \"live\"") throws -> PluginManifest {
+        try PluginManifest.parse("""
+        id = "\(id)"
+        name = "\(id)"
+        version = "2.0.0"
+        api_version = 2
+        mode = "\(mode)"
+        executable = "provider"
+        \(extra)
+        """)
     }
-
-    @Test func manifestValidationAndKeywordBoundaries() throws {
-        #expect(throws: (any Error).self) { try PluginManifest.parse(manifest().replacingOccurrences(of: "api_version = 1", with: "api_version = 99")) }
-        #expect(throws: (any Error).self) { try PluginManifest.parse(manifest().replacingOccurrences(of: "\"provider\"", with: "\"../provider\"")) }
-        let package = PluginPackage(manifest: try PluginManifest.parse(manifest(keyword: "cal")), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        #expect(package.query(from: " CAL tomorrow ") == "tomorrow")
-        #expect(package.query(from: "calendar") == nil)
-        #expect(package.query(from: "calculate") == nil)
-        #expect(package.query(from: "> cal") == nil)
-        let settings = Settings(plugins: [PluginSetting(id: "fixture", enabled: false)])
+    private var echo: String { """
+    import json,sys,os,time,threading
+    lock=threading.Lock()
+    def send(v):
+      with lock: print(json.dumps(dict(apiVersion=2,**v)),flush=True)
+    def run(r):
+      m=r['method']; p=r.get('params',{}); q=p.get('input',{}).get('query','')
+      if m=='initialize': result={'apiVersion':2}
+      elif m=='catalog': result=[{'id':'catalog','title':'Catalog Item','history':True,'aliases':['2+2'],'primary':{'kind':'callback','value':'do'}}]
+      elif m=='activate': result={'notification':p['input'].get('argument','done'),'refreshCatalog':False,'refreshQuery':False}
+      else:
+        if q=='old': time.sleep(.5)
+        if q=='empty': result=[]
+        elif q=='error': send({'id':r['id'],'error':{'code':'query','message':'Try another query'}}); return
+        else: result=[{'id':'answer','title':q or 'answer','history':True,'primary':{'kind':'copy','value':'ok'}}]
+      send({'id':r['id'],'result':result})
+    for line in sys.stdin:
+      r=json.loads(line)
+      if r.get('method')=='shutdown': break
+      if 'id' in r: threading.Thread(target=run,args=(r,),daemon=True).start()
+    """ }
+    @Test func manifestsValidateSettingsAndRetainIncompatiblePackages() throws {
+        let m = try manifest(extra: """
+        [[settings]]
+        key = "count"
+        title = "Count"
+        type = "number"
+        default = 2
+        minimum = 1
+        maximum = 5
+        """)
+        #expect(try m.validatedSettings([:])["count"] == .number(2))
+        #expect(throws: (any Error).self) { try m.validatedSettings(["count": .number(0)]) }
+        #expect(throws: (any Error).self) { try m.validatedSettings(["count": .string("bad")]) }
+        #expect(throws: (any Error).self) { try manifest(extra: "activation = \"exclusive\"") }
+        let old = try PluginManifest.parse("id='old'\nname='Old'\nversion='1'\napi_version=1\nexecutable='old'\nkeyword='old'")
+        #expect(old.apiVersion == 1)
+    }
+    @Test func enablementIsBoundToActualSource() throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let m = try manifest()
+        let bundled = PluginPackage(manifest: m, directory: root.appendingPathComponent("bundled"), bundled: true)
+        let user = PluginPackage(manifest: m, directory: root.appendingPathComponent("user"), bundled: false)
+        #expect(bundled.isEnabled(settings: [])); #expect(!user.isEnabled(settings: []))
+        #expect(!user.isEnabled(settings: [PluginSetting(id: m.id, enabled: true, source: bundled.source)]))
+        #expect(user.isEnabled(settings: [PluginSetting(id: m.id, enabled: true, source: user.source)]))
+        let settings = Settings(plugins: [PluginSetting(id: m.id, enabled: true, source: user.source, values: ["text": .string("hi")])])
         #expect(try Settings.parse(settings.serialized()) == settings)
-        #expect(try Settings.parse("").plugins.isEmpty)
     }
-
-    @Test func realProcessExchangesJSONAndRejectsInvalidResponses() async throws {
-        let root = try temp()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let request = PluginRequest(query: "hello", fullQuery: "fixture hello")
-        let valid = "import json, sys\nr = json.load(sys.stdin)\njson.dump({'apiVersion': 1, 'id': r['id'], 'items': [{'id': 'one', 'title': r['query']}]}, sys.stdout)"
-        let executable = try fixture(in: root, source: valid)
-        let response = try await PluginProcess.exchange(executable: executable, request: request)
-        #expect(response.items.first?.title == "hello")
-        for source in ["print('not json')", "import sys; sys.exit(7)", valid.replacingOccurrences(of: "'apiVersion': 1", with: "'apiVersion': 2"), valid.replacingOccurrences(of: "r['id']", with: "'wrong'")] {
-            _ = try fixture(in: root, source: source)
-            await #expect(throws: (any Error).self) { try await PluginProcess.exchange(executable: executable, request: request) }
+    @Test(arguments: [false, true]) func bothRuntimesExchangeCallbacksAndRecoverableErrors(persistent: Bool) async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let process = PluginProcess(executable: try fixture(root, source: echo), persistent: persistent)
+        let initResult = try await process.request("initialize")
+        #expect(initResult["apiVersion"] == .number(2))
+        for query in ["hello", "error", "again"] {
+            let input: JSONValue = .object(["input": .object(["query": .string(query)])])
+            if query == "error" { await #expect(throws: RPCError.self) { try await process.request("query", params: input) } }
+            else { #expect(try await process.request("query", params: input).array?.first?["title"].string == query) }
         }
+        let effects = try await process.request("activate", params: .object(["input": .object(["argument": .string("callback argument")])]), timeout: nil)
+        #expect(effects["notification"] == .string("callback argument"))
+        await process.stop()
     }
-
-    @Test func timeoutOversizedOutputAndCancellationStopRealProcesses() async throws {
-        let root = try temp()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let request = PluginRequest(query: "", fullQuery: "fixture")
-        let executable = try fixture(in: root, source: "import time; time.sleep(30)")
-        await #expect(throws: (any Error).self) { try await PluginProcess.exchange(executable: executable, request: request, timeout: .milliseconds(100)) }
-        let task = Task { try await PluginProcess.exchange(executable: executable, request: request) }
-        try await Task.sleep(for: .milliseconds(50))
-        task.cancel()
+    @Test(arguments: [false, true]) func correlatedServicesWorkInBothRuntimes(persistent: Bool) async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = """
+        import json,sys
+        r=json.loads(sys.stdin.readline())
+        print(json.dumps({'apiVersion':2,'id':'service','method':'host.service','params':{'requestID':r['id'],'capability':'fixture.read@1','params':{'value':'from plugin'}}}),flush=True)
+        reply=json.loads(sys.stdin.readline())
+        print(json.dumps({'apiVersion':2,'id':r['id'],'result':reply['result']}),flush=True)
+        for line in sys.stdin: pass
+        """
+        let process = PluginProcess(executable: try fixture(root, source: source), persistent: persistent)
+        let value = try await process.request("query") { capability, params in
+            #expect(capability == "fixture.read@1"); return params["value"]
+        }
+        #expect(value == .string("from plugin")); await process.stop()
+    }
+    @Test func malformedOversizedCrashTimeoutAndCancellation() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        for source in ["print('bad',flush=True)", "print('x'*(4*1024*1024+1),flush=True)", "import sys; sys.exit(7)", "import time; time.sleep(30)", "print('{\"apiVersion\":2,\"id\":\"wrong\",\"result\":[]}',flush=True)"] {
+            let process = PluginProcess(executable: try fixture(root, source: source), persistent: true)
+            await #expect(throws: RPCError.self) { try await process.request("query", timeout: .milliseconds(200)) }
+            // Protocol failures are latched until a fresh runtime is created by Reload.
+            await #expect(throws: RPCError.self) { try await process.request("query") }; await process.stop()
+        }
+        let process = PluginProcess(executable: try fixture(root, source: echo), persistent: true)
+        let task = Task { try await process.request("query", params: .object(["input": .object(["query": .string("old")])])) }
+        try await Task.sleep(for: .milliseconds(100)); task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        _ = try fixture(in: root, source: "import sys; sys.stdout.write('x' * (4 * 1024 * 1024 + 1))")
-        await #expect(throws: (any Error).self) { try await PluginProcess.exchange(executable: executable, request: request) }
+        #expect(try await process.request("query", params: .object(["input": .object(["query": .string("new")])])).array?.first?["title"] == .string("new"))
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(try await process.request("initialize")["apiVersion"] == .number(2)); await process.stop()
     }
-
-    @Test @MainActor func coordinatorRejectsUndeclaredServicesAndReloadClearsFailure() async throws {
-        let package = PluginPackage(manifest: try PluginManifest.parse(manifest()), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        let coordinator = PluginCoordinator(readCalendar: { _ in
-            Issue.record("Undeclared calendar service must not be called")
-            return CalendarSnapshot(access: .fullAccess)
-        }, readReminders: { _ in
-            Issue.record("Undeclared reminders service must not be called")
-            return RemindersSnapshot(access: .fullAccess)
-        }, exchange: { _, request in
-            PluginResponse(id: request.id, calendarRequest: CalendarRange(start: request.now, end: request.now.addingTimeInterval(3600)))
-        })
-        let discovery = PluginDiscovery(packages: [package], errors: [])
-        coordinator.reload(discovery: discovery, settings: [])
-        #expect(coordinator.query("fixture", maxResults: 8)?.first?.item.primary == nil)
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(coordinator.failures["fixture"]?.contains("undeclared") == true)
-        coordinator.reload(discovery: discovery, settings: [PluginSetting(id: "fixture", enabled: false)])
-        #expect(coordinator.failures.isEmpty)
-        #expect(coordinator.query("fixture", maxResults: 8) == nil)
+    @Test func stopKillsDescendantsAfterLeaderExit() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = """
+        import subprocess,os,time
+        child=subprocess.Popen(['/bin/sleep','30'])
+        open('child.pid','w').write(str(child.pid))
+        time.sleep(.1)
+        os._exit(0)
+        """
+        let process = PluginProcess(executable: try fixture(root, source: source), persistent: true)
+        await #expect(throws: RPCError.self) { try await process.request("query") }
+        let pid = try #require(Int32(String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)))
+        await process.stop()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(kill(pid, 0) != 0)
     }
-
-    @Test @MainActor func staleQueriesCannotReplaceCurrentResultsAndCloseClearsRows() async throws {
-        let package = PluginPackage(manifest: try PluginManifest.parse(manifest()), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        let coordinator = PluginCoordinator(readCalendar: { _ in CalendarSnapshot(access: .fullAccess) },
-                                            readReminders: { _ in RemindersSnapshot(access: .fullAccess) }, exchange: { _, request in
-            if request.operation == .prepare { return PluginResponse(id: request.id) }
-            if request.query == "old" { try? await Task.sleep(for: .seconds(1)) }
-            return PluginResponse(id: request.id, items: [PluginItem(id: request.query, title: request.query)])
-        })
-        coordinator.reload(discovery: PluginDiscovery(packages: [package], errors: []), settings: [])
-        _ = coordinator.query("fixture old", maxResults: 8)
+    @Test @MainActor func registryEnforcesDeclarationAndUserActivation() async throws {
+        let registry = HostServiceRegistry()
+        registry.register("write@1", activationRequired: true) { _, _ in .bool(true) }
+        let passive = HostServiceRegistry.Context(pluginID: "fixture", generation: UUID(), activated: false)
+        await #expect(throws: RPCError.self) { try await registry.invoke("write@1", params: .null, context: passive, declared: ["write@1"]) }
+        let active = HostServiceRegistry.Context(pluginID: "fixture", generation: UUID(), activated: true)
+        await #expect(throws: RPCError.self) { try await registry.invoke("write@1", params: .null, context: active, declared: []) }
+        #expect(try await registry.invoke("write@1", params: .null, context: active, declared: ["write@1"]) == .bool(true))
+    }
+    @Test @MainActor func coordinatorCatalogLiveFallbackGenerationsAndDisable() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let package = PluginPackage(manifest: try manifest(extra: "catalog = true\nactivation = 'live'"), directory: root, bundled: true)
+        let fallback = PluginPackage(manifest: try manifest(id: "fallback", extra: "activation = 'fallback'"), directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        let discovery = PluginDiscovery(packages: [package, fallback])
+        coordinator.reload(discovery: discovery, settings: [], storage: root)
+        defer { coordinator.stop() }
+        try await waitUntil { coordinator.catalogItems.count == 1 }
+        let catalog = try #require(coordinator.catalogItems.first)
+        #expect(catalog.aliases == ["2+2"])
+        let cached = coordinator.search("2+2", items: coordinator.catalogItems, weights: [:], maxResults: 8)
+        #expect(cached.first?.item.title == "Catalog Item")
+        try await waitUntil { coordinator.search("2+2", items: coordinator.catalogItems, weights: [:], maxResults: 8).count == 2 }
+        let merged = coordinator.search("2+2", items: coordinator.catalogItems, weights: [:], maxResults: 8)
+        #expect(merged.map(\.item.title) == ["2+2", "Catalog Item"])
+        guard case .plugin(let live) = merged[0].item, case .plugin(let saved) = merged[1].item else { Issue.record("Expected plugin rows"); return }
+        #expect(!live.historyEligible); #expect(saved.historyEligible)
+        _ = coordinator.search("old", items: [], weights: [:], maxResults: 8)
         try await Task.sleep(for: .milliseconds(150))
-        _ = coordinator.query("fixture new", maxResults: 8)
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(coordinator.query("fixture new", maxResults: 8)?.first?.item.title == "new")
-        #expect(coordinator.failures.isEmpty)
-        coordinator.invalidate()
-        #expect(coordinator.query("fixture new", maxResults: 8)?.first?.item.title == "new")
-        coordinator.cancel()
-        #expect(coordinator.query("", maxResults: 8) == nil)
+        _ = coordinator.search("new", items: [], weights: [:], maxResults: 8)
+        try await waitUntil { coordinator.search("new", items: [], weights: [:], maxResults: 8).first?.item.title == "new" }
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(coordinator.search("new", items: [], weights: [:], maxResults: 8).first?.item.title == "new")
+        coordinator.cancel(); #expect(coordinator.catalogItems.count == 1)
+        coordinator.reload(discovery: discovery, settings: [PluginSetting(id: "fixture", enabled: false, source: package.source)], storage: root)
+        #expect(coordinator.catalogItems.isEmpty)
+        #expect(throws: (any Error).self) { try coordinator.authorize(saved, action: saved.item.primary!) }
+        #expect(coordinator.search("web", items: [], weights: [:], maxResults: 8).isEmpty)
+        try await waitUntil { coordinator.search("web", items: [], weights: [:], maxResults: 8).first?.item.title == "web" }
     }
-
-    @Test @MainActor func hostServiceRangeActionAndKeywordValidation() throws {
-        let now = Date()
-        #expect(!CalendarRange(start: now, end: now).isValid(relativeTo: now))
-        #expect(!CalendarRange(start: now, end: now.addingTimeInterval(40 * 86400)).isValid(relativeTo: now))
-        #expect(!CalendarRange(start: now.addingTimeInterval(-3 * 86400), end: now).isValid(relativeTo: now))
-        #expect(!RemindersScope(limit: 0).isValid())
-        #expect(!RemindersScope(limit: 2001).isValid())
-        #expect(RemindersScope(limit: 2000).isValid())
-        let plain = PluginPackage(manifest: try PluginManifest.parse(manifest()), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        let calendar = PluginPackage(manifest: try PluginManifest.parse(manifest(id: "calendar", service: "calendar.events")), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        let reminders = PluginPackage(manifest: try PluginManifest.parse(manifest(id: "reminders", keyword: "rem", service: "reminders.items")), directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        #expect(throws: (any Error).self) { try PluginManifest.parse(manifest(service: "nope")) }
-        let coordinator = PluginCoordinator(readCalendar: { _ in CalendarSnapshot(access: .fullAccess) },
-                                            readReminders: { _ in RemindersSnapshot(access: .fullAccess) },
-                                            exchange: { _, request in PluginResponse(id: request.id) })
-        coordinator.reload(discovery: PluginDiscovery(packages: [plain, calendar], errors: []), settings: [])
-        #expect(coordinator.failures.count == 2)
-        coordinator.reload(discovery: PluginDiscovery(packages: [calendar, reminders], errors: []), settings: [])
-        try coordinator.authorize(PluginAction(.requestCalendarAccess), pluginID: "calendar")
-        try coordinator.authorize(PluginAction(.requestRemindersAccess), pluginID: "reminders")
-        try coordinator.authorize(PluginAction(.completeReminder, "item-id"), pluginID: "reminders")
-        try coordinator.authorize(PluginAction(.createReminder, "Buy milk"), pluginID: "reminders")
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.completeReminder), pluginID: "reminders") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.createReminder, "   "), pluginID: "reminders") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.createReminder, String(repeating: "x", count: 501)), pluginID: "reminders") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.completeReminder, "item-id"), pluginID: "calendar") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.createReminder, "Buy milk"), pluginID: "calendar") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.requestRemindersAccess), pluginID: "calendar") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.requestCalendarAccess), pluginID: "reminders") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.openURL, "file:///etc/passwd"), pluginID: "calendar") }
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.openURL, "javascript:alert(1)"), pluginID: "calendar") }
-        coordinator.reload(discovery: PluginDiscovery(packages: [plain], errors: []), settings: [])
-        #expect(throws: (any Error).self) { try coordinator.authorize(PluginAction(.requestCalendarAccess), pluginID: "fixture") }
-    }
-
-    @Test @MainActor func remindersServiceIsReadOnlyForDeclaringPackages() async throws {
-        let reminders = PluginPackage(manifest: try PluginManifest.parse(manifest(id: "reminders", keyword: "rem", service: "reminders.items")),
-                                      directory: URL(fileURLWithPath: "/tmp"), bundled: true)
-        let scopes = Locked<[RemindersScope]>([])
-        func coordinator(limit: Int) -> PluginCoordinator {
-            PluginCoordinator(readCalendar: { _ in CalendarSnapshot(access: .fullAccess) }, readReminders: { scope in
-                scopes.mutate { $0.append(scope) }
-                return RemindersSnapshot(access: .fullAccess, reminders: [ReminderItem(id: "one", title: "Buy milk")])
-            }, exchange: { _, request in
-                if request.operation == .prepare { return PluginResponse(id: request.id, remindersRequest: RemindersScope(limit: limit)) }
-                return PluginResponse(id: request.id, items: (request.reminders?.reminders ?? []).map { PluginItem(id: $0.id, title: $0.title) })
-            })
+    @Test func blockedProviderInputStillHonorsDeadline() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let process = PluginProcess(executable: try fixture(root, source: "import time; time.sleep(30)"), persistent: true)
+        let before = ContinuousClock.now
+        await #expect(throws: RPCError.self) {
+            try await process.request("query", params: .string(String(repeating: "x", count: 2 * 1024 * 1024)), timeout: .milliseconds(200))
         }
-        let valid = coordinator(limit: 5)
-        valid.reload(discovery: PluginDiscovery(packages: [reminders], errors: []), settings: [])
-        _ = valid.query("rem", maxResults: 8)
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(valid.query("rem", maxResults: 8)?.first?.item.title == "Buy milk")
-        #expect(scopes.value == [RemindersScope(limit: 5)])
-        #expect(valid.failures.isEmpty)
-        let invalid = coordinator(limit: 0)
-        invalid.reload(discovery: PluginDiscovery(packages: [reminders], errors: []), settings: [])
-        _ = invalid.query("rem", maxResults: 8)
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(invalid.failures["reminders"]?.contains("invalid reminders scope") == true)
-        #expect(scopes.value == [RemindersScope(limit: 5)])
+        #expect(before.duration(to: .now) < .seconds(3))
+        await process.stop()
     }
-}
-
-private final class Locked<Value: Sendable>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: Value
-
-    init(_ value: Value) { stored = value }
-
-    var value: Value {
-        lock.lock()
-        defer { lock.unlock() }
-        return stored
+    @Test @MainActor func subscriptionsAreRemovedAndRevokedOnReload() async throws {
+        let registry = HostServiceRegistry()
+        let generation = UUID()
+        let context = HostServiceRegistry.Context(pluginID: "fixture", generation: generation, activated: false)
+        var invalidations = 0
+        registry.onInvalidation = { _ in invalidations += 1 }
+        registry.subscribe(context, to: "changes@1")
+        registry.subscribe(context, to: "changes@1")
+        #expect(registry.subscriptionCount == 1)
+        registry.invalidate("changes@1"); #expect(invalidations == 1)
+        registry.cancelSubscriptions(generation: generation)
+        registry.subscribe(context, to: "changes@1")
+        registry.invalidate("changes@1")
+        #expect(registry.subscriptionCount == 0); #expect(invalidations == 1)
     }
-
-    func mutate(_ change: (inout Value) -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        change(&stored)
+    @Test @MainActor func exclusiveTriggersSuppressCatalogsAndConflictsAreVisible() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let first = PluginPackage(manifest: try manifest(id: "one", extra: "activation = 'exclusive'\nprefix = '>'"), directory: root, bundled: true)
+        let conflicting = PluginPackage(manifest: try manifest(id: "two", extra: "activation = 'exclusive'\nprefix = '>>'"), directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [first, conflicting]), settings: [])
+        #expect(coordinator.failures.count == 2)
+        #expect(coordinator.search(">value", items: [], weights: [:], maxResults: 8).first?.item.title.contains("conflicts") == true)
+        coordinator.reload(discovery: PluginDiscovery(packages: [first]), settings: [])
+        let cached = LauncherItem.plugin(PluginResult(pluginID: "other", item: PluginItem(id: "match", title: ">value", history: true), catalog: true))
+        _ = coordinator.search(">value", items: [cached], weights: [:], maxResults: 8)
+        try await waitUntil { coordinator.search(">value", items: [cached], weights: [:], maxResults: 8).first?.item.title == "value" }
+        #expect(coordinator.search(">value", items: [cached], weights: [:], maxResults: 8).count == 1)
+    }
+    @Test func bundledPreferencesSurviveMovingTheAppButNeverApproveUserReplacements() throws {
+        let m = try manifest()
+        let bundled = PluginPackage(manifest: m, directory: URL(fileURLWithPath: "/Applications/OddFrog.app/Contents/Resources/Plugins/fixture"), bundled: true)
+        let values: [String: JSONValue] = ["count": .number(2)]
+        let previous = PluginSetting(id: "fixture", enabled: false, source: "bundled:/old/app/fixture", values: values)
+        #expect(!bundled.isEnabled(settings: [previous]))
+        #expect(bundled.setting(in: [previous])?.values == values)
+        let user = PluginPackage(manifest: m, directory: URL(fileURLWithPath: "/tmp/fixture"), bundled: false)
+        #expect(!user.isEnabled(settings: [PluginSetting(id: "fixture", enabled: true, source: bundled.source)]))
+    }
+    @Test func publishedEnvelopeFixturesRoundTrip() throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let text = try String(contentsOf: repository.appendingPathComponent("docs/api2/exchanges.ndjson"), encoding: .utf8)
+        for line in text.split(separator: "\n") {
+            let envelope = try PluginProtocol.decoder().decode(PluginEnvelope.self, from: Data(line.utf8))
+            try envelope.validate()
+            let copy = try PluginProtocol.decoder().decode(PluginEnvelope.self, from: PluginProtocol.encoder().encode(envelope))
+            #expect(copy.result == envelope.result)
+        }
+    }
+    @MainActor func waitUntil(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !condition() {
+            guard ContinuousClock.now < deadline else { throw RPCError("test", "Condition timed out.") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
     }
 }

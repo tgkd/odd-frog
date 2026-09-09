@@ -1,6 +1,8 @@
 import AppKit
 import OddFrogCore
+import OddFrogBuiltins
 import OddFrogPluginAPI
+import OddFrogHostServicesAPI
 import EventKit
 
 @MainActor
@@ -10,15 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var plugins = makePluginCoordinator()
 
     private func makePluginCoordinator() -> PluginCoordinator {
-        let calendar = calendarService
-        let reminders = remindersService
-        return PluginCoordinator(readCalendar: { range in
-            try await calendar.snapshot(for: range)
-        }, readReminders: { scope in
-            try await reminders.snapshot(for: scope)
-        }, exchange: { executable, request in
-            try await PluginProcess.exchange(executable: executable, request: request)
-        })
+        let registry = HostServiceRegistry()
+        registerHostServices(registry)
+        let coordinator = PluginCoordinator(services: registry)
+        coordinator.builtins = BuiltinProviders.factories
+        return coordinator
     }
 
     private var pluginTimer: Timer?
@@ -26,9 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let icons = IconCache()
     private let notifier = Notifier()
     private let hotkeys = HotKeyManager()
-    private let indexer = AppIndexer()
-    private let frecency = FrecencyStore(url: FrecencyStore.defaultURL)
-    private let rates = CurrencyRateStore(url: CurrencyRateStore.defaultURL, provider: ExchangeRateAPIProvider())
+    private lazy var frecency = FrecencyStore(url: FrecencyStore.defaultURL)
     private let status = StatusMenu()
     private lazy var controller = LauncherViewController(icons: icons)
     lazy var panel = LauncherPanel(contentViewController: controller)
@@ -36,15 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var settingsWindow = SettingsWindowController(icons: icons)
     private let configWatcher = ConfigWatcher(path: ConfigLoader.defaultPath)
     private let settingsWatcher = ConfigWatcher(path: SettingsLoader.defaultPath)
-    private let scriptWatcher = DirectoryWatcher()
-    private let appWatcher = DirectoryWatcher()
+    private let packageWatcher = DirectoryWatcher()
+    private var migrationReady = false
 
     private var config = Config.empty
     private var settings = Settings.empty
-    private var apps: [AppItem] = []
-    private var scripts: [ScriptItem] = []
     private var allItems: [LauncherItem] = []
-    private var lastScriptScan: Date?
     private var lastWeightsRefresh: Date?
     private var toggleSignal: DispatchSourceSignal?
     private var snapshotSignal: DispatchSourceSignal?
@@ -53,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TerminalLauncher.cleanupStaleFiles()
         installMainMenu()
         notifier.requestAuthorizationIfNeeded()
+        guard migrateIfNeeded() else { return }
         loadInitialConfig()
         loadInitialSettings()
         wirePanel()
@@ -70,14 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated { delegate.reloadSettings(from: data) }
             }
         }
-        rewatchScripts()
-        Task {
-            await refreshApps()
-            rearmAppWatcher()
-        }
-        Task { await refreshScripts(force: true) }
         Task { await refreshWeights() }
-        Task { await refreshRates() }
+
     }
 
     private func installMainMenu() {
@@ -126,9 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wirePanel() {
         controller.maxResults = config.general.maxResults
-        controller.searchTemplate = settings.search.url
-        executor.cascadeStep = CGFloat(settings.window.cascadeStep)
-        settingsWindow.update(windowSettings: settings.window)
         controller.onSubmit = { [weak self] item, argument, secondary in
             guard let self else { return }
             hidePanel()
@@ -138,7 +123,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onReveal = { [weak self] item in
             guard let self else { return }
             hidePanel()
-            settingsWindow.present(settings: settings, items: allItems, hotkey: hotkeys.current ?? config.general.hotkey, focusing: item.id)
+            settingsWindow.links = config.commands.filter { if case .url = $0.action { true } else { false } }
+        settingsWindow.present(settings: settings, items: allItems, hotkey: hotkeys.current ?? config.general.hotkey, focusing: item.id)
         }
         controller.onSettings = { [weak self] in
             guard let self else { return }
@@ -164,42 +150,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func wirePlugins() {
-        controller.pluginQuery = { [weak self] query, limit in
-            guard let self, panel.isVisible else { return nil }
-            return plugins.query(query, maxResults: limit)
+        controller.pluginQuery = { [weak self] query, items, weights, limit in
+            guard let self else { return [] }
+            guard panel.isVisible else { return SearchEngine.search(query: query, items: items, weights: weights, maxResults: limit) }
+            return plugins.search(query, items: items, weights: weights, maxResults: limit)
         }
         plugins.onChange = { [weak self] in
             guard let self else { return }
+            rebuildItems()
             updatePluginsPane()
             if panel.isVisible { controller.refresh(keepSelection: true) }
         }
-        executor.onPluginAction = { [weak self] result, secondary in self?.runPluginAction(result, secondary: secondary) }
+        executor.onPluginAction = { [weak self] result, argument, secondary in self?.runPluginAction(result, argument: argument, secondary: secondary) }
         settingsWindow.pluginsPane.onReload = { [weak self] in self?.reloadPlugins() }
         settingsWindow.pluginsPane.onToggle = { [weak self] id, enabled in
             guard let self else { return }
             var updated = settings
             updated.plugins.removeAll { $0.id == id }
-            updated.plugins.append(PluginSetting(id: id, enabled: enabled))
+            guard let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
+            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: package.setting(in: settings.plugins)?.values))
             applySettings(updated, persist: true)
+        }
+        settingsWindow.pluginsPane.onSetting = { [weak self] id, key, value in
+            guard let self, let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
+            var updated = settings
+            var setting = package.setting(in: updated.plugins)
+                ?? PluginSetting(id: id, enabled: package.isEnabled(settings: settings.plugins), source: package.source)
+            var values = setting.values ?? [:]; values[key] = value; setting.values = values
+            updated.plugins.removeAll { $0.id == id }; updated.plugins.append(setting)
+            applySettings(updated, persist: true)
+        }
+        settingsWindow.pluginsPane.onManageLinks = { [weak self] in
+            guard let self else { return }
+            settingsWindow.links = config.commands.filter { if case .url = $0.action { true } else { false } }; settingsWindow.manageLinks()
         }
         status.onReloadPlugins = { [weak self] in self?.reloadPlugins() }
         calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.storeDidChange() }
         }
         NotificationCenter.default.addObserver(self, selector: #selector(storeDidChange), name: NSApplication.didBecomeActiveNotification, object: nil)
-        pluginTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.panel.isVisible else { return }
-                self.plugins.invalidate()
-            }
-        }
         reloadPlugins()
     }
 
     private func reloadPlugins() {
         let bundled = Bundle.main.resourceURL?.appendingPathComponent("Plugins", isDirectory: true)
         let user = ConfigLoader.defaultDirectory.appendingPathComponent("plugins", isDirectory: true)
-        plugins.reload(discovery: PluginDiscovery.scan(bundled: bundled, user: user), settings: settings.plugins)
+        let discovery = PluginDiscovery.scan(bundled: bundled, user: user)
+        plugins.reload(discovery: discovery, settings: settings.plugins)
+        var watched = discovery.packages.map(\.directory) + [user, user.deletingLastPathComponent()]
+        for package in discovery.packages {
+            if let enumerator = FileManager.default.enumerator(at: package.directory, includingPropertiesForKeys: [.isDirectoryKey]) {
+                for case let url as URL in enumerator { watched.append(url) }
+            }
+        }
+        packageWatcher.watch(watched) { [weak self] in Task { @MainActor in self?.reloadPlugins() } }
     }
 
     private func updatePluginsPane() {
@@ -212,68 +216,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await calendarService.invalidate()
             await remindersService.invalidate()
-            plugins.invalidate()
+            plugins.services.invalidate("calendar.changes@1")
+            plugins.services.invalidate("reminders.changes@1")
         }
     }
 
-    private func runPluginAction(_ result: PluginResult, secondary: Bool) {
+    private func runPluginAction(_ result: PluginResult, argument: String?, secondary: Bool) {
         guard let action = secondary ? (result.item.secondary ?? result.item.primary) : result.item.primary else { return }
-        do { try plugins.authorize(action, pluginID: result.pluginID) }
+        do { _ = try plugins.authorize(result, action: action) }
         catch { report(String(describing: error)); return }
-        switch action.kind {
-        case .requestCalendarAccess:
-            Task {
-                do { _ = try await calendarService.requestAccess() }
-                catch { report("Calendar access: \(error.localizedDescription)") }
-                plugins.invalidate()
-            }
-        case .requestRemindersAccess:
-            Task {
-                do { _ = try await remindersService.requestAccess() }
-                catch { report("Reminders access: \(error.localizedDescription)") }
-                plugins.invalidate()
-            }
-        case .completeReminder:
-            Task {
-                do {
-                    let title = try await remindersService.complete(id: action.value)
-                    notifier.post(title: "Completed", body: title, log: false)
-                } catch {
-                    report("Reminders: \(error.localizedDescription)")
+        if action.kind == .callback || action.kind == .service {
+            _ = plugins.activate(result, action: action, argument: argument) { [weak self] response in
+                guard let self else { return }
+                switch response {
+                case .success(let effects):
+                    if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
+                    executor.recordPlugin(result)
+                case .failure(let error): report(String(describing: error))
                 }
-                plugins.invalidate()
             }
-        case .createReminder:
-            Task {
-                do {
-                    let list = try await remindersService.create(title: action.value)
-                    notifier.post(title: "Added to \(list)", body: action.value, log: false)
-                } catch {
-                    report("Reminders: \(error.localizedDescription)")
-                }
-                plugins.invalidate()
-            }
-        case .openURL:
-            guard let url = URL(string: action.value), NSWorkspace.shared.open(url) else {
-                report("Could not open the plugin's URL.")
-                return
-            }
-        case .openApplication:
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: action.value) else {
-                report("Application \(action.value) was not found.")
-                return
-            }
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
-                if let error { Task { @MainActor in self?.report(error.localizedDescription) } }
-            }
-        case .copy:
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(action.value, forType: .string)
-        }
+            status.onCancelAction = { [weak self] in self?.plugins.cancelActions() }
+        } else { executor.runHost(action, result: result, argument: argument) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        plugins.cancel()
+        plugins.stop()
+        packageWatcher.stop()
         pluginTimer?.invalidate()
         if let calendarObserver { NotificationCenter.default.removeObserver(calendarObserver) }
     }
@@ -293,13 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSWorkspace.shared.open(ConfigLoader.defaultPath)
         }
         status.onOpenLog = { NSWorkspace.shared.open(Log.url) }
-        status.onRescan = { [weak self] in
-            Task {
-                await self?.refreshApps()
-                self?.rearmAppWatcher()
-                await self?.refreshScripts(force: true)
-            }
-        }
+        status.onRescan = { [weak self] in self?.plugins.refreshCatalogs() }
         status.onToggleLogin = { [weak self] in
             do { try LoginItem.toggle() } catch { self?.report("Launch at Login: \(error.localizedDescription)") }
         }
@@ -353,6 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         executor.config = candidate
         status.hotkeyDescription = candidate.general.hotkey.description
         controller.maxResults = candidate.general.maxResults
+        plugins.refreshCatalogs()
         rebuildItems()
         Log.write("config applied (\(source)): \(candidate.commands.count) commands, hotkey \(candidate.general.hotkey.description)")
     }
@@ -361,70 +324,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let parsed = try Settings.parse(String(decoding: data, as: UTF8.self))
             applySettings(parsed, persist: false)
-            Log.write("settings applied (file changed): \(parsed.scripts.folders.count) folders, \(parsed.items.count) overrides")
+            Log.write("settings applied (file changed): \(parsed.plugins.count) packages, \(parsed.items.count) overrides")
         } catch {
             report("Settings not applied: \(error)")
         }
     }
 
     private func applySettings(_ updated: Settings, persist: Bool) {
-        let pluginsChanged = updated.plugins != settings.plugins
-        let foldersChanged = updated.scripts.folders != settings.scripts.folders || updated.scripts.watch != settings.scripts.watch
-        settings = updated
+        do { try plugins.validateSettings(updated.plugins) }
+        catch { report("Settings not applied: \(error)"); return }
+        let changed = plugins.packages.contains { $0.isEnabled(settings: updated.plugins) != $0.isEnabled(settings: settings.plugins) }
         if persist {
-            do {
-                let data = try SettingsLoader.save(settings, to: SettingsLoader.defaultPath)
-                settingsWatcher.markApplied(data)
-            } catch {
-                report("Could not save settings: \(error.localizedDescription)")
-            }
+            do { settingsWatcher.markApplied(try SettingsLoader.save(updated, to: SettingsLoader.defaultPath)) }
+            catch { report("Could not save settings: \(error.localizedDescription)"); return }
         }
-        if pluginsChanged { reloadPlugins() }
-        if foldersChanged {
-            rewatchScripts()
-            Task { await refreshScripts(force: true) }
-        }
-        rebuildItems()
-        controller.searchTemplate = settings.search.url
-        Task { await refreshRates() }
-        executor.cascadeStep = CGFloat(settings.window.cascadeStep)
-        settingsWindow.update(windowSettings: settings.window)
-    }
-
-    private func rewatchScripts() {
-        guard settings.scripts.watch, !settings.scriptFolders.isEmpty else {
-            scriptWatcher.watch([]) {}
-            return
-        }
-        scriptWatcher.watch(settings.scriptFolders) {
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { _ = Task { await delegate.refreshScripts(force: true) } }
-            }
-        }
-    }
-
-    private func rearmAppWatcher() {
-        appWatcher.watch(AppScanner.watchedDirectories(roots: AppScanner.defaultRoots)) {
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { _ = Task { await delegate.refreshApps() } }
-            }
-        }
-    }
-
-    private func refreshApps() async {
-        let result = await indexer.refresh()
-        guard result != apps else { return }
-        apps = result
-        icons.prewarm(apps)
-        rebuildItems()
-    }
-
-    func refreshScripts(force: Bool = false) async {
-        if !force, let lastScriptScan, Date().timeIntervalSince(lastScriptScan) < 60 { return }
-        let folders = settings.scriptFolders
-        scripts = await Task.detached(priority: .utility) { ScriptScanner.scan(folders: folders) }.value
-        lastScriptScan = Date()
-        Log.write("scripts scanned: \(scripts.count) in \(folders.count) folders")
+        settings = updated
+        if changed { reloadPlugins() }
+        else { do { try plugins.updateSettings(updated.plugins) } catch { report("Settings update failed: \(error)") } }
         rebuildItems()
     }
 
@@ -433,29 +349,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastWeightsRefresh = Date()
     }
 
-    private func refreshRates() async {
-        guard settings.currency.enabled else {
-            controller.rates = nil
-            return
-        }
-        if let cached = await rates.current(), controller.rates != cached {
-            controller.rates = cached
-        }
-        guard let table = await rates.refreshIfStale(), controller.rates != table else { return }
-        controller.rates = table
-        Log.write("rates: \(table.rates.count) currencies, updated \(table.timestamp)")
-    }
-
     private func refreshWeightsIfStale() {
         if let lastWeightsRefresh, Date().timeIntervalSince(lastWeightsRefresh) < 600 { return }
         Task { await refreshWeights() }
     }
 
     private func rebuildItems() {
-        allItems = apps.map(LauncherItem.app) + config.commands.map(LauncherItem.command) + scripts.map(LauncherItem.script)
-        if settings.window.enabled {
-            allItems += WindowAction.all.map { .window(WindowItem(action: $0)) }
-        }
+        allItems = plugins.catalogItems
         let items = settings.apply(to: allItems)
         if items != controller.items {
             controller.items = items
@@ -473,15 +373,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let saved = try LinkEditor.save(to: ConfigLoader.defaultPath, original: original, draft: draft)
         configWatcher.markApplied(saved.contents)
         reloadConfig(from: saved.contents, source: "links settings")
-        // Renames keep the item's visibility and extra aliases; deletion removes stale overrides.
-        if let original, let old = settings.override(for: original.id) {
+        if let original, draft == nil {
             var updated = settings
-            updated.setOverride(ItemOverride(id: original.id))
-            if let replacement = try draft?.command() {
-                updated.setOverride(ItemOverride(id: replacement.id, enabled: old.enabled, aliases: old.aliases))
-            }
+            updated.setOverride(ItemOverride(id: "plugin:commands:" + original.stableID))
             applySettings(updated, persist: true)
         }
+        settingsWindow.links = saved.config.commands.filter { if case .url = $0.action { true } else { false } }
         return saved.config.commands.filter { if case .url = $0.action { true } else { false } }
     }
 
@@ -516,11 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.present(height: controller.preferredHeight)
         let focused = controller.focusField()
         Log.write("panel shown key=\(panel.isKeyWindow) focus=\(focused) results=\(controller.results.count)")
-        if !settings.scripts.watch {
-            Task { await refreshScripts() }
-        }
         refreshWeightsIfStale()
-        Task { await refreshRates() }
     }
 
     private func hidePanel() {
@@ -533,8 +426,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let logs = Log.url.deletingLastPathComponent()
         let command = (try? String(contentsOf: logs.appendingPathComponent("odd-frog-query.txt"), encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if command == "@settings" {
+        if command.hasPrefix("@settings") {
             showSettings()
+            let name = command.dropFirst(9).trimmingCharacters(in: .whitespaces)
+            if let pane = SettingsPane.allCases.first(where: { $0.title.lowercased() == name }) { settingsWindow.select(pane) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 MainActor.assumeIsolated {
                     delegate.render(delegate.settingsWindow.window?.contentView, to: logs.appendingPathComponent("odd-frog-settings.png"))
@@ -584,6 +479,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Log.write("snapshot written to \(url.path)")
         } catch {
             Log.write("snapshot failed: \(error)")
+        }
+    }
+}
+
+extension AppDelegate {
+    private func migrateIfNeeded() -> Bool {
+        do {
+            let bundled = Bundle.main.resourceURL?.appendingPathComponent("Plugins")
+            let discovery = PluginDiscovery.scan(bundled: bundled, user: ConfigLoader.legacyDirectory.appendingPathComponent("plugins"))
+            try V2Migration.migrate(packages: discovery.packages)
+            migrationReady = true
+            status.onRetryMigration = nil
+            return true
+        } catch {
+            status.lastFailure = "Migration failed: \(error). Fix the original file and select Retry Migration."
+            status.onRetryMigration = { [weak self] in self?.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification)) }
+            notifier.failure(status.lastFailure!)
+            return false
+        }
+    }
+
+    private func registerHostServices(_ registry: HostServiceRegistry) {
+        let calendar = calendarService, reminders = remindersService
+        registry.register("calendar.read@1") { [weak registry] params, context in
+            registry?.subscribe(context, to: "calendar.changes@1")
+            return try .encode(await calendar.snapshot(for: params.decode(CalendarRange.self)))
+        }
+        registry.register("calendar.access@1", activationRequired: true) { _, _ in
+            _ = try await calendar.requestAccess()
+            return try .encode(PluginEffects(refreshQuery: true))
+        }
+        registry.register("reminders.read@1") { [weak registry] params, context in
+            registry?.subscribe(context, to: "reminders.changes@1")
+            return try .encode(await reminders.snapshot(for: params.decode(RemindersScope.self)))
+        }
+        registry.register("reminders.access@1", activationRequired: true) { _, _ in
+            _ = try await reminders.requestAccess()
+            return try .encode(PluginEffects(refreshQuery: true))
+        }
+        registry.register("reminders.complete@1", activationRequired: true) { params, _ in
+            guard let id = params["id"].string, !id.isEmpty else { throw RPCError("params", "A reminder ID is required.") }
+            let title = try await reminders.complete(id: id)
+            return try .encode(PluginEffects(notification: "Completed: \(title)", refreshQuery: true))
+        }
+        registry.register("reminders.create@1", activationRequired: true) { params, _ in
+            guard let title = params["title"].string?.trimmingCharacters(in: .whitespacesAndNewlines), (1...500).contains(title.count) else {
+                throw RPCError("params", "Reminder title must contain 1–500 characters.")
+            }
+            let list = try await reminders.create(title: title)
+            return try .encode(PluginEffects(notification: "Added to \(list): \(title)", refreshQuery: true))
+        }
+        registry.register("windows.perform@1", activationRequired: true) { [weak self] params, context in
+            guard let self, let id = params["action"].string,
+                  let action = WindowAction.serviceAction(id) else { throw RPCError("params", "Unknown window operation.") }
+            let step = settings.plugins.first { $0.id == context.pluginID }?.values?["cascade_step"]?.number ?? 32
+            switch executor.windows.perform(action, cascadeStep: CGFloat(step)) {
+            case .done: return try .encode(PluginEffects())
+            case .failed(let message): throw RPCError("window", message)
+            case .needsAccessibility: throw RPCError("permission", "Allow Odd Frog in System Settings › Privacy & Security › Accessibility, then retry.")
+            }
+        }
+        registry.register("links.manage@1", activationRequired: true) { [weak self] _, _ in
+            guard let self else { throw CancellationError() }
+            showSettings(); settingsWindow.manageLinks()
+            return try .encode(PluginEffects())
+        }
+        registry.register("links.read@1") { _, _ in try LinkService.read(from: ConfigLoader.defaultPath) }
+        registry.register("links.write@1", activationRequired: true) { [weak self] params, _ in
+            let result = try LinkService.write(params, to: ConfigLoader.defaultPath)
+            if let self { reloadConfig(from: try Data(contentsOf: ConfigLoader.defaultPath), source: "links service") }
+            return result
         }
     }
 }

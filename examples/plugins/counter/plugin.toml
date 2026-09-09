@@ -1,0 +1,35 @@
+id = "example.counter"
+name = "Counter"
+version = "1.0.0"
+api_version = 2
+mode = "persistent"
+executable = "provider.py"
+catalog = true
+[[settings]]
+key = "label"
+title = "Counter title"
+type = "string"
+default = "Count"
+[[settings]]
+key = "step"
+title = "Increment"
+type = "number"
+default = 1
+minimum = 1
+maximum = 100
+[[settings]]
+key = "notify"
+title = "Show notification"
+type = "boolean"
+default = true
+[[settings]]
+key = "style"
+title = "Subtitle"
+type = "choice"
+default = "short"
+choices = ["short", "long"]
+[[settings]]
+key = "folders"
+title = "Optional folders"
+type = "folders"
+default = []

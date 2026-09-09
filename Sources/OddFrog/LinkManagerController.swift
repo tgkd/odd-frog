@@ -154,7 +154,8 @@ final class LinkManagerController: NSWindowController, NSTableViewDataSource, NS
         let draft = LinkDraft(name: nameField.stringValue, url: urlField.stringValue, aliases: aliasesField.stringValue)
         do {
             guard let onApply else { return }
-            let saved = try draft.command()
+            var saved = try draft.command()
+            if let original { saved.stableID = original.stableID }
             links = try onApply(original, draft)
             table.reloadData()
             if let row = links.firstIndex(where: { $0.id == saved.id }) {

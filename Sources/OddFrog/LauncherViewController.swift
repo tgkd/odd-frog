@@ -37,13 +37,6 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         }
     }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
-    var searchTemplate: String? { didSet { refresh(keepSelection: true) } }
-    var rates: CurrencyRates? {
-        didSet {
-            guard rates != oldValue else { return }
-            refresh(keepSelection: true)
-        }
-    }
     private(set) var results: [RankedItem] = []
 
     let icons: IconCache
@@ -52,7 +45,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var onHeightChange: ((CGFloat) -> Void)?
     var onReveal: ((LauncherItem) -> Void)?
     var onSettings: (() -> Void)?
-    var pluginQuery: ((String, Int) -> [PluginResult]?)?
+    var pluginQuery: ((String, [LauncherItem], [String: Double], Int) -> [RankedItem])?
 
     init(icons: IconCache) {
         self.icons = icons
@@ -60,8 +53,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         icons.observeLoads { [weak self] path in
             guard let self else { return }
             let rows = results.indices.filter { row in
-                guard case .app(let app) = results[row].item else { return false }
-                return app.url.path == path
+                return results[row].item.result.item.icon == path
             }
             guard !rows.isEmpty else { return }
             tableView.reloadData(forRowIndexes: IndexSet(rows), columnIndexes: IndexSet(integer: 0))
@@ -174,7 +166,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     func clearTransientResults() {
-        results.removeAll { if case .plugin = $0.item { true } else { false } }
+        results.removeAll { if case .plugin(let result) = $0.item { !result.catalog } else { false } }
         if isViewLoaded { tableView.reloadData() }
     }
 
@@ -204,11 +196,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard isViewLoaded else { return }
         let selectedID = keepSelection ? selectedItem?.id : nil
         let query = searchField.stringValue
-        if let live = pluginQuery?(query, maxResults) {
-            results = live.map { RankedItem(item: .plugin($0), lexical: 0, weight: 0, exactAlias: false) }
-        } else {
-            results = SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults, searchTemplate: searchTemplate, rates: rates)
-        }
+        results = pluginQuery?(query, items, weights, maxResults)
+            ?? SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults)
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
@@ -240,7 +229,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     private func completion(for item: LauncherItem) -> String {
-        if case .plugin(let result) = item { return result.item.completion ?? searchField.stringValue }
+        if case .plugin(let result) = item, let completion = result.item.completion { return completion }
         let base = item.aliases.first ?? item.title
         return item.acceptsArgument ? base + " " : base
     }
@@ -257,7 +246,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         guard row >= 0, row < results.count else { return }
         let result = results[row]
         if case .plugin(let live) = result.item, live.item.primary == nil { return }
-        if case .script(let script) = result.item, let spec = script.argument, !spec.optional, result.argument == nil {
+        if case .plugin(let plugin) = result.item, let spec = plugin.item.argument, !spec.optional, result.argument == nil {
             fill(with: result.item)
             return
         }
@@ -298,8 +287,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     private func isQuick(_ item: LauncherItem) -> Bool {
-        if case .quick = item { return true }
-        if case .plugin = item { return true }
+        if case .plugin(let result) = item { return !result.catalog }
         return false
     }
 
@@ -364,21 +352,12 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private static let shortPlaceholderLimit = 24
 
     private func detail(for result: RankedItem) -> DetailLine? {
-        if case .plugin(let live) = result.item { return live.item.subtitle.map { DetailLine(detail: $0) } }
-        if case .quick(let quick) = result.item {
-            return quick.subtitle.map { DetailLine(detail: $0) }
-        }
-        if case .script(let script) = result.item, let spec = script.argument {
-            let generic = spec.placeholder.lowercased() == "argument"
-            if let value = result.argument {
-                let short = !generic && spec.placeholder.count <= Self.shortPlaceholderLimit
-                return DetailLine(detail: (short ? spec.placeholder : "Argument") + ":", value: value, tooltip: short ? nil : spec.placeholder)
+        if case .plugin(let live) = result.item {
+            if let spec = live.item.argument {
+                return DetailLine(detail: spec.placeholder, value: result.argument,
+                                  chip: result.argument == nil ? (spec.optional ? .optional : .required) : nil)
             }
-            let short = !generic && spec.placeholder.count <= Self.shortPlaceholderLimit
-            return DetailLine(detail: short ? spec.placeholder : "Argument", value: nil, tooltip: short ? nil : spec.placeholder, chip: spec.optional ? .optional : .required)
-        }
-        if case .command = result.item, let argument = result.argument {
-            return DetailLine(detail: "Query:", value: argument, tooltip: nil)
+            return live.item.subtitle.map { DetailLine(detail: $0) }
         }
         guard let plain = subtitles[result.item.id] else { return nil }
         return DetailLine(detail: plain, value: nil, tooltip: nil)

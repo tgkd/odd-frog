@@ -1,122 +1,147 @@
-# Query plugins, API 1
+# Local plugins — API 2
 
-A plugin is a directory containing a UTF-8 `plugin.toml` and an executable:
+A package is a directory containing `plugin.toml`, optional executables, and assets. Install it under
+`~/.config/odd-frog/v2/plugins/` (or `$XDG_CONFIG_HOME/odd-frog/v2/plugins/`), then enable it in
+Settings → Plugins. A matching ID replaces a bundled package. Approval is bound to the bundled origin or canonical user-package source path plus ID; a user replacement does not inherit bundled approval. These are trusted
+local programs with ordinary OS access, not sandboxed extensions. There is no API 1 runtime adapter.
+
+## Manifest
 
 ```toml
-id = "example"
-name = "Example"
-version = "0.1.0"
-api_version = 1
-executable = "provider"
-keyword = "example"
-services = []
+id = "example.counter"
+name = "Counter"
+version = "1.0.0"
+api_version = 2
+mode = "persistent"
+executable = "provider.py"
+catalog = true
+capabilities = []
+
+[[settings]]
+key = "step"
+title = "Increment"
+type = "number"
+default = 1
+minimum = 1
+maximum = 100
 ```
 
-The keyword matches a whole first word, case-insensitively, and exclusively owns that query.
-`example hello` sends `query: "hello"` and `fullQuery: "example hello"`. `examples` does not match.
-Conflicting enabled keywords fail visibly. IDs must be lowercase letters/digits/dots/hyphens;
-keywords start with a lowercase letter and may also contain digits, underscores, and hyphens.
+Required metadata: `id` (lowercase letters, digits, dots, hyphens; 1–64 characters), `name`,
+`version`, and `api_version`. Mode is `declarative`, `one-shot`, or `persistent`. Executable paths
+are relative to the package, cannot contain `..`, and must be executable. A declarative package
+has only `[[commands]]` and settings, with no provider. `catalog = true` and `background = true`
+start providers when enabled; query-only providers start on demand. `enabled_by_default` defaults
+to true for bundled packages; user packages always require explicit enablement.
 
-Providers are trusted executables with the current user's ordinary process access. Host services
-must be declared separately. The services are `calendar.events` and `reminders.items`.
-Calendar details reach a provider only after the user enables the package, grants macOS calendar
-permission, and runs its keyword. No event data is stored in launcher history or settings.
+Query providers declare `activation = "exclusive" | "live" | "fallback"`. Exclusive activation
+requires exactly one `keyword` or `prefix`. Keywords match case-insensitively at word boundaries;
+prefixes are case-sensitive. Conflicting enabled exclusive triggers are rejected, including
+overlapping prefixes. Nonexclusive providers receive the full trimmed query. `order` (integer,
+default zero), followed by plugin ID, determines provider order. Each provider controls its row order.
 
-## Exchanges
+Settings definitions have `key`, `title`, `type`, and `default`. Types are `boolean`, `string`,
+`number` (optional `minimum`/`maximum`), `choice` (required `choices`), and `folders` (array of
+nonempty paths). The host validates defaults and edits. Invalid external edits retain the last
+valid settings. Providers receive all validated defaults and overrides in their context.
 
-The host executes the provider twice, each time writing one JSON object to stdin and closing it.
-The provider writes one JSON object to stdout and exits. Diagnostics belong on stderr. The host
-uses private temporary files for transport and removes them after the exchange; neither events
-nor provider output is written to the app log. Each exchange has a two-second deadline and a
-four-MiB limit on input, stdout, and stderr. Failure is latched until Reload Plugins.
+## Wire format
 
-First, `prepare`:
+UTF-8 newline-delimited JSON on stdin/stdout. One JSON object per line, including a final newline.
+Do not log to stdout. Each line is limited to 4 MiB, in either direction. Dates are Unix seconds.
+The language-independent schema and sample exchanges are in [api2](api2/).
 
 ```json
-{"apiVersion":1,"id":"request-id","operation":"prepare","query":"tomorrow","fullQuery":"cal tomorrow","now":1788955200,"timeZoneIdentifier":"Europe/Belgrade","maxResults":8}
+{"apiVersion":2,"id":"q1","method":"query","params":{"apiVersion":2,"context":{"settings":{},"storagePath":"/tmp/data","configPath":"/tmp/config.toml"},"input":{"query":"2+2","fullQuery":"2+2","now":1788955200,"timeZoneIdentifier":"Europe/Belgrade","maxResults":8}}}
+{"apiVersion":2,"id":"q1","result":[{"id":"answer","title":"4","primary":{"kind":"copy","value":"4"}}]}
 ```
 
-Respond with the matching ID/version, an empty `items` array, and optionally a calendar range:
+All envelopes contain `apiVersion: 2` and exactly one of `method`, `result`, or `error`.
+Requests and responses have a nonempty string `id`; events do not. Responses echo the request ID.
+Errors are `{ "code": "query", "message": "Try another query" }`. An explicit JSON `null` is a valid
+result. Unknown response IDs, malformed envelopes, crashes, oversized messages, and deadlines stop
+the provider until Reload Plugins. Ordinary query and action errors remain recoverable.
 
-```json
-{"apiVersion":1,"id":"request-id","items":[],"calendarRequest":{"start":1788991200,"end":1789077600}}
-```
+Host operations use `params = {apiVersion: 2, context: {...}, input: ...}`:
 
-Dates are Unix seconds. The host only allows ranges up to 32 days long, starting no earlier than
-two days before `now` and ending no later than 32 days after it. Requesting an undeclared service
-or an invalid range fails the provider. A provider without services returns just the empty array.
+| Method | Input | Result |
+| --- | --- | --- |
+| `initialize` | `{}` | `{"apiVersion":2}` |
+| `catalog` | `{}` | Array of items; replaces the provider catalog |
+| `query` | query, fullQuery, now, timeZoneIdentifier, maxResults | Array of at most 50 items |
+| `activate` | actionID, payload, item, optional argument | Effects object |
+| `settings` | `{}`; updated values are in context | Acknowledgement object |
 
-A reminders provider asks for a bounded number of incomplete reminders instead of a date range:
+Every operation includes context, so a one-shot executable can perform one operation and exit
+without process-local initialization state. Persistent executables accept multiple concurrent
+requests and must keep consuming stdin while operations await host-service responses. Initialization
+and catalog requests have 30-second deadlines; queries have a two-second deadline. User actions have
+no query deadline and can be cancelled from the status menu.
 
-```json
-{"apiVersion":1,"id":"request-id","items":[],"remindersRequest":{"limit":2000}}
-```
+Host events: `cancel` with `{requestID: "..."}` and `shutdown` with `{}`. Cancellation should stop
+work for that request; a late response is ignored. Providers may emit `catalogChanged` and
+`queryInvalidated` with `{}`. These events never carry result rows: the host fetches current data.
+Provider process generations reject events from a previous package instance. Disable/reload stops
+the process group, cancels active service work, and clears its catalogs and live results.
+Closing the panel cancels queries but keeps catalog/background providers alive.
 
-`limit` must be between 1 and 2000. The host returns incomplete reminders only, ordered by due date
-with undated ones last, and truncates to `limit`.
+Search shows cached catalog matches immediately, debounces queries by 75 ms, cancels superseded
+work, and discards old query responses. Exclusive providers suppress all other results. Otherwise
+live answers precede fuzzy-ranked catalog matches. Fallback rows appear only after applicable
+providers finish and there are no live or catalog matches. Selection follows item identity.
 
-Next, `query` repeats the request with `operation: "query"` and, if requested, `calendar`:
+## Items and actions
 
-```json
-{"access":"fullAccess","events":[{"id":"occurrence-id","title":"Design review","start":1789027200,"end":1789030800,"allDay":false,"calendarName":"Work","location":"Meeting room"}]}
-```
+All catalog and query items use the same shape. Required: local `id` and `title`. Optional:
+`subtitle`, `kind` label, SF Symbol `symbol`, `icon` (absolute file, package-relative asset, or
+`text:` glyph), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
+`secondary`, and `history`. Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
+within a catalog/response. Set `history: true` for reusable catalog items; live results are always
+transient. Missing secondary action uses primary. Missing primary produces an inert status row.
 
-`access` is one of `notDetermined`, `fullAccess`, `denied`, `restricted`, or `writeOnly`. Only
-`fullAccess` includes events. Optional `url` is the event's URL. No EventKit objects cross the boundary.
+An action has `kind`, `value`, and optional `payload`, `argv`, `cwd`, `output`:
 
-The reminders snapshot arrives as `reminders` and has the same access values:
-
-```json
-{"access":"fullAccess","truncated":false,"defaultListName":"Inbox","reminders":[{"id":"item-id","title":"Buy milk","due":1789027200,"allDay":false,"listName":"Inbox","priority":0}]}
-```
-
-`due` is absent for undated reminders, `allDay` marks a date-only due date, `priority` follows
-EventKit (0 none, 1–4 high, 5 medium, 6–9 low), and `truncated` reports that `limit` cut the list.
-`defaultListName` names the list a new reminder would go to, and is absent when there is none.
-
-The final response contains rows and no calendar request:
-
-```json
-{"apiVersion":1,"id":"request-id","items":[{"id":"one","title":"Hello","subtitle":"An example result","kind":"Example","symbol":"star","primary":{"kind":"copy","value":"Hello"}}]}
-```
-
-Rows require unique nonempty local `id` and `title`. Optional fields: `subtitle`, `kind`, SF Symbol
-name `symbol`, Tab `completion`, `primary`, and `secondary`. Missing completion preserves the query.
-Missing primary makes a status-only row. Missing secondary falls back to primary. All query rows
-are transient; provider order is preserved. Return at most 50 rows; the host applies `maxResults`.
-
-Actions use `kind` and a string `value`:
-
-| Kind | Value |
+| Kind | Meaning of value |
 | --- | --- |
-| `openURL` | HTTP(S) URL or `x-apple.systempreferences:` URL |
-| `openApplication` | macOS application bundle identifier |
-| `copy` | Plain text |
-| `requestCalendarAccess` | Empty string; requires `calendar.events` |
-| `requestRemindersAccess` | Empty string; requires `reminders.items` |
-| `completeReminder` | A reminder `id` from the snapshot; requires `reminders.items` |
-| `createReminder` | A new reminder title, 1–500 characters; requires `reminders.items` |
+| `copy` | Clipboard text |
+| `openURL` | URL, including registered app URL schemes |
+| `openPath` / `reveal` | Filesystem path |
+| `openApplication` | Absolute app path or bundle ID |
+| `execute` | Absolute executable; argv is an array, no shell expansion |
+| `terminal` | Shell command, or executable when argv is supplied |
+| `service` | Declared versioned host capability; payload is its input |
+| `callback` | Provider action ID; payload is arbitrary JSON |
 
-The host owns rendering, action execution, permission UI, query cancellation, selection preservation,
-and stale-response rejection. Provider code must stay outside the host target.
+`{argument}` substitutes the selected text argument. An argv element equal to `{argument}` is
+omitted when no argument is supplied. Terminal argv is shell-quoted by the host. URL templates
+use `{query}` with percent encoding. `output = "notification"` reports bounded command output;
+otherwise stdout is discarded. Plain executable scripts remain ordinary commands, without JSON.
 
-## Minimal provider
+Callbacks receive the selected item, original payload, action ID, and argument. Success effects:
+`{notification?: string, refreshCatalog: boolean, refreshQuery: boolean}`. Errors use the normal
+structured error envelope. The host checks package generation and enablement before activation.
 
-Save this as executable `provider` beside the example manifest (requires Python 3 on PATH):
+## Host services
 
-```python
-#!/usr/bin/env python3
-import json
-import sys
+While an operation is active, either runtime can issue a correlated request:
 
-request = json.load(sys.stdin)
-items = []
-if request["operation"] == "query":
-    text = request["query"] or "Hello"
-    items = [{"id": "answer", "title": text,
-              "primary": {"kind": "copy", "value": text}}]
-json.dump({"apiVersion": 1, "id": request["id"], "items": items}, sys.stdout)
+```json
+{"apiVersion":2,"id":"s1","method":"host.service","params":{"requestID":"q1","capability":"calendar.read@1","params":{"start":1788912000,"end":1788998400}}}
 ```
 
-Install the folder under `~/.config/odd-frog/plugins`, use Reload Plugins, enable it in Settings,
-then type `example hello`. No host rebuild is required.
+The host replies with `id: "s1"` and result/error. The request must name an active operation and a
+capability declared in the manifest. Service definitions are versioned separately in
+[host-services.md](host-services.md); Calendar/Reminders payloads are not transport fields.
+Permission prompts and writes require user activation (`activate` or a selected host service action),
+never initialize/catalog/query. Reusable services can be added in a host release without changing API 2.
+
+## Build and examples
+
+`make bundle` packages every directory under `Plugins/` as a manifest-only bundled package.
+`.build/release/OddFrogPackage Plugins .build/release build/plugins` runs that packaging step alone.
+Bundled providers are Swift libraries linked into the host, so there is no standalone provider build.
+
+Runnable examples: [declarative](../examples/plugins/declarative/), [one-shot Python query](../examples/plugins/one-shot/),
+and [persistent Python catalog, settings, and callback](../examples/plugins/counter/).
+The Swift `OddFrogPluginAPI` target is an optional SDK, not the protocol specification.
+
+For isolated development runs, set `XDG_CONFIG_HOME` and `ODD_FROG_SUPPORT_HOME` to temporary directories. The latter overrides the application-support root before the `v2` suffix.

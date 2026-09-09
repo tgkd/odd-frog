@@ -1,8 +1,9 @@
 import Foundation
 import OddFrogPluginAPI
+import OddFrogHostServicesAPI
 
 public enum CalendarProvider {
-    public static func respond(to request: PluginRequest) -> PluginResponse {
+    public static func range(for request: PluginQuery) -> CalendarRange {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
         let day = calendar.startOfDay(for: request.now)
@@ -16,16 +17,27 @@ public enum CalendarProvider {
         let start = calendar.date(byAdding: .day, value: offset, to: day)!
         let end = calendar.date(byAdding: .day, value: days, to: start)!
         let range = CalendarRange(start: start, end: end)
-        if request.operation == .prepare {
-            return PluginResponse(id: request.id, calendarRequest: range)
-        }
-        guard let snapshot = request.calendar else {
-            return response(request, title: "Calendar unavailable", subtitle: "The host did not supply calendar data.")
-        }
+        return range
+    }
+
+    public static func respond(to request: PluginQuery, snapshot: CalendarSnapshot) -> [PluginItem] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
+        let day = calendar.startOfDay(for: request.now)
+        let words = request.query.split(whereSeparator: { $0.isWhitespace })
+        let first = words.first?.lowercased() ?? ""
+        let explicitDays = dayCount(first)
+        let hasRange = explicitDays != nil || ["today", "tomorrow", "week"].contains(first)
+        let filter = (hasRange ? words.dropFirst() : words[...]).joined(separator: " ")
+        let offset = first == "tomorrow" ? 1 : 0
+        let days = explicitDays ?? (first == "week" ? 7 : (hasRange || words.isEmpty ? 1 : 30))
+        let start = calendar.date(byAdding: .day, value: offset, to: day)!
+        let end = calendar.date(byAdding: .day, value: days, to: start)!
+        let range = CalendarRange(start: start, end: end)
         switch snapshot.access {
         case .notDetermined, .writeOnly:
             return response(request, title: "Allow Calendar access", subtitle: "Press Return to let Odd Frog read your events.",
-                            action: PluginAction(.requestCalendarAccess))
+                            action: PluginAction(.service, "calendar.access@1"))
         case .denied:
             return response(request, title: "Calendar access is off", subtitle: "Press Return to open Calendar privacy settings.",
                             action: PluginAction(.openURL, "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"))
@@ -58,7 +70,7 @@ public enum CalendarProvider {
             return response(request, title: filter.isEmpty ? "No more events \(period)" : "No matching events \(period)",
                             subtitle: "Press Return to open Calendar.", action: openCalendar)
         }
-        return PluginResponse(id: request.id, items: items)
+        return items
     }
 
     private static func dayCount(_ word: String) -> Int? {
@@ -66,10 +78,10 @@ public enum CalendarProvider {
         return min(value, 30)
     }
 
-    private static func response(_ request: PluginRequest, title: String, subtitle: String,
-                                 action: PluginAction? = nil) -> PluginResponse {
-        PluginResponse(id: request.id, items: [PluginItem(id: "status", title: title, subtitle: subtitle,
-                                                         kind: "Calendar", symbol: "calendar", primary: action)])
+    private static func response(_ request: PluginQuery, title: String, subtitle: String,
+                                 action: PluginAction? = nil) -> [PluginItem] {
+        [PluginItem(id: "status", title: title, subtitle: subtitle,
+                                                         kind: "Calendar", symbol: "calendar", primary: action)]
     }
 
     private static func timeLabel(_ event: CalendarEvent, calendar: Calendar) -> String {

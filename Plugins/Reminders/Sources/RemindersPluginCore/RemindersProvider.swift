@@ -1,11 +1,9 @@
 import Foundation
 import OddFrogPluginAPI
+import OddFrogHostServicesAPI
 
 public enum RemindersProvider {
-    public static func respond(to request: PluginRequest) -> PluginResponse {
-        if request.operation == .prepare {
-            return PluginResponse(id: request.id, remindersRequest: RemindersScope(limit: 2000))
-        }
+    public static func respond(to request: PluginQuery, snapshot: RemindersSnapshot) -> [PluginItem] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
         let day = calendar.startOfDay(for: request.now)
@@ -19,13 +17,10 @@ public enum RemindersProvider {
         let unbounded = word == "all" || (!words.isEmpty && !hasRange)
         let start = calendar.date(byAdding: .day, value: 1, to: day)!
         let end = calendar.date(byAdding: .day, value: word == "tomorrow" ? 2 : days, to: day)!
-        guard let snapshot = request.reminders else {
-            return response(request, title: "Reminders unavailable", subtitle: "The host did not supply reminders data.")
-        }
         switch snapshot.access {
         case .notDetermined, .writeOnly:
             return response(request, title: "Allow Reminders access", subtitle: "Press Return to let Odd Frog read your reminders.",
-                            action: PluginAction(.requestRemindersAccess))
+                            action: PluginAction(.service, "reminders.access@1"))
         case .denied:
             return response(request, title: "Reminders access is off", subtitle: "Press Return to open Reminders privacy settings.",
                             action: PluginAction(.openURL, "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"))
@@ -38,7 +33,7 @@ public enum RemindersProvider {
             guard !title.isEmpty else {
                 return response(request, title: "Add a reminder", subtitle: "Type a title after rem add.")
             }
-            return PluginResponse(id: request.id, items: [addItem(title, list: snapshot.defaultListName, prefix: "")])
+            return [addItem(title, list: snapshot.defaultListName, prefix: "")]
         }
         let matches = snapshot.reminders.filter { item in
             guard filter.isEmpty || [item.title, item.listName].contains(where: { $0.localizedStandardContains(filter) }) else {
@@ -57,12 +52,11 @@ public enum RemindersProvider {
             return PluginItem(id: item.id, title: title.isEmpty ? "Untitled reminder" : title,
                               subtitle: (details + ["⌘↩ Complete"]).joined(separator: " · "), kind: "Reminder",
                               symbol: "checklist", primary: openReminders,
-                              secondary: PluginAction(.completeReminder, item.id))
+                              secondary: PluginAction(.service, "reminders.complete@1", payload: .object(["id": .string(item.id)])))
         }
         if items.isEmpty {
             if !hasRange, !filter.isEmpty {
-                return PluginResponse(id: request.id,
-                                      items: [addItem(filter, list: snapshot.defaultListName, prefix: "No matches · ")])
+                return [addItem(filter, list: snapshot.defaultListName, prefix: "No matches · ")]
             }
             let period = word == "tomorrow" ? "due tomorrow"
                 : (unbounded ? "" : (days == 1 ? "due today" : "due in the next \(days) days"))
@@ -71,13 +65,13 @@ public enum RemindersProvider {
             return response(request, title: title + (snapshot.truncated ? " (list truncated)" : ""),
                             subtitle: "Press Return to open Reminders.", action: openReminders)
         }
-        return PluginResponse(id: request.id, items: items)
+        return items
     }
 
     private static func addItem(_ title: String, list: String?, prefix: String) -> PluginItem {
         let destination = list.map { "Press Return to add to \($0)" } ?? "Press Return to add a reminder"
         return PluginItem(id: "add", title: title, subtitle: prefix + destination, kind: "Reminder",
-                          symbol: "plus.circle", primary: PluginAction(.createReminder, title))
+                          symbol: "plus.circle", primary: PluginAction(.service, "reminders.create@1", payload: .object(["title": .string(title)])))
     }
 
     private static func precedes(_ lhs: ReminderItem, _ rhs: ReminderItem) -> Bool {
@@ -96,10 +90,10 @@ public enum RemindersProvider {
         return min(value, 30)
     }
 
-    private static func response(_ request: PluginRequest, title: String, subtitle: String,
-                                 action: PluginAction? = nil) -> PluginResponse {
-        PluginResponse(id: request.id, items: [PluginItem(id: "status", title: title, subtitle: subtitle,
-                                                          kind: "Reminder", symbol: "checklist", primary: action)])
+    private static func response(_ request: PluginQuery, title: String, subtitle: String,
+                                 action: PluginAction? = nil) -> [PluginItem] {
+        [PluginItem(id: "status", title: title, subtitle: subtitle,
+                                                          kind: "Reminder", symbol: "checklist", primary: action)]
     }
 
     private static func dateLabel(_ item: ReminderItem, calendar: Calendar, now: Date) -> String {

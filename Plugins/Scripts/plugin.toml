@@ -1,0 +1,18 @@
+id = "scripts"
+name = "Scripts"
+version = "2.0.0"
+api_version = 2
+mode = "persistent"
+catalog = true
+
+[[settings]]
+key = "folders"
+title = "Script folders"
+type = "folders"
+default = []
+
+[[settings]]
+key = "watch"
+title = "Watch for changes"
+type = "boolean"
+default = true

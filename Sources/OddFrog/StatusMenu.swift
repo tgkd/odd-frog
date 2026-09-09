@@ -9,6 +9,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     var hotkeyDescription = ""
     var lastFailure: String?
+    var onCancelAction: (() -> Void)?
+    var onRetryMigration: (() -> Void)?
     var onShow: (() -> Void)?
     var onReloadConfig: (() -> Void)?
     var onReloadPlugins: (() -> Void)?
@@ -30,6 +32,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        if onRetryMigration != nil { menu.addItem(action("Retry Migration", #selector(retryMigration))) }
+        if onCancelAction != nil { menu.addItem(action("Cancel Plugin Action", #selector(cancelAction))) }
         menu.addItem(action("Show  \(hotkeyDescription)", #selector(show)))
         menu.addItem(.separator())
         if let lastFailure {
@@ -47,7 +51,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(action("Reload Plugins", #selector(reloadPlugins)))
         menu.addItem(action("Open Config", #selector(openConfig)))
         menu.addItem(action("Open Log", #selector(openLog)))
-        menu.addItem(action("Rescan Apps", #selector(rescan)))
+        menu.addItem(action("Refresh Catalogs", #selector(rescan)))
         menu.addItem(.separator())
         let login = action(loginTitle, #selector(toggleLogin))
         login.state = LoginItem.status == .enabled ? .on : .off
@@ -71,6 +75,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
+    @objc private func cancelAction() { onCancelAction?(); onCancelAction = nil }
+    @objc private func retryMigration() { onRetryMigration?() }
     @objc private func show() { onShow?() }
     @objc private func openSettings() { onSettings?() }
     @objc private func reload() { onReloadConfig?() }

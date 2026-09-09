@@ -1,0 +1,95 @@
+id = "windows"
+name = "Windows"
+version = "2.0.0"
+api_version = 2
+mode = "declarative"
+enabled_by_default = false
+capabilities = ["windows.perform@1"]
+
+[[settings]]
+key = "cascade_step"
+title = "Cascade step"
+type = "number"
+default = 32
+minimum = 16
+maximum = 120
+
+[[commands]]
+id = "place:left:1-2"
+title = "Left ½"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:left:1-2" } }
+
+[[commands]]
+id = "place:right:1-2"
+title = "Right ½"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:right:1-2" } }
+
+[[commands]]
+id = "place:left:2-3"
+title = "Left ⅔"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:left:2-3" } }
+
+[[commands]]
+id = "place:right:2-3"
+title = "Right ⅔"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:right:2-3" } }
+
+[[commands]]
+id = "place:top:1-2"
+title = "Top ½"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:top:1-2" } }
+
+[[commands]]
+id = "place:bottom:1-2"
+title = "Bottom ½"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:bottom:1-2" } }
+
+[[commands]]
+id = "place:top:3-4"
+title = "Top ¾"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:top:3-4" } }
+
+[[commands]]
+id = "place:bottom:3-4"
+title = "Bottom ¾"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:bottom:3-4" } }
+
+[[commands]]
+id = "maximize"
+title = "Maximize"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "maximize" } }
+
+[[commands]]
+id = "tidy"
+title = "Tidy Windows"
+kind = "Window"
+symbol = "rectangle"
+history = true
+primary = { kind = "service", value = "windows.perform@1", payload = { action = "tidy" } }

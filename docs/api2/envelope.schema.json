@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Odd Frog API 2 envelope",
+  "type": "object",
+  "required": ["apiVersion"],
+  "properties": {
+    "apiVersion": {"const": 2},
+    "id": {"type": "string", "minLength": 1},
+    "method": {"type": "string", "minLength": 1},
+    "params": {},
+    "result": {},
+    "error": {
+      "type": "object", "required": ["code", "message"],
+      "properties": {"code": {"type": "string"}, "message": {"type": "string"}}
+    }
+  },
+  "oneOf": [
+    {"required": ["method"], "not": {"anyOf": [{"required": ["result"]}, {"required": ["error"]}]}},
+    {"required": ["id", "result"], "not": {"anyOf": [{"required": ["method"]}, {"required": ["error"]}, {"required": ["params"]}]}},
+    {"required": ["id", "error"], "not": {"anyOf": [{"required": ["method"]}, {"required": ["result"]}, {"required": ["params"]}]}}
+  ]
+}

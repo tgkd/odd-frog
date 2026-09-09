@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import OddFrogCore
+import BundledFeatures
 
 struct LinkEditorTests {
     private let config = """

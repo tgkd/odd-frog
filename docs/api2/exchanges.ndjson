@@ -1,0 +1,12 @@
+{"apiVersion":2,"id":"init","method":"initialize","params":{"apiVersion":2,"context":{"settings":{"step":1},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{}}}
+{"apiVersion":2,"id":"init","result":{"apiVersion":2}}
+{"apiVersion":2,"id":"catalog","method":"catalog","params":{"apiVersion":2,"context":{"settings":{"step":1},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{}}}
+{"apiVersion":2,"id":"catalog","result":[{"id":"count","title":"Count","history":true,"argument":{"placeholder":"Note","optional":true},"primary":{"kind":"callback","value":"increment","payload":{"source":"catalog"}}}]}
+{"apiVersion":2,"id":"action","method":"activate","params":{"apiVersion":2,"context":{"settings":{"step":1},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{"actionID":"increment","payload":{"source":"catalog"},"item":{"id":"count","title":"Count"},"argument":"hello"}}}
+{"apiVersion":2,"id":"action","result":{"notification":"1 hello","refreshCatalog":true,"refreshQuery":false}}
+{"apiVersion":2,"method":"catalogChanged","params":{}}
+{"apiVersion":2,"method":"queryInvalidated","params":{}}
+{"apiVersion":2,"method":"cancel","params":{"requestID":"query-old"}}
+{"apiVersion":2,"id":"query-old","error":{"code":"cancelled","message":"Cancelled"}}
+{"apiVersion":2,"id":"null-result","result":null}
+{"apiVersion":2,"method":"shutdown","params":{}}

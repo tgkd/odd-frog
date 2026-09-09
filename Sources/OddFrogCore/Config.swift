@@ -74,6 +74,7 @@ struct RawGeneral: Decodable {
 }
 
 struct RawCommand: Decodable {
+    var id: String?
     var name: String?
     var aliases: [String]?
     var command: String?
@@ -146,9 +147,26 @@ public enum ConfigParser {
             }
 
             let cwd = rc.cwd.map { URL(fileURLWithPath: expandTilde($0)) }
-            commands.append(CommandItem(name: name, aliases: cleanAliases, action: action, cwd: cwd, terminal: terminal))
+            commands.append(CommandItem(name: name, aliases: cleanAliases, action: action, cwd: cwd, terminal: terminal, stableID: rc.id))
         }
+        guard Set(commands.map(\.stableID)).count == commands.count, commands.allSatisfy({ !$0.stableID.isEmpty }) else { throw ConfigError.toml("Command IDs must be nonempty and unique.") }
         return Config(general: general, commands: commands)
+    }
+
+    public static func serialized(_ config: Config) throws -> String {
+        struct General: Encodable { var hotkey: String; var terminal: String; var shell: String; var max_results: Int }
+        struct Entry: Encodable { var id: String; var name: String; var aliases: [String]; var command: String?; var path: String?; var url: String?; var cwd: String?; var terminal: Bool }
+        struct Document: Encodable { var general: General; var commands: [Entry] }
+        let commands = config.commands.map { command in
+            var entry = Entry(id: command.stableID, name: command.name, aliases: command.aliases, cwd: command.cwd?.path, terminal: command.terminal)
+            switch command.action {
+            case .shell(let text): entry.command = text
+            case .path(let url): entry.path = url.path
+            case .url(let url): entry.url = URLTemplate.display(url)
+            }
+            return entry
+        }
+        return try TOMLEncoder().encode(Document(general: General(hotkey: config.general.hotkey.serialized, terminal: config.general.terminal.rawValue, shell: config.general.shell, max_results: config.general.maxResults), commands: commands))
     }
 
     public static func expandTilde(_ path: String) -> String {
@@ -157,7 +175,9 @@ public enum ConfigParser {
 }
 
 public enum ConfigLoader {
-    public static var defaultDirectory: URL {
+    public static var defaultDirectory: URL { legacyDirectory.appendingPathComponent("v2", isDirectory: true) }
+
+    public static var legacyDirectory: URL {
         let base: URL
         if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"], !xdg.isEmpty {
             base = URL(fileURLWithPath: xdg)

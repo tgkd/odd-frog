@@ -55,9 +55,7 @@ public actor FrecencyStore {
     }
 
     public static var defaultURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("odd-frog", isDirectory: true)
-            .appendingPathComponent("frecency.json")
+        StoragePaths.support.appendingPathComponent("frecency.json")
     }
 
     public func snapshot() -> FrecencyTable { table }

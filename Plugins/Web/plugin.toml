@@ -1,0 +1,12 @@
+id = "web"
+name = "Web"
+version = "2.0.0"
+api_version = 2
+mode = "one-shot"
+activation = "fallback"
+
+[[settings]]
+key = "url"
+title = "Search URL ({query} is replaced with your search)"
+type = "string"
+default = "https://duckduckgo.com/?q={query}"

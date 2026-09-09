@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OddFrogCore
+import OddFrogPluginAPI
 
 final class TailBuffer: @unchecked Sendable {
     private let lock = NSLock()
@@ -92,7 +93,7 @@ final class ActionExecutor {
     var cascadeStep: CGFloat = 32
     var onFailure: ((String) -> Void)?
     var onRecorded: (() -> Void)?
-    var onPluginAction: ((PluginResult, Bool) -> Void)?
+    var onPluginAction: ((PluginResult, String?, Bool) -> Void)?
     private var running: [UUID: BackgroundRun] = [:]
 
     init(config: Config, frecency: FrecencyStore, notifier: Notifier) {
@@ -102,141 +103,48 @@ final class ActionExecutor {
     }
 
     func run(_ item: LauncherItem, argument: String? = nil, secondary: Bool = false) {
-        if secondary {
-            runSecondary(item, argument: argument)
-            return
-        }
-        switch item {
-        case .plugin(let result):
-            onPluginAction?(result, false)
-        case .app(let app):
-            openApplication(app)
-        case .command(let command):
-            switch command.action {
-            case .path(let url):
-                if NSWorkspace.shared.open(url) {
-                    record(item.id)
-                } else {
-                    fail("\(command.name): could not open \(url.absoluteString)")
-                }
-            case .url(let url):
-                let target = URLTemplate.accepts(url) ? URLTemplate.resolve(url, query: argument ?? "") : url
-                if NSWorkspace.shared.open(target) {
-                    record(item.id)
-                } else {
-                    fail("\(command.name): could not open \(target.absoluteString)")
-                }
-            case .shell(let text):
-                if command.terminal {
-                    runInTerminal(id: command.id, name: command.name, command: text, cwd: command.cwd)
-                } else {
-                    spawn(
-                        id: command.id, name: command.name,
-                        executable: URL(fileURLWithPath: config.general.shell),
-                        arguments: ShellCommand.backgroundArguments(command: text),
-                        cwd: command.cwd, reportOutput: false
-                    )
+        guard case .plugin(let result) = item else { return }
+        onPluginAction?(result, argument, secondary)
+    }
+
+    func runHost(_ action: PluginAction, result: PluginResult, argument: String?) {
+        let id = result.historyEligible ? result.id : ""
+        let name = result.item.title
+        let value: String
+        if action.value.contains("{query}"), let resolved = URLTemplate.resolve(template: action.value, query: argument ?? "") {
+            value = resolved.absoluteString
+        } else { value = action.value.replacingOccurrences(of: "{argument}", with: argument ?? "") }
+        let argv = action.argv?.compactMap { text -> String? in
+            if text == "{argument}" { return argument }
+            return text.replacingOccurrences(of: "{argument}", with: argument ?? "")
+        } ?? []
+        let cwd = action.cwd.map { URL(fileURLWithPath: ConfigParser.expandTilde($0)) }
+        switch action.kind {
+        case .copy:
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string); record(id)
+        case .openURL, .openPath:
+            let url = action.kind == .openPath ? URL(fileURLWithPath: ConfigParser.expandTilde(value)) : URL(string: value)
+            guard let url, NSWorkspace.shared.open(url) else { fail("Could not open \(value)"); return }; record(id)
+        case .reveal:
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: ConfigParser.expandTilde(value))]); record(id)
+        case .openApplication:
+            let url = value.hasPrefix("/") ? URL(fileURLWithPath: value) : NSWorkspace.shared.urlForApplication(withBundleIdentifier: value)
+            guard let url else { fail("Application \(value) was not found."); return }
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+                Task { @MainActor in
+                    if let error { self?.fail(error.localizedDescription) } else { self?.record(id) }
                 }
             }
-        case .script(let script):
-            runScript(script, argument: argument)
-        case .window(let window):
-            switch windows.perform(window.action, cascadeStep: cascadeStep) {
-            case .done: record(window.id)
-            case .failed(let message): fail("\(item.title): \(message)")
-            case .needsAccessibility:
-                fail("Window management needs Accessibility access. Allow Odd Frog under System Settings › Privacy & Security › Accessibility.")
-            }
-        case .quick(let quick):
-            switch quick {
-            case .openURL(let url), .webSearch(_, let url):
-                if NSWorkspace.shared.open(url) {
-                    record(item.id)
-                } else {
-                    fail("\(item.title): could not open \(url.absoluteString)")
-                }
-            case .terminal(let text):
-                runInTerminal(id: item.id, name: "Run in Terminal", command: text, cwd: nil)
-            case .calculation:
-                guard let text = quick.copyText else { return }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                Log.write("copied calculator result \(text)")
-            }
+        case .execute:
+            spawn(id: id, name: name, executable: URL(fileURLWithPath: value), arguments: argv, cwd: cwd, reportOutput: action.output == "notification")
+        case .terminal:
+            let command = action.argv == nil ? value : ([action.value] + argv).map(ShellCommand.quote).joined(separator: " ")
+            runInTerminal(id: id, name: name, command: command, cwd: cwd)
+        case .callback, .service: break
         }
     }
 
-    private func runScript(_ script: ScriptItem, argument: String?, forceFullOutput: Bool = false) {
-        if let spec = script.argument, !spec.optional, argument == nil {
-            notifier.post(title: script.title, body: "Needs an argument (\(spec.placeholder)): type the command, a space, then the value.")
-            return
-        }
-        let cwd = script.url.deletingLastPathComponent()
-        guard script.mode == .fullOutput || forceFullOutput else {
-            let arguments = argument.map { [$0] } ?? []
-            spawn(id: script.id, name: script.title, executable: script.url, arguments: arguments, cwd: cwd, reportOutput: true)
-            return
-        }
-        var command = ShellCommand.quote(script.url.path)
-        if let argument { command += " " + ShellCommand.quote(argument) }
-        runInTerminal(id: script.id, name: script.title, command: command, cwd: cwd)
-    }
-
-    private func runSecondary(_ item: LauncherItem, argument: String?) {
-        switch item {
-        case .plugin(let result):
-            onPluginAction?(result, true)
-        case .app(let app):
-            NSWorkspace.shared.activateFileViewerSelecting([app.url])
-            record(item.id)
-        case .command(let command):
-            switch command.action {
-            case .path(let url):
-                var isDirectory: ObjCBool = false
-                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-                if isDirectory.boolValue {
-                    runInTerminal(
-                        id: command.id, name: command.name,
-                        command: "exec \(ShellCommand.quote(config.general.shell)) -l", cwd: url
-                    )
-                } else {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                    record(item.id)
-                }
-            case .url(let url):
-                var text = URLTemplate.display(url)
-                if let argument, URLTemplate.accepts(url) {
-                    text = URLTemplate.resolve(url, query: argument).absoluteString
-                }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                record(item.id)
-                Log.write("copied URL for \(command.name)")
-            case .shell(let text):
-                runInTerminal(id: command.id, name: command.name, command: text, cwd: command.cwd)
-            }
-        case .script(let script):
-            runScript(script, argument: argument, forceFullOutput: true)
-        case .quick, .window:
-            run(item, argument: argument)
-        }
-    }
-
-    private func openApplication(_ app: AppItem) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        let id = app.id
-        let name = app.name
-        NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { [weak self] _, error in
-            Task { @MainActor [weak self] in
-                if let error {
-                    self?.fail("\(name): \(error.localizedDescription)")
-                } else {
-                    self?.record(id)
-                }
-            }
-        }
-    }
+    func recordPlugin(_ result: PluginResult) { if result.historyEligible { record(result.id) } }
 
     private func runInTerminal(id: String, name: String, command: String, cwd: URL?) {
         let kind = config.general.terminal
@@ -293,7 +201,7 @@ final class ActionExecutor {
     }
 
     private func record(_ id: String) {
-        guard !id.hasPrefix("quick:") else { return }
+        guard !id.isEmpty else { return }
         Task { [frecency, onRecorded] in
             await frecency.record(id)
             await MainActor.run { onRecorded?() }

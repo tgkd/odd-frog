@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import OddFrogCore
+import BundledFeatures
 
 private func app(_ name: String) -> LauncherItem {
     .app(AppItem(url: URL(fileURLWithPath: "/Applications/\(name).app"), name: name, bundleID: nil))
@@ -102,7 +103,7 @@ struct SearchEngineTests {
 
     @Test func unrelatedCandidateDoesNotReorder() {
         let items = [app("Xcode"), app("Visual Studio Code")]
-        let weights = ["/Applications/Xcode.app": 3.0]
+        let weights = ["plugin:applications:/Applications/Xcode.app": 3.0]
         let before = SearchEngine.search(query: "code", items: items, weights: weights, maxResults: 8).map { $0.item.title }
         let after = SearchEngine.search(query: "code", items: items + [app("Codesign Helper Thing")], weights: weights, maxResults: 8)
             .map { $0.item.title }
@@ -112,7 +113,7 @@ struct SearchEngineTests {
 
     @Test func maxResultsNeverChangesTop() {
         let items = (0..<20).map { app("Code \($0)") } + [app("Xcode")]
-        let weights = ["/Applications/Xcode.app": 50.0]
+        let weights = ["plugin:applications:/Applications/Xcode.app": 50.0]
         let wide = SearchEngine.search(query: "code", items: items, weights: weights, maxResults: 50)
         let narrow = SearchEngine.search(query: "code", items: items, weights: weights, maxResults: 1)
         #expect(wide.first?.item.title == narrow.first?.item.title)
@@ -160,49 +161,12 @@ struct SearchEngineTests {
 
     @Test func emptyQueryShowsOnlyUsedItems() {
         let items = [app("Zed"), app("Alpha"), app("Mid")]
-        let results = SearchEngine.search(query: "  ", items: items, weights: ["/Applications/Mid.app": 2], maxResults: 2)
+        let results = SearchEngine.search(query: "  ", items: items, weights: ["plugin:applications:/Applications/Mid.app": 2], maxResults: 2)
         #expect(results.map { $0.item.title } == ["Mid"])
     }
 
-    @Test func noMatchYieldsFallbacks() {
-        let items = [app("Zed")]
-        let template = "https://duckduckgo.com/?q={query}"
-        let results = SearchEngine.search(query: "zzzz", items: items, weights: [:], maxResults: 8, searchTemplate: template)
-        #expect(results.count == 1)
-        guard case .quick(let quick) = results[0].item, case .webSearch = quick else {
-            Issue.record("expected a webSearch fallback")
-            return
-        }
-    }
-
-    @Test func terminalPrefixBypassesItems() {
-        let items = [app("uptime")]
-        let results = SearchEngine.search(query: ">uptime", items: items, weights: [:], maxResults: 8)
-        #expect(results.count == 1)
-        guard case .quick(let quick) = results[0].item else {
-            Issue.record("expected a quick action")
-            return
-        }
-        #expect(quick == .terminal("uptime"))
-    }
-
-    @Test func calculatorRowComesFirst() {
-        let items = [cmd("Double It", aliases: ["2+2"])]
-        let results = SearchEngine.search(query: "2+2", items: items, weights: [:], maxResults: 8)
-        #expect(results.count == 2)
-        guard case .quick(let quick) = results[0].item, case .calculation = quick else {
-            Issue.record("expected a calculation row first")
-            return
-        }
-        #expect(quick.title == "4")
-        #expect(results[1].item.id == "command:Double It")
-    }
-
-    @Test func calculatorRowReplacesFallbacks() {
-        let template = "https://duckduckgo.com/?q={query}"
-        let results = SearchEngine.search(query: "2*3", items: [app("Zed")], weights: [:], maxResults: 8, searchTemplate: template)
-        #expect(results.count == 1)
-        #expect(results[0].item.title == "6")
+    @Test func hostSearchOnlyRanksSuppliedItems() {
+        #expect(SearchEngine.search(query: "2+2", items: [app("Zed")], weights: [:], maxResults: 8).isEmpty)
     }
 
     @Test func bareNumberStillSearches() {
