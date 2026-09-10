@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var executor = ActionExecutor(config: config, frecency: frecency, notifier: notifier)
     lazy var settingsWindow = SettingsWindowController(icons: icons)
     private lazy var documents = DocumentWindowController()
+    private lazy var chats = ChatWindowController()
     private let configWatcher = ConfigWatcher(path: ConfigLoader.defaultPath)
     private let settingsWatcher = ConfigWatcher(path: SettingsLoader.defaultPath)
     private let packageWatcher = DirectoryWatcher()
@@ -172,6 +173,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         documents.performSave = { [weak self] session, revision, text, completion in
             _ = self?.plugins.activate(session.result, action: session.save, argument: nil, text: text, completion: completion)
         }
+        chats.performSend = { [weak self] session, text, completion in
+            self?.plugins.activate(session.result, action: session.send, argument: nil, text: text, completion: completion)
+        }
+        chats.cancelSend = { [weak self] token in
+            self?.plugins.cancelAction(token)
+        }
+        plugins.onMessageDelta = { [weak self] pluginID, delta in
+            self?.chats.apply(delta, pluginID: pluginID)
+        }
         settingsWindow.pluginsPane.onReload = { [weak self] in self?.reloadPlugins() }
         settingsWindow.pluginsPane.onToggle = { [weak self] id, enabled in
             guard let self else { return }
@@ -208,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let discovery = PluginDiscovery.scan(bundled: bundled, user: user)
         plugins.reload(discovery: discovery, settings: settings.plugins)
         documents.pluginsDidReload()
+        chats.pluginsDidReload()
         var watched = discovery.packages.map(\.directory) + [user, user.deletingLastPathComponent()]
         for package in discovery.packages {
             if let enumerator = FileManager.default.enumerator(at: package.directory, includingPropertiesForKeys: [.isDirectoryKey]) {
@@ -244,7 +255,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .success(let effects):
                     if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
                     executor.recordPlugin(result)
-                    if let view = effects.view { documents.present(view, result: result, pluginName: package.manifest.name) }
+                    if let view = effects.view {
+                        switch view.kind {
+                        case .editor:
+                            if let save = view.save {
+                                documents.present(view, save: save, result: result, pluginName: package.manifest.name)
+                            }
+                        case .chat:
+                            if let send = view.send {
+                                chats.present(view, send: send, result: result, pluginName: package.manifest.name)
+                            }
+                        }
+                    }
                 case .failure(let error):
                     if error is CancellationError { return }
                     report(String(describing: error))

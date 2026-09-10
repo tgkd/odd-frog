@@ -3,6 +3,7 @@ import BundledFeatures
 import CalendarPluginCore
 import RemindersPluginCore
 import NotesPluginCore
+import ChatPluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
@@ -17,5 +18,6 @@ public enum BuiltinProviders {
         "calendar": { CalendarHandler() },
         "reminders": { RemindersHandler() },
         "notes": { NotesHandler() },
+        "chat": { ChatHandler() },
     ]
 }

@@ -12,3 +12,6 @@
 {"apiVersion":2,"method":"shutdown","params":{}}
 {"apiVersion":2,"id":"open","method":"activate","params":{"apiVersion":2,"context":{"settings":{},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{"actionID":"save","payload":{"id":"n1"},"item":{"id":"n1","title":"Note"},"argument":null,"text":"hello"}}}
 {"apiVersion":2,"id":"open","result":{"refreshCatalog":false,"refreshQuery":true,"view":{"kind":"editor","id":"n1","title":"Note","text":"hello","save":{"kind":"callback","value":"save","payload":{"id":"n1"}}}}}
+{"apiVersion":2,"method":"messageDelta","params":{"viewID":"c1","messageID":"m2","delta":"Hel"}}
+{"apiVersion":2,"id":"send","method":"activate","params":{"apiVersion":2,"context":{"settings":{},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{"actionID":"send","payload":{"id":"c1"},"item":{"id":"c1","title":"Chat"},"argument":null,"text":"hello"}}}
+{"apiVersion":2,"id":"send","result":{"refreshCatalog":false,"refreshQuery":false,"view":{"kind":"chat","id":"c1","title":"hello","messages":[{"id":"m1","role":"user","text":"hello"},{"id":"m2","role":"assistant","text":"Hello!"}],"send":{"kind":"callback","value":"send","payload":{"id":"c1"}}}}}

@@ -1,0 +1,32 @@
+id = "chat"
+name = "Chat"
+version = "0.1.0"
+api_version = 2
+keyword = "chat"
+mode = "persistent"
+activation = "exclusive"
+capabilities = []
+
+[[settings]]
+key = "base_url"
+title = "API base URL"
+type = "string"
+default = "http://localhost:11434/v1"
+
+[[settings]]
+key = "api_key"
+title = "API key (leave empty for local servers)"
+type = "string"
+default = ""
+
+[[settings]]
+key = "model"
+title = "Model"
+type = "string"
+default = "llama3.2"
+
+[[settings]]
+key = "system_prompt"
+title = "System prompt"
+type = "string"
+default = ""

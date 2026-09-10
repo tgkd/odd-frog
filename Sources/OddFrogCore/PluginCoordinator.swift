@@ -10,6 +10,7 @@ import OddFrogPluginAPI
     public private(set) var settings: [PluginSetting] = []
     public private(set) var catalogs: [String: [PluginResult]] = [:]
     public var onChange: (() -> Void)?
+    public var onMessageDelta: ((String, PluginMessageDelta) -> Void)?
     public let services: HostServiceRegistry
     private var generation = UUID()
     private var queryGeneration = UUID()
@@ -126,6 +127,13 @@ import OddFrogPluginAPI
         switch method {
         case "catalogChanged": if package.manifest.catalog { refreshCatalog(package) }
         case "queryInvalidated": invalidate()
+        case "messageDelta":
+            do {
+                let delta = try params.decode(PluginMessageDelta.self)
+                onMessageDelta?(package.manifest.id, delta)
+            } catch {
+                fail(package, error: RPCError("protocol", "Invalid messageDelta event."))
+            }
         case "failure": fail(package, error: RPCError("protocol", params.string ?? "Provider failed."))
         default: break
         }
@@ -278,10 +286,7 @@ import OddFrogPluginAPI
                 guard token == generation else { completion(.failure(PluginError.superseded)); return }
                 let effects = try output.decode(PluginEffects.self)
                 if let view = effects.view {
-                    guard view.save.kind == .callback, !view.id.isEmpty, !view.title.isEmpty else {
-                        throw RPCError("protocol", "Invalid document view.")
-                    }
-                    try validate(view.save, package: package)
+                    try validate(view, package: package)
                 }
                 if effects.refreshCatalog { refreshCatalog(package) }
                 if effects.refreshQuery { invalidate() }
@@ -328,6 +333,24 @@ import OddFrogPluginAPI
             throw RPCError("protocol", "Provider returned empty or duplicate item IDs/titles.")
         }
         for item in items { for action in [item.primary, item.secondary].compactMap({ $0 }) { try validate(action, package: package) } }
+    }
+    private func validate(_ view: PluginView, package: PluginPackage) throws {
+        guard !view.id.isEmpty, !view.title.isEmpty else {
+            throw RPCError("protocol", "Invalid view.")
+        }
+        switch view.kind {
+        case .editor:
+            guard let save = view.save, save.kind == .callback else {
+                throw RPCError("protocol", "Invalid document view.")
+            }
+            try validate(save, package: package)
+        case .chat:
+            guard let send = view.send, send.kind == .callback, let messages = view.messages,
+                  messages.allSatisfy({ !$0.id.isEmpty }), Set(messages.map(\.id)).count == messages.count else {
+                throw RPCError("protocol", "Invalid chat view.")
+            }
+            try validate(send, package: package)
+        }
     }
     private func validate(_ action: PluginAction, package: PluginPackage) throws {
         if action.kind == .service && !package.manifest.capabilities.contains(action.value) { throw RPCError("protocol", "Action uses an undeclared capability.") }

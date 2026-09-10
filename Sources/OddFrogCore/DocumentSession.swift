@@ -15,12 +15,12 @@ import OddFrogPluginAPI
     public private(set) var invalidated = false
     public private(set) var error: String?
 
-    public init(view: PluginView, result: PluginResult, pluginName: String) {
+    public init(view: PluginView, save: PluginAction, result: PluginResult, pluginName: String) {
         pluginID = result.pluginID
         self.pluginName = pluginName
         viewID = view.id
         self.result = result
-        save = view.save
+        self.save = save
         title = view.title
         text = view.text
     }

@@ -290,6 +290,91 @@ struct PluginTests {
         #expect(stale is PluginError)
         #expect(String(describing: stale) == "This result belongs to a disabled or superseded plugin. Search again.")
     }
+    @Test @MainActor func chatViewsAreValidatedAndDeltasAreRouted() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = ChatHandler()
+        let package = PluginPackage(manifest: try manifest(extra: """
+        activation = "live"
+        [[commands]]
+        id = "chat"
+        title = "Chat"
+        primary = { kind = "callback", value = "open" }
+        """), directory: root, bundled: true)
+        let discovery = PluginDiscovery(packages: [package])
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        coordinator.builtins["fixture"] = { handler }
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: discovery, settings: [], storage: root)
+        var deltas: [(String, PluginMessageDelta)] = []
+        coordinator.onMessageDelta = { pluginID, delta in deltas.append((pluginID, delta)) }
+        var outcomes: [Result<PluginEffects, any Error>] = []
+        func start() throws {
+            let result = try #require(coordinator.catalogItems.first?.result)
+            let action = try #require(result.item.primary)
+            _ = coordinator.activate(result, action: action, argument: nil, text: "hello") { outcomes.append($0) }
+        }
+        func chat(_ fields: [String: JSONValue]) -> JSONValue {
+            var view: [String: JSONValue] = ["kind": .string("chat"), "id": .string("c1"), "title": .string("Chat")]
+            for (key, value) in fields { view[key] = value }
+            return .object(["refreshCatalog": .bool(false), "refreshQuery": .bool(false), "view": .object(view)])
+        }
+        let send = JSONValue.object(["kind": .string("callback"), "value": .string("send")])
+        let hello = JSONValue.object(["id": .string("m1"), "role": .string("user"), "text": .string("hello")])
+        await handler.respond(chat(["messages": .array([hello])]))
+        try start()
+        try await waitUntil { outcomes.count == 1 }
+        guard case .failure(let missing) = outcomes[0] else { Issue.record("Expected a chat view without send to be refused"); return }
+        #expect((missing as? RPCError)?.code == "protocol")
+        await handler.respond(chat(["messages": .array([hello, hello]), "send": send]))
+        try start()
+        try await waitUntil { outcomes.count == 2 }
+        guard case .failure(let duplicated) = outcomes[1] else { Issue.record("Expected duplicate message IDs to be refused"); return }
+        #expect((duplicated as? RPCError)?.code == "protocol")
+        await handler.respond(chat(["messages": .array([hello]), "send": send]))
+        try start()
+        try await waitUntil { outcomes.count == 3 }
+        guard case .success(let effects) = outcomes[2] else { Issue.record("Expected a chat view"); return }
+        #expect(effects.view?.kind == .chat)
+        #expect(effects.view?.messages == [PluginMessage(id: "m1", role: .user, text: "hello")])
+        #expect(effects.view?.send?.value == "send")
+        try await waitUntil { deltas.count == 3 }
+        #expect(deltas.last?.0 == "fixture")
+        #expect(deltas.last?.1 == PluginMessageDelta(viewID: "c1", messageID: "m2", delta: "Hi"))
+    }
+    @Test func processAcceptsMessageDeltaEvents() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = """
+        import json,sys
+        def send(v): print(json.dumps(dict(apiVersion=2,**v)),flush=True)
+        for line in sys.stdin:
+          r=json.loads(line)
+          m=r.get('method')
+          if m=='shutdown': break
+          if m=='activate':
+            send({'method':'messageDelta','params':{'viewID':'c1','messageID':'m2','delta':'Hi'}})
+            send({'id':r['id'],'result':{'refreshCatalog':False,'refreshQuery':False}})
+          elif m=='bogus':
+            send({'method':'bogus','params':{}})
+          else:
+            send({'id':r['id'],'result':{'apiVersion':2}})
+        """
+        let log = DeltaLog()
+        let process = PluginProcess(executable: try fixture(root, source: source), persistent: true) { method, params in
+            await log.record(method, params: params)
+        }
+        let result = try await process.request("activate", timeout: .seconds(5))
+        #expect(result["refreshCatalog"] == .bool(false))
+        try await settle { await log.events.count >= 1 }
+        #expect(await log.events.first?.method == "messageDelta")
+        #expect(await log.events.first?.params["delta"].string == "Hi")
+        do {
+            _ = try await process.request("bogus", timeout: .seconds(5))
+            Issue.record("Expected an unknown provider event to fail the request")
+        } catch let error as RPCError {
+            #expect(error.message.contains("Unknown provider event."))
+        }
+        await process.stop()
+    }
     func settle(_ condition: @Sendable () async -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while await !condition() {
@@ -320,6 +405,26 @@ private actor DocumentHandler: ProviderHandler {
             try await Task.sleep(for: .seconds(5))
             throw RPCError("test", "A stalled activation was never cancelled.")
         }
+        return reply
+    }
+}
+
+private actor DeltaLog {
+    private(set) var events: [(method: String, params: JSONValue)] = []
+    func record(_ method: String, params: JSONValue) {
+        events.append((method, params))
+    }
+}
+
+private actor ChatHandler: ProviderHandler {
+    private(set) var activations = 0
+    private var reply: JSONValue?
+    func respond(_ value: JSONValue) { reply = value }
+    func handle(_ method: String, params: JSONValue, operation: ProviderOperation) async throws -> JSONValue {
+        guard method == "activate" else { return .object(["apiVersion": .number(2)]) }
+        activations += 1
+        try await operation.emit("messageDelta", params: .encode(PluginMessageDelta(viewID: "c1", messageID: "m2", delta: "Hi")))
+        guard let reply else { throw RPCError("test", "No reply configured.") }
         return reply
     }
 }

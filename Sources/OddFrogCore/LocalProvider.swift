@@ -19,10 +19,10 @@ public actor LocalProvider: ProviderTransport {
         let emit = forwarder()
         if !started {
             started = true
-            await handler.start(emit: emit)
+            await handler.start(emit: { method in await emit(method, .object([:])) })
         }
-        let operation = ProviderOperation(id: UUID().uuidString, service: service) { method in
-            await emit(method)
+        let operation = ProviderOperation(id: UUID().uuidString, service: service) { method, params in
+            await emit(method, params)
         }
         return try await handler.handle(method, params: params, operation: operation)
     }
@@ -36,10 +36,10 @@ public actor LocalProvider: ProviderTransport {
             await handler.shutdown()
         }
     }
-    private func forwarder() -> @Sendable (String) async -> Void {
+    private func forwarder() -> @Sendable (String, JSONValue) async -> Void {
         let event = self.event
-        return { method in
-            await event(method, .object([:]))
+        return { method, params in
+            await event(method, params)
         }
     }
 }

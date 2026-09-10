@@ -134,7 +134,7 @@ public actor PluginProcess {
         guard token == runToken else { return }
         if let method = message.method {
             guard let id = message.id else {
-                guard ["catalogChanged", "queryInvalidated"].contains(method) else { fail(RPCError("protocol", "Unknown provider event.")); return }
+                guard ["catalogChanged", "queryInvalidated", "messageDelta"].contains(method) else { fail(RPCError("protocol", "Unknown provider event.")); return }
                 await event(method, message.params ?? .null); return
             }
             if method == "host.service", let owner = message.params?["requestID"].string, retired.contains(owner) {

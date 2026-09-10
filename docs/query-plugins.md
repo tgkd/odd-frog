@@ -80,6 +80,9 @@ no query deadline and can be cancelled from the status menu.
 Host events: `cancel` with `{requestID: "..."}` and `shutdown` with `{}`. Cancellation should stop
 work for that request; a late response is ignored. Providers may emit `catalogChanged` and
 `queryInvalidated` with `{}`. These events never carry result rows: the host fetches current data.
+Providers may also emit `messageDelta` with `{viewID, messageID, delta}` while a chat `send`
+callback is running: the host appends `delta` to the reply of the open chat with that `viewID` and
+ignores deltas addressed to any other view. The `view` returned by the callback is authoritative.
 Provider process generations reject events from a previous package instance. Disable/reload stops
 the process group, cancels active service work, and clears its catalogs and live results.
 Closing the panel cancels queries but keeps catalog/background providers alive.
@@ -117,15 +120,18 @@ use `{query}` with percent encoding. `output = "notification"` reports bounded c
 otherwise stdout is discarded. Plain executable scripts remain ordinary commands, without JSON.
 
 Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
-from a document window also receives the editor buffer in `text`. Success effects:
+from a document or chat window also receives the editor buffer in `text`. Success effects:
 `{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object}`. Errors use
 the normal structured error envelope. The host checks package generation and enablement before
 activation.
 
-## Document views
+## Views
 
-Effects may carry `view: {kind, id, title, text, placeholder?, save}`. `kind` is `editor`, the only
-kind today. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
+Effects may carry one `view`, whose `kind` selects the window the host opens: `editor` or `chat`.
+
+### Editor
+
+An editor view is `{kind: "editor", id, title, text, placeholder?, save}`. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
 document window, and a view whose plugin and `id` already match the open document just refocuses it
 without touching the buffer. `title` is the window title, `text` is the initial buffer, and
 `placeholder` is shown while the buffer is empty.
@@ -136,6 +142,22 @@ one, and on quit. A `view` returned from a save updates the window title only; t
 selection are never replaced. A failed save keeps the text on screen with Retry and Discard and
 Close. Reloading plugins invalidates the open document: the host never re-sends a draft to a
 superseded provider, and the text stays editable and copyable so it can be recovered by hand.
+
+### Chat
+
+A chat view is `{kind: "chat", id, title, messages, placeholder?, prompt?, send}`. `messages` is the
+whole transcript, an array of `{id, role: "user" | "assistant", text}` with unique non-empty IDs.
+`title` is the window title and `placeholder` is shown while the input is empty. An optional
+`prompt` seeds the input and is sent by the host as soon as the window is on screen, so the first
+turn streams like any other. `id` behaves like the editor's: a chat view whose plugin and `id`
+already match the open chat just refocuses its window.
+
+`send` must be a `callback` action, and it is invoked with the input text in `text`. While it runs,
+`messageDelta` events append to the reply bubble; the `messages` it returns replace the transcript
+and its `title` updates the window. The host keeps no transcript of its own, so a plugin that wants
+history must store it. A failed or cancelled send puts the text back into the input with an error
+line. Reloading plugins invalidates the open chat: the transcript stays selectable and the input is
+disabled.
 
 ## Host services
 

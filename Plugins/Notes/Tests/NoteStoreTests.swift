@@ -15,7 +15,7 @@ struct NoteStoreTests {
     }
 
     private var operation: ProviderOperation {
-        ProviderOperation(id: "test", service: { _, _ in throw RPCError("test", "No host services.") }, emit: { _ in })
+        ProviderOperation(id: "test", service: { _, _ in throw RPCError("test", "No host services.") }, emit: { _, _ in })
     }
 
     private func activation(_ actionID: String, payload: JSONValue = .object([:]), text: String? = nil) -> PluginActivation {

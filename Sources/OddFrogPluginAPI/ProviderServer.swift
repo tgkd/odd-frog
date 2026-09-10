@@ -51,8 +51,8 @@ public actor ProviderServer {
                         guard let self else { throw RPCError("protocol", "Provider stopped.") }
                         return try await self.service(capability, params: params, owner: id)
                     },
-                    emit: { [weak self] method in
-                        try await self?.emit(method)
+                    emit: { [weak self] method, params in
+                        try await self?.emit(method, params: params)
                     }
                 )
                 operations[id] = Task {
@@ -80,7 +80,7 @@ public actor ProviderServer {
         try? channel.send(PluginEnvelope(id: id, result: result, error: error))
         if oneShot { stopping = true; channel.close() }
     }
-    public func emit(_ method: String) throws { try channel.send(PluginEnvelope(method: method, params: .object([:]))) }
+    public func emit(_ method: String, params: JSONValue = .object([:])) throws { try channel.send(PluginEnvelope(method: method, params: params)) }
     private func service(_ capability: String, params: JSONValue, owner: String) async throws -> JSONValue {
         let id = UUID().uuidString
         return try await withTaskCancellationHandler {
@@ -100,7 +100,7 @@ public actor ProviderServer {
 }
 public struct ProviderOperation: Sendable {
     public typealias Service = @Sendable (String, JSONValue) async throws -> JSONValue
-    public typealias Emit = @Sendable (String) async throws -> Void
+    public typealias Emit = @Sendable (String, JSONValue) async throws -> Void
     public let id: String
     private let services: Service
     private let events: Emit
@@ -112,7 +112,7 @@ public struct ProviderOperation: Sendable {
     public func service(_ capability: String, params: JSONValue = .object([:])) async throws -> JSONValue {
         try await services(capability, params)
     }
-    public func emit(_ method: String) async throws {
-        try await events(method)
+    public func emit(_ method: String, params: JSONValue = .object([:])) async throws {
+        try await events(method, params)
     }
 }

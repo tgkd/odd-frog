@@ -49,7 +49,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     required init?(coder: NSCoder) { nil }
 
-    func present(_ view: PluginView, result: PluginResult, pluginName: String) {
+    func present(_ view: PluginView, save: PluginAction, result: PluginResult, pluginName: String) {
         if let session, session.pluginID == result.pluginID, session.viewID == view.id {
             activateWindow()
             return
@@ -58,14 +58,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             flush(reason: .replace) { [weak self] saved in
                 guard let self else { return }
                 if saved {
-                    show(view, result: result, pluginName: pluginName)
+                    show(view, save: save, result: result, pluginName: pluginName)
                 } else {
                     activateWindow()
                 }
             }
             return
         }
-        show(view, result: result, pluginName: pluginName)
+        show(view, save: save, result: result, pluginName: pluginName)
     }
 
     func pluginsDidReload() {
@@ -125,12 +125,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         return true
     }
 
-    private func show(_ view: PluginView, result: PluginResult, pluginName: String) {
+    private func show(_ view: PluginView, save: PluginAction, result: PluginResult, pluginName: String) {
         autosave?.invalidate()
         autosave = nil
         pending = nil
         notice = nil
-        session = DocumentSession(view: view, result: result, pluginName: pluginName)
+        session = DocumentSession(view: view, save: save, result: result, pluginName: pluginName)
         placeholder = view.placeholder
         textView.isEditable = true
         textView.string = view.text

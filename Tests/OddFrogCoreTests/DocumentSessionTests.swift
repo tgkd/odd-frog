@@ -9,7 +9,7 @@ struct DocumentSessionTests {
         let view = PluginView(id: "n1", title: title, text: text, placeholder: placeholder,
                               save: PluginAction(.callback, "save"))
         let result = PluginResult(pluginID: "notes", item: PluginItem(id: "n1", title: title))
-        return DocumentSession(view: view, result: result, pluginName: "Notes")
+        return DocumentSession(view: view, save: PluginAction(.callback, "save"), result: result, pluginName: "Notes")
     }
 
     @Test func theViewSeedsTitleAndTextAndTheSessionStartsClean() {

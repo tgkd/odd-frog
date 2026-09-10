@@ -4,9 +4,10 @@ import OddFrogPluginAPI
 @testable import OddFrogCore
 
 private actor EventLog {
-    private(set) var events: [String] = []
-    func record(_ method: String) {
-        events.append(method)
+    private(set) var events: [(method: String, params: JSONValue)] = []
+    var methods: [String] { events.map(\.method) }
+    func record(_ method: String, params: JSONValue) {
+        events.append((method, params))
     }
 }
 
@@ -31,7 +32,7 @@ private actor ProbeHandler: ProviderHandler {
         case "service":
             return try await operation.service("cap@1", params: params)
         case "emit":
-            try await operation.emit("queryInvalidated")
+            try await operation.emit("queryInvalidated", params: .object(["n": .number(1)]))
             return .null
         default:
             return .object(["echo": params])
@@ -69,11 +70,12 @@ struct LocalProviderTests {
     @Test func startAndOperationEmitReachTheEventCallback() async throws {
         let handler = ProbeHandler()
         let log = EventLog()
-        let provider = LocalProvider(handler: handler) { method, _ in
-            await log.record(method)
+        let provider = LocalProvider(handler: handler) { method, params in
+            await log.record(method, params: params)
         }
         _ = try await provider.request("emit")
-        #expect(await log.events == ["catalogChanged", "queryInvalidated"])
+        #expect(await log.methods == ["catalogChanged", "queryInvalidated"])
+        #expect(await log.events.last?.params["n"].number == 1)
     }
     @Test func startRunsOnceAcrossSeveralRequests() async throws {
         let handler = ProbeHandler()
