@@ -41,9 +41,12 @@ struct RemindersProviderTests {
         #expect(!RemindersScope(limit: 2001).isValid())
     }
 
+    @Test func bareKeywordListsEverythingWithUndatedLast() {
+        #expect(respond(to: request(reminders: mixed)).items.map(\.id)
+            == ["overdue", "today-early", "today-late", "tomorrow", "week-edge", "outside-week", "undated"])
+    }
+
     @Test func todayIncludesOverdueButNotTomorrowOrUndated() {
-        let response = respond(to: request(reminders: mixed))
-        #expect(response.items.map(\.id) == ["overdue", "today-early", "today-late"])
         #expect(respond(to: request("today", reminders: mixed)).items.map(\.id)
             == ["overdue", "today-early", "today-late"])
     }
@@ -109,7 +112,8 @@ struct RemindersProviderTests {
 
     @Test func emptyStatesNameThePeriodAndTruncation() {
         for (query, title) in [
-            ("", "No reminders due today"),
+            ("", "No reminders"),
+            ("today", "No reminders due today"),
             ("tomorrow", "No reminders due tomorrow"),
             ("week", "No reminders due in the next 7 days"),
             ("12d", "No reminders due in the next 12 days"),

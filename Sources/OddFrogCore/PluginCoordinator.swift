@@ -254,11 +254,11 @@ import OddFrogPluginAPI
     }
     public func authorize(_ result: PluginResult, action: PluginAction) throws -> PluginPackage {
         guard result.generation == generation, let package = enabled.first(where: { $0.manifest.id == result.pluginID }) else {
-            throw PluginError.message("This result belongs to a disabled or superseded plugin. Search again.")
+            throw PluginError.superseded
         }
         try validate(action, package: package); return package
     }
-    public func activate(_ result: PluginResult, action: PluginAction, argument: String?, completion: @escaping (Result<PluginEffects, any Error>) -> Void) -> UUID {
+    public func activate(_ result: PluginResult, action: PluginAction, argument: String?, text: String? = nil, completion: @escaping (Result<PluginEffects, any Error>) -> Void) -> UUID {
         let id = UUID(), token = generation
         actionTasks[id] = Task { [weak self] in
             guard let self else { return }
@@ -268,18 +268,28 @@ import OddFrogPluginAPI
                 let output: JSONValue
                 if action.kind == .callback {
                     try await initialize(package).value
-                    let input = PluginActivation(actionID: action.value, payload: action.payload ?? .null, item: result.item, argument: argument)
+                    let input = PluginActivation(actionID: action.value, payload: action.payload ?? .null, item: result.item, argument: argument, text: text)
                     output = try await perform("activate", package: package, params: .encode(input), timeout: nil, activated: true)
                 } else {
                     output = try await services.invoke(action.value, params: action.payload ?? .object([:]),
                         context: .init(pluginID: result.pluginID, generation: token, activated: true), declared: package.manifest.capabilities)
                 }
-                try Task.checkCancellation(); guard token == generation else { return }
+                try Task.checkCancellation()
+                guard token == generation else { completion(.failure(PluginError.superseded)); return }
                 let effects = try output.decode(PluginEffects.self)
+                if let view = effects.view {
+                    guard view.save.kind == .callback, !view.id.isEmpty, !view.title.isEmpty else {
+                        throw RPCError("protocol", "Invalid document view.")
+                    }
+                    try validate(view.save, package: package)
+                }
                 if effects.refreshCatalog { refreshCatalog(package) }
                 if effects.refreshQuery { invalidate() }
                 completion(.success(effects))
-            } catch { if !(error is CancellationError), token == generation { completion(.failure(error)) } }
+            } catch {
+                if token != generation { completion(.failure(PluginError.superseded)) }
+                else { completion(.failure(error)) }
+            }
         }
         return id
     }

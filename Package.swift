@@ -14,7 +14,8 @@ let package = Package(
         .target(name: "BundledFeatures", dependencies: ["OddFrogCore", "OddFrogPluginAPI"], path: "Plugins/Shared/Sources/BundledFeatures"),
         .target(name: "CalendarPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Calendar/Sources/CalendarPluginCore"),
         .target(name: "RemindersPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Reminders/Sources/RemindersPluginCore"),
-        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
+        .target(name: "NotesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Notes/Sources/NotesPluginCore"),
+        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
             dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
@@ -31,5 +32,6 @@ let package = Package(
         ),
         .testTarget(name: "CalendarPluginTests", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Tests"),
         .testTarget(name: "RemindersPluginTests", dependencies: ["RemindersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Reminders/Tests"),
+        .testTarget(name: "NotesPluginTests", dependencies: ["NotesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Notes/Tests"),
     ]
 )

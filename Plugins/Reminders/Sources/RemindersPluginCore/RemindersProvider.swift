@@ -14,7 +14,7 @@ public enum RemindersProvider {
         let hasRange = words.isEmpty || explicitDays != nil || ["today", "tomorrow", "week", "all"].contains(word)
         let filter = (hasRange ? words.dropFirst() : words[...]).joined(separator: " ")
         let days = explicitDays ?? (word == "week" ? 7 : 1)
-        let unbounded = word == "all" || (!words.isEmpty && !hasRange)
+        let unbounded = words.isEmpty || word == "all" || !hasRange
         let start = calendar.date(byAdding: .day, value: 1, to: day)!
         let end = calendar.date(byAdding: .day, value: word == "tomorrow" ? 2 : days, to: day)!
         switch snapshot.access {

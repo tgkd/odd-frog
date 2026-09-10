@@ -2,8 +2,9 @@
 
 The host owns AppKit UI, fuzzy ranking, arguments, history, configuration storage, process supervision,
 and reusable macOS services. The bundled features are compiled into the host: `OddFrogBuiltins` links
-`BundledFeatures`, `CalendarPluginCore` and `RemindersPluginCore` and runs them in-process behind the
-same coordinator interface external packages use, so a bundled package ships as `plugin.toml` alone.
+`BundledFeatures`, `CalendarPluginCore`, `RemindersPluginCore` and `NotesPluginCore` and runs them
+in-process behind the same coordinator interface external packages use, so a bundled package ships as
+`plugin.toml` alone.
 Installing a package uses discovery and explicit enablement, without recompiling the host; a user
 package with a bundled ID replaces the built-in one and runs out-of-process over NDJSON. A new macOS
 capability may still require a host release.
@@ -19,6 +20,7 @@ capability may still require a host release.
 | Terminal | Exclusive prefix `>` | `>` input |
 | Calendar | Exclusive keyword `cal` | `cal` range/filter/labels and meeting links |
 | Reminders | Exclusive keyword `rem` | `rem` range/filter/labels and requested writes |
+| Notes | Exclusive keyword `note` | `note` list/filter, plain-text notes in the document window |
 
 The [API 2 contract](query-plugins.md) defines one item model, generic host actions and callbacks,
 NDJSON envelopes, lifecycle, settings, search precedence, and process limits. Calendar and Reminders

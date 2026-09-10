@@ -146,7 +146,13 @@ public struct PluginPackage: Sendable, Equatable {
 }
 public enum PluginError: Error, CustomStringConvertible {
     case message(String)
-    public var description: String { switch self { case .message(let text): text } }
+    case superseded
+    public var description: String {
+        switch self {
+        case .message(let text): return text
+        case .superseded: return "This result belongs to a disabled or superseded plugin. Search again."
+        }
+    }
 }
 public struct PluginDiscovery: Sendable {
     public var packages: [PluginPackage]

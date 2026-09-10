@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var panel = LauncherPanel(contentViewController: controller)
     private lazy var executor = ActionExecutor(config: config, frecency: frecency, notifier: notifier)
     lazy var settingsWindow = SettingsWindowController(icons: icons)
+    private lazy var documents = DocumentWindowController()
     private let configWatcher = ConfigWatcher(path: ConfigLoader.defaultPath)
     private let settingsWatcher = ConfigWatcher(path: SettingsLoader.defaultPath)
     private let packageWatcher = DirectoryWatcher()
@@ -69,6 +70,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installMainMenu() {
+        let file = NSMenu(title: "File")
+        file.addItem(NSMenuItem(title: "Save", action: #selector(DocumentWindowController.saveDocument(_:)), keyEquivalent: "s"))
+        file.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        let fileItem = NSMenuItem()
+        fileItem.submenu = file
         let edit = NSMenu(title: "Edit")
         edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
         let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
@@ -83,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         let main = NSMenu()
         main.addItem(NSMenuItem())
+        main.addItem(fileItem)
         main.addItem(editItem)
         NSApp.mainMenu = main
     }
@@ -162,6 +169,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if panel.isVisible { controller.refresh(keepSelection: true) }
         }
         executor.onPluginAction = { [weak self] result, argument, secondary in self?.runPluginAction(result, argument: argument, secondary: secondary) }
+        documents.performSave = { [weak self] session, revision, text, completion in
+            _ = self?.plugins.activate(session.result, action: session.save, argument: nil, text: text, completion: completion)
+        }
         settingsWindow.pluginsPane.onReload = { [weak self] in self?.reloadPlugins() }
         settingsWindow.pluginsPane.onToggle = { [weak self] id, enabled in
             guard let self else { return }
@@ -197,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let user = ConfigLoader.defaultDirectory.appendingPathComponent("plugins", isDirectory: true)
         let discovery = PluginDiscovery.scan(bundled: bundled, user: user)
         plugins.reload(discovery: discovery, settings: settings.plugins)
+        documents.pluginsDidReload()
         var watched = discovery.packages.map(\.directory) + [user, user.deletingLastPathComponent()]
         for package in discovery.packages {
             if let enumerator = FileManager.default.enumerator(at: package.directory, includingPropertiesForKeys: [.isDirectoryKey]) {
@@ -223,7 +234,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func runPluginAction(_ result: PluginResult, argument: String?, secondary: Bool) {
         guard let action = secondary ? (result.item.secondary ?? result.item.primary) : result.item.primary else { return }
-        do { _ = try plugins.authorize(result, action: action) }
+        let package: PluginPackage
+        do { package = try plugins.authorize(result, action: action) }
         catch { report(String(describing: error)); return }
         if action.kind == .callback || action.kind == .service {
             _ = plugins.activate(result, action: action, argument: argument) { [weak self] response in
@@ -232,11 +244,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .success(let effects):
                     if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
                     executor.recordPlugin(result)
-                case .failure(let error): report(String(describing: error))
+                    if let view = effects.view { documents.present(view, result: result, pluginName: package.manifest.name) }
+                case .failure(let error):
+                    if error is CancellationError { return }
+                    report(String(describing: error))
                 }
             }
             status.onCancelAction = { [weak self] in self?.plugins.cancelActions() }
         } else { executor.runHost(action, result: result, argument: argument) }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if documents.prepareToTerminate({ ok in NSApp.reply(toApplicationShouldTerminate: ok) }) {
+            return .terminateLater
+        }
+        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {

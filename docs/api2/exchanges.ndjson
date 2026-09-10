@@ -10,3 +10,5 @@
 {"apiVersion":2,"id":"query-old","error":{"code":"cancelled","message":"Cancelled"}}
 {"apiVersion":2,"id":"null-result","result":null}
 {"apiVersion":2,"method":"shutdown","params":{}}
+{"apiVersion":2,"id":"open","method":"activate","params":{"apiVersion":2,"context":{"settings":{},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{"actionID":"save","payload":{"id":"n1"},"item":{"id":"n1","title":"Note"},"argument":null,"text":"hello"}}}
+{"apiVersion":2,"id":"open","result":{"refreshCatalog":false,"refreshQuery":true,"view":{"kind":"editor","id":"n1","title":"Note","text":"hello","save":{"kind":"callback","value":"save","payload":{"id":"n1"}}}}}

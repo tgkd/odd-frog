@@ -18,6 +18,12 @@ enum SettingsLayout {
         control.translatesAutoresizingMaskIntoConstraints = false
         control.setContentHuggingPriority(.required, for: .horizontal)
         control.setContentCompressionResistancePriority(.required, for: .horizontal)
+        if let stack = control as? NSStackView {
+            stack.setHuggingPriority(.required, for: .horizontal)
+            for view in stack.arrangedSubviews {
+                view.setContentHuggingPriority(.required, for: .horizontal)
+            }
+        }
 
         let text = NSView()
         text.translatesAutoresizingMaskIntoConstraints = false

@@ -237,11 +237,89 @@ struct PluginTests {
             #expect(copy.result == envelope.result)
         }
     }
+    @Test @MainActor func activateAlwaysCompletes() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = DocumentHandler()
+        let package = PluginPackage(manifest: try manifest(extra: """
+        activation = "live"
+        [[commands]]
+        id = "doc"
+        title = "Doc"
+        primary = { kind = "callback", value = "open" }
+        """), directory: root, bundled: true)
+        let discovery = PluginDiscovery(packages: [package])
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        coordinator.builtins["fixture"] = { handler }
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: discovery, settings: [], storage: root)
+        var outcomes: [Result<PluginEffects, any Error>] = []
+        func start(text: String? = nil) throws {
+            let result = try #require(coordinator.catalogItems.first?.result)
+            let action = try #require(result.item.primary)
+            _ = coordinator.activate(result, action: action, argument: nil, text: text) { outcomes.append($0) }
+        }
+        func view(save: JSONValue) -> JSONValue {
+            .object(["refreshCatalog": .bool(false), "refreshQuery": .bool(false),
+                     "view": .object(["kind": .string("editor"), "id": .string("n1"), "title": .string("T"),
+                                      "text": .string("x"), "save": save])])
+        }
+        try start()
+        try await settle { await handler.activations == 1 }
+        coordinator.cancelActions()
+        try await waitUntil { outcomes.count == 1 }
+        #expect(throws: CancellationError.self) { try outcomes[0].get() }
+        await handler.respond(view(save: .object(["kind": .string("openURL"), "value": .string("https://x")])))
+        try start()
+        try await waitUntil { outcomes.count == 2 }
+        guard case .failure(let rejected) = outcomes[1] else { Issue.record("Expected an invalid view to be refused"); return }
+        #expect((rejected as? RPCError)?.code == "protocol")
+        await handler.respond(view(save: .object(["kind": .string("callback"), "value": .string("save")])))
+        try start(text: "body")
+        try await waitUntil { outcomes.count == 3 }
+        guard case .success(let effects) = outcomes[2] else { Issue.record("Expected a document view"); return }
+        #expect(effects.view?.id == "n1")
+        #expect(effects.view?.text == "x")
+        let input = await handler.input
+        #expect(input["text"].string == "body")
+        await handler.stall()
+        try start()
+        try await settle { await handler.activations == 4 }
+        coordinator.reload(discovery: discovery, settings: [PluginSetting(id: "fixture", enabled: false, source: package.source)], storage: root)
+        try await waitUntil { outcomes.count == 4 }
+        guard case .failure(let stale) = outcomes[3] else { Issue.record("Expected a superseded failure"); return }
+        #expect(stale is PluginError)
+        #expect(String(describing: stale) == "This result belongs to a disabled or superseded plugin. Search again.")
+    }
+    func settle(_ condition: @Sendable () async -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while await !condition() {
+            guard ContinuousClock.now < deadline else { throw RPCError("test", "Condition timed out.") }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
     @MainActor func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while !condition() {
             guard ContinuousClock.now < deadline else { throw RPCError("test", "Condition timed out.") }
             try await Task.sleep(for: .milliseconds(20))
         }
+    }
+}
+
+private actor DocumentHandler: ProviderHandler {
+    private(set) var activations = 0
+    private(set) var input: JSONValue = .null
+    private var reply: JSONValue?
+    func respond(_ value: JSONValue) { reply = value }
+    func stall() { reply = nil }
+    func handle(_ method: String, params: JSONValue, operation: ProviderOperation) async throws -> JSONValue {
+        guard method == "activate" else { return .object(["apiVersion": .number(2)]) }
+        activations += 1
+        input = params["input"]
+        guard let reply else {
+            try await Task.sleep(for: .seconds(5))
+            throw RPCError("test", "A stalled activation was never cancelled.")
+        }
+        return reply
     }
 }

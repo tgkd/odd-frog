@@ -2,6 +2,7 @@ import Foundation
 import BundledFeatures
 import CalendarPluginCore
 import RemindersPluginCore
+import NotesPluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
@@ -15,5 +16,6 @@ public enum BuiltinProviders {
         "terminal": { FeatureProvider(.terminal) },
         "calendar": { CalendarHandler() },
         "reminders": { RemindersHandler() },
+        "notes": { NotesHandler() },
     ]
 }

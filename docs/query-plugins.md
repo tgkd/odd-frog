@@ -68,7 +68,7 @@ Host operations use `params = {apiVersion: 2, context: {...}, input: ...}`:
 | `initialize` | `{}` | `{"apiVersion":2}` |
 | `catalog` | `{}` | Array of items; replaces the provider catalog |
 | `query` | query, fullQuery, now, timeZoneIdentifier, maxResults | Array of at most 50 items |
-| `activate` | actionID, payload, item, optional argument | Effects object |
+| `activate` | actionID, payload, item, optional argument, optional text | Effects object, optionally with a view |
 | `settings` | `{}`; updated values are in context | Acknowledgement object |
 
 Every operation includes context, so a one-shot executable can perform one operation and exit
@@ -116,9 +116,26 @@ omitted when no argument is supplied. Terminal argv is shell-quoted by the host.
 use `{query}` with percent encoding. `output = "notification"` reports bounded command output;
 otherwise stdout is discarded. Plain executable scripts remain ordinary commands, without JSON.
 
-Callbacks receive the selected item, original payload, action ID, and argument. Success effects:
-`{notification?: string, refreshCatalog: boolean, refreshQuery: boolean}`. Errors use the normal
-structured error envelope. The host checks package generation and enablement before activation.
+Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
+from a document window also receives the editor buffer in `text`. Success effects:
+`{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object}`. Errors use
+the normal structured error envelope. The host checks package generation and enablement before
+activation.
+
+## Document views
+
+Effects may carry `view: {kind, id, title, text, placeholder?, save}`. `kind` is `editor`, the only
+kind today. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
+document window, and a view whose plugin and `id` already match the open document just refocuses it
+without touching the buffer. `title` is the window title, `text` is the initial buffer, and
+`placeholder` is shown while the buffer is empty.
+
+`save` must be a `callback` action, and it is invoked with the editor text in `text`. The host
+autosaves one second after typing pauses, on Cmd+S, on close, when another document replaces this
+one, and on quit. A `view` returned from a save updates the window title only; the buffer and the
+selection are never replaced. A failed save keeps the text on screen with Retry and Discard and
+Close. Reloading plugins invalidates the open document: the host never re-sends a draft to a
+superseded provider, and the text stays editable and copyable so it can be recovered by hand.
 
 ## Host services
 

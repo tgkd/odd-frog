@@ -109,15 +109,19 @@ public struct PluginActivation: Codable, Sendable {
     public var payload: JSONValue
     public var item: PluginItem
     public var argument: String?
-    public init(actionID: String, payload: JSONValue, item: PluginItem, argument: String?) {
-        self.actionID = actionID; self.payload = payload; self.item = item; self.argument = argument
+    public var text: String?
+    public init(actionID: String, payload: JSONValue, item: PluginItem, argument: String?, text: String? = nil) {
+        self.actionID = actionID; self.payload = payload; self.item = item; self.argument = argument; self.text = text
     }
 }
 public struct PluginEffects: Codable, Sendable {
     public var notification: String?
     public var refreshCatalog: Bool
     public var refreshQuery: Bool
-    public init(notification: String? = nil, refreshCatalog: Bool = false, refreshQuery: Bool = false) {
+    public var view: PluginView?
+    public init(notification: String? = nil, refreshCatalog: Bool = false, refreshQuery: Bool = false,
+                view: PluginView? = nil) {
         self.notification = notification; self.refreshCatalog = refreshCatalog; self.refreshQuery = refreshQuery
+        self.view = view
     }
 }
