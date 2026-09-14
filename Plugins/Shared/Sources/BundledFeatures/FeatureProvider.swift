@@ -42,7 +42,8 @@ public actor FeatureProvider: ProviderHandler {
             switch feature {
             case .calculator:
                 let cached = context.settings["currency"]?.bool == false ? nil : await rates?.current()
-                items = QuickAction.calculation(for: query.query, rates: cached).map { [Self.quick($0)] } ?? []
+                let zone = TimeZone(identifier: query.timeZoneIdentifier) ?? .current
+                items = QuickAction.calculation(for: query.query, rates: cached, now: query.now, timeZone: zone).map { [Self.quick($0)] } ?? []
             case .web: items = QuickAction.fallbacks(for: query.query, searchTemplate: context.settings["url"]?.string ?? Settings.Search.defaultURL).map(Self.quick)
             case .terminal:
                 items = query.query.isEmpty ? [] : [PluginItem(id: "run", title: "Run in Terminal", subtitle: query.query, kind: "Terminal", symbol: "terminal", primary: PluginAction(.terminal, query.query))]
@@ -136,6 +137,7 @@ public actor FeatureProvider: ProviderHandler {
         let action: PluginAction, symbol: String
         switch quick {
         case .calculation: action = PluginAction(.copy, quick.copyText ?? ""); symbol = "plus.forwardslash.minus"
+        case .temporal: action = PluginAction(.copy, quick.copyText ?? ""); symbol = "clock"
         case .openURL(let url), .webSearch(_, let url): action = PluginAction(.openURL, url.absoluteString); symbol = "magnifyingglass"
         case .terminal(let command): action = PluginAction(.terminal, command); symbol = "terminal"
         }

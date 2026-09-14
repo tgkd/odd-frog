@@ -12,6 +12,7 @@ public enum QuickAction: Sendable, Hashable {
     case webSearch(query: String, url: URL)
     case terminal(String)
     case calculation(input: String, value: Double, kind: CalculationKind)
+    case temporal(TemporalCalculation)
 
     public var id: String {
         switch self {
@@ -19,6 +20,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(let query, _): "quick:search:\(query)"
         case .terminal(let text): "quick:terminal:\(text)"
         case .calculation(let input, _, _): "quick:calc:\(input)"
+        case .temporal(let calculation): "quick:calc:\(calculation.input)"
         }
     }
 
@@ -28,6 +30,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(let query, _): "Search for “\(query)”"
         case .terminal: "Run in Terminal"
         case .calculation(_, let value, let kind): Self.title(value: value, kind: kind)
+        case .temporal(let calculation): calculation.title
         }
     }
 
@@ -37,6 +40,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(_, let url): url.host
         case .terminal(let text): text
         case .calculation(let input, _, let kind): Self.subtitle(input: input, kind: kind)
+        case .temporal(let calculation): calculation.subtitle
         }
     }
 
@@ -51,6 +55,7 @@ public enum QuickAction: Sendable, Hashable {
             case .measurement: "Units"
             case .currency: "Currency"
             }
+        case .temporal(let calculation): calculation.kindLabel
         }
     }
 
@@ -58,6 +63,7 @@ public enum QuickAction: Sendable, Hashable {
         switch self {
         case .openURL, .webSearch, .terminal: nil
         case .calculation(_, let value, let kind): Self.copyText(value: value, kind: kind)
+        case .temporal(let calculation): calculation.copyText
         }
     }
 
@@ -83,9 +89,15 @@ public enum QuickAction: Sendable, Hashable {
         }
     }
 
-    public static func calculation(for query: String, rates: CurrencyRates? = nil) -> QuickAction? {
+    public static func calculation(for query: String, rates: CurrencyRates? = nil, now: Date = Date(),
+                                   timeZone: TimeZone = .current, locale: Locale = .current) -> QuickAction? {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
+        switch TemporalCalc.recognize(trimmed, now: now, timeZone: timeZone, locale: locale) {
+        case .value(let calculation): return .temporal(calculation)
+        case .rejected: return nil
+        case .notTemporal: break
+        }
         if let value = Arithmetic.evaluate(trimmed) {
             return .calculation(input: trimmed, value: value, kind: .arithmetic)
         }
