@@ -3,24 +3,46 @@ import OddFrogPluginAPI
 import OddFrogHostServicesAPI
 
 public enum CalendarProvider {
+    private struct Agenda {
+        let calendar: Calendar
+        let start: Date
+        let end: Date
+        let filter: String
+        let first: String
+        let days: Int
+        let bare: Bool
+    }
+
     public static func range(for request: PluginQuery) -> CalendarRange {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
-        let day = calendar.startOfDay(for: request.now)
-        let words = request.query.split(whereSeparator: { $0.isWhitespace })
-        let first = words.first?.lowercased() ?? ""
-        let explicitDays = dayCount(first)
-        let hasRange = explicitDays != nil || ["today", "tomorrow", "week"].contains(first)
-        let filter = (hasRange ? words.dropFirst() : words[...]).joined(separator: " ")
-        let offset = first == "tomorrow" ? 1 : 0
-        let days = explicitDays ?? (first == "week" ? 7 : (hasRange || words.isEmpty ? 1 : 30))
-        let start = calendar.date(byAdding: .day, value: offset, to: day)!
-        let end = calendar.date(byAdding: .day, value: days, to: start)!
-        let range = CalendarRange(start: start, end: end)
-        return range
+        let agenda = agenda(for: request)
+        return CalendarRange(start: agenda.start, end: agenda.end)
+    }
+
+    public static func isMonthRequest(_ request: PluginQuery) -> Bool {
+        request.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "month"
+    }
+
+    public static func monthItem() -> PluginItem {
+        PluginItem(id: "show-month", title: "Show month", subtitle: "Open a month calendar · cal month",
+                   kind: "Calendar", symbol: "calendar", primary: PluginAction(.callback, "month"))
+    }
+
+    public static func monthView() -> PluginView {
+        PluginView(month: "month", title: "Calendar")
     }
 
     public static func respond(to request: PluginQuery, snapshot: CalendarSnapshot) -> [PluginItem] {
+        let agenda = agenda(for: request)
+        let cap = max(1, min(request.maxResults, 50))
+        let reserved = agenda.bare && cap >= 2
+        let rows = agendaRows(request, agenda: agenda, snapshot: snapshot, limit: reserved ? cap - 1 : cap)
+        if reserved {
+            return rows + [monthItem()]
+        }
+        return rows
+    }
+
+    private static func agenda(for request: PluginQuery) -> Agenda {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
         let day = calendar.startOfDay(for: request.now)
@@ -33,7 +55,14 @@ public enum CalendarProvider {
         let days = explicitDays ?? (first == "week" ? 7 : (hasRange || words.isEmpty ? 1 : 30))
         let start = calendar.date(byAdding: .day, value: offset, to: day)!
         let end = calendar.date(byAdding: .day, value: days, to: start)!
-        let range = CalendarRange(start: start, end: end)
+        return Agenda(calendar: calendar, start: start, end: end, filter: filter, first: first, days: days,
+                      bare: words.isEmpty)
+    }
+
+    private static func agendaRows(_ request: PluginQuery, agenda: Agenda, snapshot: CalendarSnapshot,
+                                   limit: Int) -> [PluginItem] {
+        let calendar = agenda.calendar, start = agenda.start, end = agenda.end
+        let filter = agenda.filter, first = agenda.first, days = agenda.days
         switch snapshot.access {
         case .notDetermined, .writeOnly:
             return response(request, title: "Allow Calendar access", subtitle: "Press Return to let Odd Frog read your events.",
@@ -56,7 +85,7 @@ public enum CalendarProvider {
             return $0.id < $1.id
         }
         let openCalendar = PluginAction(.openApplication, "com.apple.iCal")
-        let items = matches.prefix(max(1, min(request.maxResults, 50))).map { event in
+        let items = matches.prefix(limit).map { event in
             let time = timeLabel(event, calendar: calendar)
             let details = [time, event.calendarName, event.location].filter { !$0.isEmpty }.joined(separator: " · ")
             let meeting = meetingURL(event).map { PluginAction(.openURL, $0.absoluteString) }

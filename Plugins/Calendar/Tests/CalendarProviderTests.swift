@@ -11,9 +11,10 @@ struct CalendarProviderTests {
     private func date(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
     private var now: Date { date("2026-09-09T12:00:00Z") }
 
-    private func request(_ query: String = "", events: [CalendarEvent] = [], access: CalendarSnapshot.Access = .fullAccess) -> Input {
+    private func request(_ query: String = "", events: [CalendarEvent] = [], access: CalendarSnapshot.Access = .fullAccess,
+                         maxResults: Int = 50) -> Input {
         Input(query: PluginQuery(query: query, fullQuery: "cal " + query, now: now,
-                                timeZoneIdentifier: "UTC", maxResults: 50), snapshot: CalendarSnapshot(access: access, events: events))
+                                timeZoneIdentifier: "UTC", maxResults: maxResults), snapshot: CalendarSnapshot(access: access, events: events))
     }
 
     private func event(_ id: String, _ start: String, _ end: String, title: String = "Meeting", allDay: Bool = false) -> CalendarEvent {
@@ -30,9 +31,58 @@ struct CalendarProviderTests {
             event("tomorrow", "2026-09-10T00:00:00Z", "2026-09-10T01:00:00Z"),
         ]
         let response = respond(to: request(events: events))
-        #expect(response.items.map(\.id) == ["multi", "all-day", "ongoing", "future"])
+        #expect(response.items.map(\.id) == ["multi", "all-day", "ongoing", "future", "show-month"])
         #expect(response.items[1].subtitle?.contains("All day") == true)
-        #expect(response.items.last?.primary == PluginAction(.openApplication, "com.apple.iCal"))
+        #expect(response.items[3].primary == PluginAction(.openApplication, "com.apple.iCal"))
+    }
+
+    @Test func bareAgendaReservesTheLastSlotForTheMonthRow() {
+        let events = (0..<3).map { event("e\($0)", "2026-09-09T1\($0 + 3):00:00Z", "2026-09-09T1\($0 + 3):30:00Z") }
+        #expect(respond(to: request(events: events)).items.map(\.id) == ["e0", "e1", "e2", "show-month"])
+        #expect(respond(to: request(events: events, maxResults: 2)).items.map(\.id) == ["e0", "show-month"])
+        #expect(respond(to: request(events: events, maxResults: 1)).items.map(\.id) == ["e0"])
+        let many = (0..<60).map { index in
+            let start = date("2026-09-09T13:00:00Z").addingTimeInterval(Double(index) * 60)
+            return CalendarEvent(id: String(format: "m%02d", index), title: "Meeting", start: start,
+                                 end: start.addingTimeInterval(30), calendarName: "Work")
+        }
+        let capped = respond(to: request(events: many)).items
+        #expect(capped.count == 50)
+        #expect(capped.last?.id == "show-month")
+    }
+
+    @Test func statusRowsKeepTheirPlaceAndGainTheMonthRow() {
+        for access in [CalendarSnapshot.Access.notDetermined, .denied, .restricted, .fullAccess] {
+            let before = respond(to: request(access: access, maxResults: 1)).items
+            let items = respond(to: request(access: access, maxResults: 8)).items
+            #expect(items.map(\.id) == ["status", "show-month"])
+            #expect(items.first == before.first)
+        }
+    }
+
+    @Test func filteredAndRangedQueriesHaveNoMonthRow() {
+        let events = [event("design", "2026-09-10T14:00:00Z", "2026-09-10T15:00:00Z", title: "Design review")]
+        for query in ["tomorrow", "week", "12d", "design"] {
+            #expect(!respond(to: request(query, events: events)).items.contains { $0.id == "show-month" })
+        }
+    }
+
+    @Test func monthRowOpensAMonthView() throws {
+        #expect(CalendarProvider.monthItem().primary == PluginAction(.callback, "month"))
+        let view = CalendarProvider.monthView()
+        #expect(view.kind == .month)
+        #expect(view.id == "month")
+        #expect(view.title == "Calendar")
+        let decoded = try PluginProtocol.decoder().decode(PluginView.self, from: PluginProtocol.encoder().encode(view))
+        #expect(decoded == view)
+    }
+
+    @Test func onlyTheExactMonthWordIsAMonthRequest() {
+        for (query, expected) in [("month", true), (" Month ", true), ("MONTH", true),
+                                  ("months", false), ("mo", false), ("month design", false), ("", false)] {
+            let input = PluginQuery(query: query, fullQuery: "cal " + query, now: now, timeZoneIdentifier: "UTC")
+            #expect(CalendarProvider.isMonthRequest(input) == expected, "\(query)")
+        }
     }
 
     @Test func blankTitlesBecomeUntitled() {
@@ -40,7 +90,7 @@ struct CalendarProviderTests {
             event("blank", "2026-09-09T14:00:00Z", "2026-09-09T15:00:00Z", title: " \n"),
             event("padded", "2026-09-09T16:00:00Z", "2026-09-09T17:00:00Z", title: "  Flight  "),
         ]
-        #expect(respond(to: request(events: events)).items.map(\.title) == ["Untitled event", "Flight"])
+        #expect(respond(to: request(events: events)).items.map(\.title) == ["Untitled event", "Flight", "Show month"])
     }
 
     @Test func tomorrowAndSearchRangesAreBounded() {

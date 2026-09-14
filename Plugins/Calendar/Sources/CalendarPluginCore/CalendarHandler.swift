@@ -26,8 +26,17 @@ public actor CalendarHandler: ProviderHandler {
             return .object([:])
         case "query":
             let query = try params["input"].decode(PluginQuery.self)
+            if CalendarProvider.isMonthRequest(query) {
+                return try .encode([CalendarProvider.monthItem()])
+            }
             let snapshot = try await operation.service("calendar.read@1", params: .encode(CalendarProvider.range(for: query))).decode(CalendarSnapshot.self)
             return try .encode(CalendarProvider.respond(to: query, snapshot: snapshot))
+        case "activate":
+            let activation = try params["input"].decode(PluginActivation.self)
+            guard activation.actionID == "month" else {
+                throw RPCError("action", "Unknown action: \(activation.actionID)")
+            }
+            return try .encode(PluginEffects(view: CalendarProvider.monthView()))
         default:
             throw RPCError("method", "Unsupported method: \(method)")
         }

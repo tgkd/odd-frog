@@ -127,7 +127,7 @@ activation.
 
 ## Views
 
-Effects may carry one `view`, whose `kind` selects the window the host opens: `editor` or `chat`.
+Effects may carry one `view`, whose `kind` selects the window the host opens: `editor`, `chat`, or `month`.
 
 ### Editor
 
@@ -158,6 +158,14 @@ and its `title` updates the window. The host keeps no transcript of its own, so 
 history must store it. A failed or cancelled send puts the text back into the input with an error
 line. Reloading plugins invalidates the open chat: the transcript stays selectable and the input is
 disabled.
+
+### Month
+
+A month view is `{kind: "month", id, title}`. The host opens its single month window titled `title`,
+showing the current month in the user's calendar, first weekday, and locale. Navigation between
+months is local to the host, and no callback runs while browsing. Presenting any month view brings
+the window forward and resets it to the current month. The view carries no data; a plugin that
+wants more must wait for a later view contract.
 
 ## Host services
 

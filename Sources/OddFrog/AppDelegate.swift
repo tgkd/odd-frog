@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var settingsWindow = SettingsWindowController(icons: icons)
     private lazy var documents = DocumentWindowController()
     private lazy var chats = ChatWindowController()
+    private lazy var months = MonthWindowController()
     private let configWatcher = ConfigWatcher(path: ConfigLoader.defaultPath)
     private let settingsWatcher = ConfigWatcher(path: SettingsLoader.defaultPath)
     private let packageWatcher = DirectoryWatcher()
@@ -265,6 +266,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             if let send = view.send {
                                 chats.present(view, send: send, result: result, pluginName: package.manifest.name)
                             }
+                        case .month:
+                            months.present(view)
                         }
                     }
                 case .failure(let error):

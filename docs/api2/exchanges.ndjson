@@ -15,3 +15,4 @@
 {"apiVersion":2,"method":"messageDelta","params":{"viewID":"c1","messageID":"m2","delta":"Hel"}}
 {"apiVersion":2,"id":"send","method":"activate","params":{"apiVersion":2,"context":{"settings":{},"storagePath":"/tmp/example","configPath":"/tmp/config.toml"},"input":{"actionID":"send","payload":{"id":"c1"},"item":{"id":"c1","title":"Chat"},"argument":null,"text":"hello"}}}
 {"apiVersion":2,"id":"send","result":{"refreshCatalog":false,"refreshQuery":false,"view":{"kind":"chat","id":"c1","title":"hello","messages":[{"id":"m1","role":"user","text":"hello"},{"id":"m2","role":"assistant","text":"Hello!"}],"send":{"kind":"callback","value":"send","payload":{"id":"c1"}}}}}
+{"apiVersion":2,"id":"month","result":{"refreshCatalog":false,"refreshQuery":false,"view":{"kind":"month","id":"month","title":"Calendar"}}}

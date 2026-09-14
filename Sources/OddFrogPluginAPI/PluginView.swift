@@ -20,7 +20,7 @@ public struct PluginMessageDelta: Codable, Sendable, Hashable {
 }
 
 public struct PluginView: Codable, Sendable, Hashable {
-    public enum Kind: String, Codable, Sendable { case editor, chat }
+    public enum Kind: String, Codable, Sendable { case editor, chat, month }
     public var kind: Kind
     public var id: String
     public var title: String
@@ -39,6 +39,9 @@ public struct PluginView: Codable, Sendable, Hashable {
                 prompt: String? = nil, send: PluginAction) {
         kind = .chat; self.id = id; self.title = title; text = ""
         self.placeholder = placeholder; self.messages = messages; self.prompt = prompt; self.send = send
+    }
+    public init(month id: String, title: String) {
+        kind = .month; self.id = id; self.title = title; text = ""
     }
     enum CodingKeys: String, CodingKey { case kind, id, title, text, placeholder, save, messages, prompt, send }
     public init(from decoder: Decoder) throws {

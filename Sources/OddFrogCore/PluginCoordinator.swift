@@ -350,6 +350,8 @@ import OddFrogPluginAPI
                 throw RPCError("protocol", "Invalid chat view.")
             }
             try validate(send, package: package)
+        case .month:
+            break
         }
     }
     private func validate(_ action: PluginAction, package: PluginPackage) throws {

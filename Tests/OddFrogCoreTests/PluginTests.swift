@@ -290,6 +290,48 @@ struct PluginTests {
         #expect(stale is PluginError)
         #expect(String(describing: stale) == "This result belongs to a disabled or superseded plugin. Search again.")
     }
+    @Test @MainActor func monthViewsNeedOnlyAnIDAndTitle() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = DocumentHandler()
+        let package = PluginPackage(manifest: try manifest(extra: """
+        activation = "live"
+        [[commands]]
+        id = "month"
+        title = "Month"
+        primary = { kind = "callback", value = "month" }
+        """), directory: root, bundled: true)
+        let discovery = PluginDiscovery(packages: [package])
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        coordinator.builtins["fixture"] = { handler }
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: discovery, settings: [], storage: root)
+        var outcomes: [Result<PluginEffects, any Error>] = []
+        func start() throws {
+            let result = try #require(coordinator.catalogItems.first?.result)
+            let action = try #require(result.item.primary)
+            _ = coordinator.activate(result, action: action, argument: nil) { outcomes.append($0) }
+        }
+        func month(id: String) -> JSONValue {
+            .object(["refreshCatalog": .bool(false), "refreshQuery": .bool(false),
+                     "view": .object(["kind": .string("month"), "id": .string(id), "title": .string("Calendar")])])
+        }
+        await handler.respond(month(id: "month"))
+        try start()
+        try await waitUntil { outcomes.count == 1 }
+        guard case .success(let effects) = outcomes[0] else {
+            Issue.record("Expected a month view")
+            return
+        }
+        #expect(effects.view?.kind == .month)
+        await handler.respond(month(id: ""))
+        try start()
+        try await waitUntil { outcomes.count == 2 }
+        guard case .failure(let rejected) = outcomes[1] else {
+            Issue.record("Expected a month view without an ID to be refused")
+            return
+        }
+        #expect((rejected as? RPCError)?.code == "protocol")
+    }
     @Test @MainActor func chatViewsAreValidatedAndDeltasAreRouted() async throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
         let handler = ChatHandler()

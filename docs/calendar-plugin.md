@@ -13,6 +13,8 @@ Calendar is the first independently packaged live-query provider. This is an inc
 - Return opens Calendar; Command-Return joins a recognized meeting URL when available, otherwise
   opens Calendar. Opening a specific event and editing/creating events are deferred.
 - Explicit permission action, denied/restricted states, and an empty-agenda result.
+- `cal month`: open a month calendar window (plain grid, no events, works without Calendar access).
+- Bare `cal` lists a Show month row after the agenda when at least two rows fit.
 
 ## Boundary
 
@@ -34,7 +36,7 @@ visible until Reload. Closing the launcher cancels work and clears event rows.
 
 EventKit runs on a dedicated actor. In-memory snapshots expire after 30 seconds and invalidate on
 store changes. Permission is requested only when the user activates the access row. Calendar data
-is not persisted in history or plugin configuration. No custom plugin UI is introduced.
+is not persisted in history or plugin configuration. The only plugin UI is the month window, which reads no events.
 
 ## Delivery and verification
 
