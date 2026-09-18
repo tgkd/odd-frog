@@ -22,8 +22,8 @@ public enum CalendarProvider {
         request.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "month"
     }
 
-    public static func monthItem() -> PluginItem {
-        PluginItem(id: "show-month", title: "Show month", subtitle: "Open a month calendar · cal month",
+    public static func monthItem(keyword: String) -> PluginItem {
+        PluginItem(id: "show-month", title: "Show month", subtitle: "Open a month calendar · \(keyword) month",
                    kind: "Calendar", symbol: "calendar", primary: PluginAction(.callback, "month"))
     }
 
@@ -37,7 +37,7 @@ public enum CalendarProvider {
         let reserved = agenda.bare && cap >= 2
         let rows = agendaRows(request, agenda: agenda, snapshot: snapshot, limit: reserved ? cap - 1 : cap)
         if reserved {
-            return rows + [monthItem()]
+            return rows + [monthItem(keyword: request.keyword)]
         }
         return rows
     }

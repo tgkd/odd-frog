@@ -24,7 +24,7 @@ struct CalendarHandlerTests {
 
     private func activation(_ actionID: String) -> PluginActivation {
         PluginActivation(actionID: actionID, payload: .object([:]),
-                         item: CalendarProvider.monthItem(), argument: nil)
+                         item: CalendarProvider.monthItem(keyword: "cal"), argument: nil)
     }
 
     @Test func monthQueryAnswersWithoutCalendarServices() async throws {
@@ -32,7 +32,7 @@ struct CalendarHandlerTests {
         let query = PluginQuery(query: "month", fullQuery: "cal month", maxResults: 8)
         let items = try await CalendarHandler().handle("query", params: params(query), operation: operation(counter))
             .decode([PluginItem].self)
-        #expect(items == [CalendarProvider.monthItem()])
+        #expect(items == [CalendarProvider.monthItem(keyword: "cal")])
         #expect(await counter.calls == 0)
     }
 

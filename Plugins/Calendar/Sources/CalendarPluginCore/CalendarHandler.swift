@@ -27,7 +27,7 @@ public actor CalendarHandler: ProviderHandler {
         case "query":
             let query = try params["input"].decode(PluginQuery.self)
             if CalendarProvider.isMonthRequest(query) {
-                return try .encode([CalendarProvider.monthItem()])
+                return try .encode([CalendarProvider.monthItem(keyword: query.keyword)])
             }
             let snapshot = try await operation.service("calendar.read@1", params: .encode(CalendarProvider.range(for: query))).decode(CalendarSnapshot.self)
             return try .encode(CalendarProvider.respond(to: query, snapshot: snapshot))

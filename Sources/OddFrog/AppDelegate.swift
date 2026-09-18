@@ -189,7 +189,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var updated = settings
             updated.plugins.removeAll { $0.id == id }
             guard let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
-            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: package.setting(in: settings.plugins)?.values))
+            let previous = package.setting(in: settings.plugins)
+            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: previous?.values, trigger: previous?.trigger))
             applySettings(updated, persist: true)
         }
         settingsWindow.pluginsPane.onSetting = { [weak self] id, key, value in
@@ -199,6 +200,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? PluginSetting(id: id, enabled: package.isEnabled(settings: settings.plugins), source: package.source)
             var values = setting.values ?? [:]; values[key] = value; setting.values = values
             updated.plugins.removeAll { $0.id == id }; updated.plugins.append(setting)
+            applySettings(updated, persist: true)
+        }
+        settingsWindow.pluginsPane.onTrigger = { [weak self] id, trigger in
+            guard let self, let package = plugins.packages.first(where: { $0.manifest.id == id }) else {
+                return
+            }
+            var updated = settings
+            var setting = package.setting(in: updated.plugins)
+                ?? PluginSetting(id: id, enabled: package.isEnabled(settings: settings.plugins), source: package.source)
+            setting.trigger = trigger
+            updated.plugins.removeAll { $0.id == id }
+            updated.plugins.append(setting)
             applySettings(updated, persist: true)
         }
         settingsWindow.pluginsPane.onManageLinks = { [weak self] in
@@ -380,7 +393,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applySettings(_ updated: Settings, persist: Bool) {
         do { try plugins.validateSettings(updated.plugins) }
         catch { report("Settings not applied: \(error)"); return }
-        let changed = plugins.packages.contains { $0.isEnabled(settings: updated.plugins) != $0.isEnabled(settings: settings.plugins) }
+        let changed = plugins.packages.contains {
+            $0.isEnabled(settings: updated.plugins) != $0.isEnabled(settings: settings.plugins)
+                || (try? $0.trigger(in: updated.plugins)) != (try? $0.trigger(in: settings.plugins))
+        }
         if persist {
             do { settingsWatcher.markApplied(try SettingsLoader.save(updated, to: SettingsLoader.defaultPath)) }
             catch { report("Could not save settings: \(error.localizedDescription)"); return }

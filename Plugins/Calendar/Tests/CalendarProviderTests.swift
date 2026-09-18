@@ -67,8 +67,14 @@ struct CalendarProviderTests {
         }
     }
 
+    @Test func theMonthRowQuotesTheTypedKeyword() {
+        let input = Input(query: PluginQuery(query: "", fullQuery: "c", now: now, timeZoneIdentifier: "UTC", maxResults: 8),
+                          snapshot: CalendarSnapshot(access: .fullAccess, events: []))
+        #expect(respond(to: input).items.last?.subtitle == "Open a month calendar · c month")
+    }
+
     @Test func monthRowOpensAMonthView() throws {
-        #expect(CalendarProvider.monthItem().primary == PluginAction(.callback, "month"))
+        #expect(CalendarProvider.monthItem(keyword: "cal").primary == PluginAction(.callback, "month"))
         let view = CalendarProvider.monthView()
         #expect(view.kind == .month)
         #expect(view.id == "month")

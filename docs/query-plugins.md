@@ -39,6 +39,13 @@ prefixes are case-sensitive. Conflicting enabled exclusive triggers are rejected
 overlapping prefixes. Nonexclusive providers receive the full trimmed query. `order` (integer,
 default zero), followed by plugin ID, determines provider order. Each provider controls its row order.
 
+In Settings → Plugins the user can replace the text of a package's keyword or prefix. The override is
+stored as `trigger` in that package's `[[plugins]]` entry of `settings.toml`, and clearing the field
+restores the manifest text. The kind cannot change: a keyword package keeps a keyword and a prefix
+package keeps a prefix, validated exactly like the manifest and refused when it conflicts with
+another enabled trigger. A provider that mentions its own trigger in a row should read the typed
+first word from `fullQuery` instead of quoting the manifest keyword.
+
 Settings definitions have `key`, `title`, `type`, and `default`. Types are `boolean`, `string`,
 `number` (optional `minimum`/`maximum`), `choice` (required `choices`), and `folders` (array of
 nonempty paths). The host validates defaults and edits. Invalid external edits retain the last

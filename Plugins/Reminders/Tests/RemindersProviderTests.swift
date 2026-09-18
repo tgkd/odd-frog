@@ -151,6 +151,14 @@ struct RemindersProviderTests {
             == .service)
     }
 
+    @Test func theAddHintQuotesTheTypedKeyword() {
+        let input = Input(query: PluginQuery(query: "add", fullQuery: "todo add", now: now,
+                                             timeZoneIdentifier: "UTC", maxResults: 50),
+                          snapshot: RemindersSnapshot(access: .fullAccess, reminders: [], truncated: false,
+                                                      defaultListName: "Inbox"))
+        #expect(respond(to: input).items[0].subtitle == "Type a title after todo add.")
+    }
+
     @Test func reminderRowsCompleteOnTheSecondaryAction() {
         let response = respond(to: request(reminders: mixed))
         #expect(response.items[0].secondary == PluginAction(.service, "reminders.complete@1", payload: .object(["id": .string("overdue")])))

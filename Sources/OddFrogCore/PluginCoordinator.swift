@@ -42,7 +42,13 @@ import OddFrogPluginAPI
         let selected = packages.filter { $0.isEnabled(settings: settings) }
         let exclusives = selected.filter { $0.manifest.activation == .exclusive }
         for (index, a) in exclusives.enumerated() {
-            for b in exclusives.dropFirst(index + 1) where Self.conflicts(a.manifest, b.manifest) {
+            guard let trigger = try? a.trigger(in: settings) else {
+                continue
+            }
+            for b in exclusives.dropFirst(index + 1) {
+                guard let other = try? b.trigger(in: settings), trigger.conflicts(with: other) else {
+                    continue
+                }
                 failures[a.manifest.id] = "Exclusive trigger conflicts with \(b.manifest.name)."
                 failures[b.manifest.id] = "Exclusive trigger conflicts with \(a.manifest.name)."
             }
@@ -63,6 +69,7 @@ import OddFrogPluginAPI
                 }
             }
             do {
+                _ = try package.trigger(in: settings)
                 let values = package.setting(in: settings)?.values ?? [:]
                 contexts[id] = PluginContext(settings: try m.validatedSettings(values),
                                              storagePath: (storage ?? StoragePaths.support).appendingPathComponent("plugins/\(id)").path,
@@ -76,13 +83,6 @@ import OddFrogPluginAPI
             else if package.manifest.background { let _ = initialize(package) }
         }
         onChange?()
-    }
-    private static func conflicts(_ a: PluginManifest, _ b: PluginManifest) -> Bool {
-        if let x = a.keyword, let y = b.keyword { return x == y }
-        if let x = a.prefix, let y = b.prefix { return x.hasPrefix(y) || y.hasPrefix(x) }
-        if let x = a.keyword, let y = b.prefix { return x.hasPrefix(y) }
-        if let x = a.prefix, let y = b.keyword { return y.hasPrefix(x) }
-        return false
     }
     public func cancel() {
         queryGeneration = UUID(); queryTask?.cancel(); queryTask = nil
@@ -197,7 +197,7 @@ import OddFrogPluginAPI
     }
     /// Cached catalog ranking is synchronous. Live answers preserve provider and row ordering.
     public func search(_ query: String, items: [LauncherItem], weights: [String: Double], maxResults: Int) -> [RankedItem] {
-        let applicable = packages.filter { $0.isEnabled(settings: settings) && $0.query(from: query) != nil }
+        let applicable = packages.filter { $0.isEnabled(settings: settings) && $0.query(from: query, settings: settings) != nil }
         let exclusive = applicable.filter { $0.manifest.activation == .exclusive }
         let providers = exclusive.isEmpty ? applicable : exclusive
         if currentQuery != query || currentLimit != maxResults {
@@ -232,7 +232,7 @@ import OddFrogPluginAPI
         let id = package.manifest.id
         do {
             try await initialize(package).value; try Task.checkCancellation()
-            let input = PluginQuery(query: package.query(from: query) ?? query, fullQuery: query, maxResults: limit)
+            let input = PluginQuery(query: package.query(from: query, settings: settings) ?? query, fullQuery: query, maxResults: limit)
             let output = try await perform("query", package: package, params: .encode(input), timeout: .seconds(2))
             let items = try output.decode([PluginItem].self)
             guard items.count <= 50 else { throw RPCError("protocol", "Query returned more than 50 rows.") }
@@ -327,6 +327,9 @@ import OddFrogPluginAPI
     }
     public func validateSettings(_ updated: [PluginSetting]) throws {
         for package in packages { _ = try package.manifest.validatedSettings(package.setting(in: updated)?.values ?? [:]) }
+        for package in packages {
+            _ = try package.trigger(in: updated)
+        }
     }
     private func validateItems(_ items: [PluginItem], package: PluginPackage) throws {
         guard Set(items.map(\.id)).count == items.count, items.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty }) else {

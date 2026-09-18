@@ -99,6 +99,18 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         }
         return value
     }
+    public var trigger: PluginTrigger? {
+        guard activation == .exclusive else {
+            return nil
+        }
+        if let keyword {
+            return .keyword(keyword)
+        }
+        if let prefix {
+            return .prefix(prefix)
+        }
+        return nil
+    }
     public func validatedSettings(_ values: [String: JSONValue]) throws -> [String: JSONValue] {
         var result: [String: JSONValue] = [:]
         for definition in settings {
@@ -114,8 +126,10 @@ public struct PluginSetting: Codable, Sendable, Equatable {
     public var enabled: Bool
     public var source: String?
     public var values: [String: JSONValue]?
-    public init(id: String, enabled: Bool, source: String? = nil, values: [String: JSONValue]? = nil) {
+    public var trigger: String?
+    public init(id: String, enabled: Bool, source: String? = nil, values: [String: JSONValue]? = nil, trigger: String? = nil) {
         self.id = id; self.enabled = enabled; self.source = source; self.values = values
+        self.trigger = trigger
     }
 }
 public struct PluginPackage: Sendable, Equatable {
@@ -134,14 +148,50 @@ public struct PluginPackage: Sendable, Equatable {
         if let setting = setting(in: settings) { return setting.enabled }
         return bundled && manifest.enabledByDefault
     }
-    public func query(from fullQuery: String) -> String? {
+    public func trigger(in settings: [PluginSetting]) throws -> PluginTrigger? {
+        guard let manifestTrigger = manifest.trigger else {
+            return nil
+        }
+        guard let override = setting(in: settings)?.trigger else {
+            return manifestTrigger
+        }
+        return try manifestTrigger.replacing(override)
+    }
+    public func query(from fullQuery: String, settings: [PluginSetting]) -> String? {
         let text = fullQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let activation = manifest.activation, !text.isEmpty else { return nil }
-        if activation != .exclusive { return text }
-        if let prefix = manifest.prefix { return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces) : nil }
-        let parts = text.split(maxSplits: 1, whereSeparator: \.isWhitespace)
-        guard parts.first?.lowercased() == manifest.keyword else { return nil }
-        return parts.count == 2 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard let activation = manifest.activation, !text.isEmpty else {
+            return nil
+        }
+        if activation != .exclusive {
+            return text
+        }
+        guard let resolved = try? trigger(in: settings) else {
+            return nil
+        }
+        switch resolved {
+        case .prefix(let prefix):
+            guard text.hasPrefix(prefix) else {
+                return nil
+            }
+            return String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        case .keyword(let keyword):
+            let parts = text.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+            guard parts.first?.lowercased() == keyword else {
+                return nil
+            }
+            return parts.count == 2 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        }
+    }
+    public func triggerConflict(_ candidate: PluginTrigger, among packages: [PluginPackage], settings: [PluginSetting]) -> PluginPackage? {
+        packages.first { package in
+            guard package.manifest.id != manifest.id, package.isEnabled(settings: settings) else {
+                return false
+            }
+            guard let other = try? package.trigger(in: settings) else {
+                return false
+            }
+            return candidate.conflicts(with: other)
+        }
     }
 }
 public enum PluginError: Error, CustomStringConvertible {

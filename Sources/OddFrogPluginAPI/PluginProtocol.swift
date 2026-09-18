@@ -98,6 +98,9 @@ public struct PluginQuery: Codable, Sendable {
     public var now: Date
     public var timeZoneIdentifier: String
     public var maxResults: Int
+    public var keyword: String {
+        fullQuery.split(maxSplits: 1, whereSeparator: \.isWhitespace).first?.lowercased() ?? ""
+    }
     public init(query: String, fullQuery: String, now: Date = Date(),
                 timeZoneIdentifier: String = TimeZone.current.identifier, maxResults: Int = 8) {
         self.query = query; self.fullQuery = fullQuery; self.now = now

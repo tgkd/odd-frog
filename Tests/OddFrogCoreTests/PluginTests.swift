@@ -217,6 +217,64 @@ struct PluginTests {
         try await waitUntil { coordinator.search(">value", items: [cached], weights: [:], maxResults: 8).first?.item.title == "value" }
         #expect(coordinator.search(">value", items: [cached], weights: [:], maxResults: 8).count == 1)
     }
+    @Test func triggerOverridesReplaceTheManifestTrigger() throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let keyword = PluginPackage(manifest: try manifest(id: "cal", extra: "activation = 'exclusive'\nkeyword = 'cal'"), directory: root, bundled: true)
+        let shortened = [PluginSetting(id: "cal", enabled: true, source: keyword.source, trigger: "c")]
+        #expect(try keyword.trigger(in: shortened) == .keyword("c"))
+        #expect(keyword.query(from: "c month", settings: shortened) == "month")
+        #expect(keyword.query(from: "C", settings: shortened) == "")
+        #expect(keyword.query(from: "cal month", settings: shortened) == nil)
+        #expect(keyword.query(from: "cal month", settings: []) == "month")
+        let prefixed = PluginPackage(manifest: try manifest(id: "term", extra: "activation = 'exclusive'\nprefix = '>'"), directory: root, bundled: true)
+        let doubled = [PluginSetting(id: "term", enabled: true, source: prefixed.source, trigger: ">>")]
+        #expect(try prefixed.trigger(in: doubled) == .prefix(">>"))
+        #expect(prefixed.query(from: ">> ls", settings: doubled) == "ls")
+        #expect(prefixed.query(from: "> ls", settings: doubled) == nil)
+        let live = PluginPackage(manifest: try manifest(id: "live"), directory: root, bundled: true)
+        let ignored = [PluginSetting(id: "live", enabled: true, source: live.source, trigger: "x")]
+        #expect(try live.trigger(in: ignored) == nil)
+        #expect(live.query(from: "x hi", settings: ignored) == "x hi")
+        let invalid = [PluginSetting(id: "cal", enabled: true, source: keyword.source, trigger: "Bad Word")]
+        #expect(throws: (any Error).self) { try keyword.trigger(in: invalid) }
+        #expect(keyword.query(from: "cal month", settings: invalid) == nil)
+    }
+    @Test func triggerOverridesRoundTripThroughSettings() throws {
+        let overridden = Settings(plugins: [PluginSetting(id: "cal", enabled: true, source: "bundled", trigger: "c")])
+        let parsed = try Settings.parse(overridden.serialized())
+        #expect(parsed == overridden)
+        #expect(parsed.plugins.first?.trigger == "c")
+        let plain = Settings(plugins: [PluginSetting(id: "cal", enabled: true, source: "bundled")])
+        #expect(try Settings.parse(plain.serialized()).plugins.first?.trigger == nil)
+    }
+    @Test @MainActor func triggerConflictsUseOverrides() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let first = PluginPackage(manifest: try manifest(id: "one", extra: "activation = 'exclusive'\nkeyword = 'one'"), directory: root, bundled: true)
+        let second = PluginPackage(manifest: try manifest(id: "two", extra: "activation = 'exclusive'\nkeyword = 'two'"), directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        let overridden = [PluginSetting(id: "two", enabled: true, source: second.source, trigger: "one")]
+        coordinator.reload(discovery: PluginDiscovery(packages: [first, second]), settings: overridden)
+        #expect(coordinator.failures.count == 2)
+        #expect(second.triggerConflict(.keyword("one"), among: [first, second], settings: overridden)?.manifest.id == "one")
+        #expect(second.triggerConflict(.keyword("three"), among: [first, second], settings: overridden) == nil)
+        let disabled = [PluginSetting(id: "one", enabled: false, source: first.source)]
+        #expect(second.triggerConflict(.keyword("one"), among: [first, second], settings: disabled) == nil)
+        #expect(throws: (any Error).self) {
+            try coordinator.validateSettings([PluginSetting(id: "one", enabled: true, source: first.source, trigger: "Bad Word")])
+        }
+        let renamed = [PluginSetting(id: "one", enabled: true, source: first.source, trigger: "x")]
+        coordinator.reload(discovery: PluginDiscovery(packages: [first]), settings: renamed)
+        #expect(coordinator.failures.isEmpty)
+        try await waitUntil { coordinator.search("x hi", items: [], weights: [:], maxResults: 8).first?.item.title == "hi" }
+    }
+    @Test func queryKeywordIsTheFirstTypedWord() {
+        #expect(PluginQuery(query: "", fullQuery: "  CaL  month").keyword == "cal")
+        #expect(PluginQuery(query: "", fullQuery: "").keyword == "")
+    }
     @Test func bundledPreferencesSurviveMovingTheAppButNeverApproveUserReplacements() throws {
         let m = try manifest()
         let bundled = PluginPackage(manifest: m, directory: URL(fileURLWithPath: "/Applications/OddFrog.app/Contents/Resources/Plugins/fixture"), bundled: true)

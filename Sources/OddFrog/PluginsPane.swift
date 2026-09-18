@@ -7,6 +7,7 @@ final class PluginsPane: NSView {
     var onToggle: ((String, Bool) -> Void)?
     var onReload: (() -> Void)?
     var onSetting: ((String, String, JSONValue) -> Void)?
+    var onTrigger: ((String, String?) -> Void)?
     var onManageLinks: (() -> Void)?
 
     private let scroll = NSScrollView()
@@ -130,6 +131,10 @@ final class PluginsPane: NSView {
         if failure != nil { status.textColor = .systemRed }
         var rows: [NSView] = [SettingsLayout.settingRow(title: manifest.name, subtitle: status, control: control)]
 
+        if let trigger = manifest.trigger {
+            rows.append(SettingsLayout.hairline())
+            rows.append(triggerRow(for: package, trigger: trigger, settings: settings))
+        }
         let values = package.setting(in: settings)?.values ?? [:]
         for definition in manifest.settings {
             rows.append(SettingsLayout.hairline())
@@ -141,6 +146,59 @@ final class PluginsPane: NSView {
             rows.append(SettingsLayout.settingRow(title: "Links", subtitle: SettingsLayout.helper("Add, edit and remove URL commands."), control: button))
         }
         return SettingsLayout.groupedBox(rows)
+    }
+
+    private func triggerRow(for package: PluginPackage, trigger: PluginTrigger, settings: [PluginSetting]) -> NSView {
+        let manifest = package.manifest
+        let stored = package.setting(in: settings)?.trigger
+        let resolved = (try? package.trigger(in: settings))?.text ?? trigger.text
+        let field = NSTextField()
+        field.bezelStyle = .roundedBezel
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        field.font = .systemFont(ofSize: 13)
+        field.placeholderString = trigger.text
+        field.stringValue = resolved
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        let binding = SettingBinding { [weak self, weak field] value in
+            guard let self else {
+                return
+            }
+            var text = (value.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if case .keyword = trigger {
+                text = text.lowercased()
+            }
+            if text.isEmpty || text == trigger.text {
+                message.isHidden = true
+                field?.stringValue = trigger.text
+                if stored != nil {
+                    onTrigger?(manifest.id, nil)
+                }
+                return
+            }
+            do {
+                let candidate = try trigger.replacing(text)
+                if let other = package.triggerConflict(candidate, among: lastPackages, settings: lastSettings) {
+                    message.stringValue = "\(manifest.name): \(trigger.label) '\(text)' is already used by \(other.manifest.name)."
+                    message.isHidden = false
+                    field?.stringValue = resolved
+                    return
+                }
+                message.isHidden = true
+                if text != resolved {
+                    onTrigger?(manifest.id, text)
+                }
+            } catch {
+                message.stringValue = "\(manifest.name): \(error)"
+                message.isHidden = false
+                field?.stringValue = resolved
+            }
+        }
+        bindings.append(binding)
+        field.delegate = binding
+        let subtitle = SettingsLayout.helper("Type this first in the launcher to use \(manifest.name).")
+        return SettingsLayout.settingRow(title: trigger.label, subtitle: subtitle, control: field)
     }
 
     private func row(for definition: PluginSettingDefinition, value: JSONValue, package: PluginPackage) -> NSView {

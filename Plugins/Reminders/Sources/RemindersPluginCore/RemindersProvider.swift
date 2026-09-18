@@ -31,7 +31,7 @@ public enum RemindersProvider {
         if adding {
             let title = words.dropFirst().joined(separator: " ")
             guard !title.isEmpty else {
-                return response(request, title: "Add a reminder", subtitle: "Type a title after rem add.")
+                return response(request, title: "Add a reminder", subtitle: "Type a title after \(request.keyword) add.")
             }
             return [addItem(title, list: snapshot.defaultListName, prefix: "")]
         }
