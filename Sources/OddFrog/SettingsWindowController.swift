@@ -1,6 +1,6 @@
 import AppKit
 import OddFrogCore
-import ServiceManagement
+import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSWindowDelegate {
@@ -12,32 +12,28 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     let pluginsPane = PluginsPane()
-    var onChange: ((Settings) -> Void)?
+    var onChange: ((OddFrogCore.Settings) -> Void)?
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
     var onHotkey: ((Hotkey) -> Void)?
     var links: [CommandItem] = []
 
     private let icons: IconCache
     private let linkManager = LinkManagerController()
-    private let sidebar = SettingsSidebar()
-    private let paneTitle = NSTextField(labelWithString: "")
-    private let hotkeyRecorder = HotkeyRecorder()
-    private let hotkeyHelper = SettingsLayout.helper()
-    private let loginSwitch = NSSwitch()
-    private let loginStatus = SettingsLayout.helper()
-    private let loginButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
+    private let splitController = NSSplitViewController()
+    private let sidebar = SettingsSidebarController()
+    private let paneController = NSTabViewController()
+    private let general = GeneralPaneModel()
     private let itemTable = ItemTable()
     private let itemScroll = NSScrollView()
     private let filterField = NSSearchField()
     private let itemsHelper = SettingsLayout.helper("Grey aliases are built in. Click a cell to add your own; Return saves.")
     private let itemsEmptyLabel = SettingsLayout.helper()
 
-    private var panes: [SettingsPane: NSView] = [:]
     private var currentPane = SettingsPane.general
     private var selectedItemRow = -1
     private weak var editingAliasCell: AliasCellView?
 
-    private(set) var settings = Settings.empty
+    private(set) var settings = OddFrogCore.Settings.empty
     private var allItems: [LauncherItem] = []
     private var visibleItems: [LauncherItem] = []
 
@@ -49,17 +45,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             backing: .buffered,
             defer: false
         )
-        window.title = "Odd Frog Settings"
-        window.minSize = NSSize(width: 760, height: 560)
         window.isReleasedWhenClosed = false
-        window.backgroundColor = .windowBackgroundColor
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.titlebarSeparatorStyle = .none
-        let toolbar = NSToolbar(identifier: "settings")
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-        window.center()
         super.init(window: window)
         buildContent()
         icons.observeLoads { [weak self] _ in
@@ -72,11 +58,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     required init?(coder: NSCoder) { nil }
 
-    func present(settings: Settings, items: [LauncherItem], hotkey: Hotkey, focusing id: String? = nil) {
+    func present(settings: OddFrogCore.Settings, items: [LauncherItem], hotkey: Hotkey, focusing id: String? = nil) {
         self.settings = settings
         allItems = items
         showHotkey(hotkey)
-        refreshLogin()
+        general.refreshLogin()
         let target = id.flatMap { targetID in items.first { $0.id == targetID } }
         filterField.stringValue = target?.title ?? ""
         applyFilter()
@@ -94,7 +80,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         } else {
             window?.initialFirstResponder = currentPane == .items ? filterField : nil
             window?.makeKeyAndOrderFront(nil)
-            window?.makeFirstResponder(currentPane == .items ? filterField : nil)
+            if currentPane == .items {
+                window?.makeFirstResponder(filterField)
+            } else {
+                sidebar.focus()
+            }
             layoutColumns()
         }
     }
@@ -108,38 +98,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     func update(pluginSettings: [PluginSetting]) { settings.plugins = pluginSettings }
 
     func showHotkey(_ hotkey: Hotkey, note: String? = nil) {
-        hotkeyRecorder.hotkey = hotkey
-        if let note, !note.isEmpty {
-            hotkeyRecorder.conflict = true
-            hotkeyHelper.stringValue = note + " Try another combination."
-            hotkeyHelper.textColor = .systemRed
-        } else {
-            hotkeyRecorder.conflict = false
-            hotkeyHelper.stringValue = "Click, then press a new combination."
-            hotkeyHelper.textColor = .secondaryLabelColor
-        }
-    }
-
-    func refreshLogin() {
-        let status = LoginItem.status
-        loginSwitch.isEnabled = status != .notFound
-        loginButton.isHidden = status != .requiresApproval
-        loginStatus.textColor = .secondaryLabelColor
-        switch status {
-        case .enabled:
-            loginSwitch.state = .on
-            loginStatus.stringValue = "Odd Frog opens when you log in."
-        case .requiresApproval:
-            loginSwitch.state = .on
-            loginStatus.stringValue = "Waiting for approval in System Settings › Login Items."
-            loginStatus.textColor = .systemOrange
-        case .notFound:
-            loginSwitch.state = .off
-            loginStatus.stringValue = "Move Odd Frog to your Applications folder to enable this."
-        default:
-            loginSwitch.state = .off
-            loginStatus.stringValue = ""
-        }
+        general.show(hotkey, note: note)
     }
 
     func select(_ pane: SettingsPane) { showPane(pane) }
@@ -152,99 +111,43 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func buildContent() {
-        guard let content = window?.contentView else { return }
-        window?.delegate = self
+        guard let window else { return }
+        window.delegate = self
         sidebar.onSelect = { [weak self] pane in self?.showPane(pane) }
+        general.onHotkey = { [weak self] hotkey in self?.onHotkey?(hotkey) }
 
-        let host = NSView()
-        host.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        paneTitle.font = .systemFont(ofSize: 15, weight: .semibold)
-        paneTitle.isSelectable = false
-        paneTitle.translatesAutoresizingMaskIntoConstraints = false
+        paneController.tabStyle = .unspecified
+        let generalHost = NSHostingController(rootView: GeneralPaneView(model: general))
+        generalHost.sizingOptions = []
+        paneController.addChild(generalHost)
+        paneController.addChild(hosted(makeItemsPane()))
+        paneController.addChild(hosted(pluginsPane))
 
-        content.addSubview(sidebar)
-        content.addSubview(host)
-        host.addSubview(paneTitle)
-        host.addSubview(container)
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.canCollapse = false
+        splitController.addSplitViewItem(sidebarItem)
+        splitController.addSplitViewItem(NSSplitViewItem(viewController: paneController))
 
-        panes = [
-            .general: makeGeneralPane(),
-            .items: makeItemsPane(),
-            .plugins: pluginsPane,
-        ]
-        for (pane, view) in panes {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(view)
-            NSLayoutConstraint.activate([
-                view.topAnchor.constraint(equalTo: container.topAnchor),
-                view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            ])
-            if pane == .general {
-                view.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor).isActive = true
-            } else {
-                view.bottomAnchor.constraint(equalTo: container.bottomAnchor).isActive = true
-            }
-        }
-
-        NSLayoutConstraint.activate([
-            sidebar.topAnchor.constraint(equalTo: content.topAnchor),
-            sidebar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 200),
-            host.topAnchor.constraint(equalTo: content.topAnchor),
-            host.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
-            host.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            host.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            paneTitle.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 20),
-            paneTitle.trailingAnchor.constraint(lessThanOrEqualTo: host.trailingAnchor, constant: -20),
-            paneTitle.centerYAnchor.constraint(equalTo: host.topAnchor, constant: 26),
-            container.topAnchor.constraint(equalTo: host.topAnchor, constant: 52),
-            container.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 20),
-            container.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -20),
-            container.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -20),
-        ])
-
+        window.contentViewController = splitController
+        window.setContentSize(NSSize(width: 760, height: 560))
+        window.minSize = NSSize(width: 760, height: 560)
+        window.center()
         showPane(.general)
     }
 
-    private func makeGeneralPane() -> NSView {
-        hotkeyRecorder.translatesAutoresizingMaskIntoConstraints = false
-        hotkeyRecorder.onRecord = { [weak self] hotkey in self?.onHotkey?(hotkey) }
-        hotkeyRecorder.onRecordingChanged = { [weak self] recording in
-            guard let self else { return }
-            if recording {
-                hotkeyHelper.stringValue = "Press the keys you want to use."
-                hotkeyHelper.textColor = .secondaryLabelColor
-            } else if !hotkeyRecorder.conflict {
-                hotkeyHelper.stringValue = "Click, then press a new combination."
-                hotkeyHelper.textColor = .secondaryLabelColor
-            }
-        }
-        hotkeyHelper.stringValue = "Click, then press a new combination."
-
-        loginSwitch.controlSize = .small
-        loginSwitch.target = self
-        loginSwitch.action = #selector(toggleLogin)
-        loginButton.target = self
-        loginButton.action = #selector(openLoginItems)
-        loginButton.bezelStyle = .rounded
-        loginButton.controlSize = .small
-        loginButton.font = .systemFont(ofSize: 11)
-        loginButton.isHidden = true
-        let loginControl = NSStackView(views: [loginSwitch, loginButton])
-        loginControl.orientation = .horizontal
-        loginControl.spacing = 8
-        loginControl.alignment = .centerY
-
-        let general = SettingsLayout.groupedBox([
-            SettingsLayout.settingRow(title: "Keyboard shortcut", subtitle: hotkeyHelper, control: hotkeyRecorder),
-            SettingsLayout.hairline(),
-            SettingsLayout.settingRow(title: "Launch at login", subtitle: loginStatus, control: loginControl),
+    private func hosted(_ content: NSView) -> NSViewController {
+        let controller = NSViewController()
+        let root = NSView()
+        controller.view = root
+        content.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: root.layoutMarginsGuide.topAnchor),
+            content.leadingAnchor.constraint(equalTo: root.layoutMarginsGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: root.layoutMarginsGuide.trailingAnchor),
+            content.bottomAnchor.constraint(equalTo: root.layoutMarginsGuide.bottomAnchor),
         ])
-        return SettingsLayout.stackedPane([general])
+        return controller
     }
 
     private func makeItemsPane() -> NSView {
@@ -341,14 +244,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func showPane(_ pane: SettingsPane) {
         if currentPane == .items, pane != .items { endAliasEdit(commit: true) }
+        sidebar.focus()
         currentPane = pane
         sidebar.selected = pane
-        paneTitle.stringValue = pane.title
-        for (key, view) in panes { view.isHidden = key != pane }
-        guard pane == .items else {
-            window?.makeFirstResponder(nil)
-            return
-        }
+        paneController.selectedTabViewItemIndex = pane.rawValue
+        window?.title = pane.title
+        guard pane == .items else { return }
         layoutColumns()
         window?.makeFirstResponder(filterField)
     }
@@ -431,23 +332,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func commit() {
         onChange?(settings)
-    }
-
-    @objc private func toggleLogin() {
-        do {
-            try LoginItem.toggle()
-        } catch {
-            loginStatus.stringValue = error.localizedDescription
-            loginStatus.textColor = .systemRed
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            MainActor.assumeIsolated { self.refreshLogin() }
-        }
-        refreshLogin()
-    }
-
-    @objc private func openLoginItems() {
-        SMAppService.openSystemSettingsLoginItems()
     }
 
     @objc private func toggleEnabled(_ sender: NSButton) {

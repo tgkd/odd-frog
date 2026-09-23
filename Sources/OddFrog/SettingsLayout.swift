@@ -76,19 +76,10 @@ enum SettingsLayout {
     }
 
     static func hairline() -> NSView {
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        let line = Hairline()
-        line.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(line)
-        NSLayoutConstraint.activate([
-            container.heightAnchor.constraint(equalToConstant: 0.5),
-            line.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-            line.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            line.topAnchor.constraint(equalTo: container.topAnchor),
-            line.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-        return container
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        return box
     }
 
     static func sectionHeader(_ text: String) -> NSView {
