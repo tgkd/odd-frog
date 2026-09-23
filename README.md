@@ -5,7 +5,7 @@ apps, your own commands, and optional window management.
 
 ## Build and run
 
-Requires Xcode command line tools with Swift 6. No Xcode project; SwiftPM plus a Makefile.
+Requires macOS 26 or later and the Xcode command line tools with Swift 6.2 or later. No Xcode project; SwiftPM plus a Makefile.
 
 ### Install a release build
 

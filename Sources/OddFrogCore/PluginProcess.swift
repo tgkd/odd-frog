@@ -23,7 +23,7 @@ private final class ProviderChild: @unchecked Sendable {
         posix_spawn_file_actions_adddup2(&actions, input.fileHandleForReading.fileDescriptor, STDIN_FILENO)
         posix_spawn_file_actions_adddup2(&actions, output.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
         posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
-        posix_spawn_file_actions_addchdir_np(&actions, executable.deletingLastPathComponent().path)
+        posix_spawn_file_actions_addchdir(&actions, executable.deletingLastPathComponent().path)
         let argv = [strdup(executable.path), nil]
         let env = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer { argv.forEach { free($0) }; env.forEach { free($0) } }

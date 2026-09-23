@@ -130,33 +130,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             emptyLabel.centerYAnchor.constraint(equalTo: hairline.bottomAnchor, constant: Self.emptyStateHeight / 2),
         ])
 
-        let root: NSView
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.style = .regular
-            glass.cornerRadius = Self.cornerRadius
-            glass.contentView = content
-            root = glass
-        } else {
-            let blur = NSVisualEffectView()
-            blur.material = .popover
-            blur.blendingMode = .behindWindow
-            blur.state = .active
-            blur.wantsLayer = true
-            blur.layer?.cornerRadius = Self.cornerRadius
-            blur.layer?.masksToBounds = true
-            blur.addSubview(content)
-            root = blur
-        }
-        content.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            content.topAnchor.constraint(equalTo: root.topAnchor),
-            content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-        ])
-        root.translatesAutoresizingMaskIntoConstraints = false
-        view = root
+        let glass = NSGlassEffectView()
+        glass.cornerRadius = Self.cornerRadius
+        glass.contentView = content
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        view = glass
     }
 
     var preferredHeight: CGFloat {

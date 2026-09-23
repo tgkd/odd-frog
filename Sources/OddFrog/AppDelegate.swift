@@ -499,7 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let pane = SettingsPane.allCases.first(where: { $0.title.lowercased() == name }) { settingsWindow.select(pane) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 MainActor.assumeIsolated {
-                    delegate.render(delegate.settingsWindow.window?.contentView, to: logs.appendingPathComponent("odd-frog-settings.png"))
+                    delegate.recordWindowNumber(of: delegate.settingsWindow.window, to: logs.appendingPathComponent("odd-frog-settings.window"))
                 }
             }
             return
@@ -524,26 +524,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             MainActor.assumeIsolated {
-                delegate.render(delegate.panel.contentView, to: logs.appendingPathComponent("odd-frog-panel.png"))
+                delegate.recordWindowNumber(of: delegate.panel, to: logs.appendingPathComponent("odd-frog-panel.window"))
             }
         }
     }
 
-    func render(_ view: NSView?, to url: URL) {
-        guard let view, let window = view.window else {
-            Log.write("snapshot skipped: nothing to render")
+    func recordWindowNumber(of window: NSWindow?, to url: URL) {
+        guard let window, window.isVisible else {
+            Log.write("snapshot skipped: nothing to capture")
             return
         }
         window.displayIfNeeded()
-        let windowID = CGWindowID(window.windowNumber)
-        guard let cg = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]) else {
-            Log.write("snapshot failed: CGWindowListCreateImage returned nil")
-            return
-        }
-        let rep = NSBitmapImageRep(cgImage: cg)
         do {
-            try rep.representation(using: .png, properties: [:])?.write(to: url)
-            Log.write("snapshot written to \(url.path)")
+            try String(window.windowNumber).write(to: url, atomically: true, encoding: .utf8)
+            Log.write("snapshot window \(window.windowNumber) written to \(url.path)")
         } catch {
             Log.write("snapshot failed: \(error)")
         }

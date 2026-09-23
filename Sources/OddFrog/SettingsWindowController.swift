@@ -57,7 +57,6 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
         let toolbar = NSToolbar(identifier: "settings")
-        toolbar.showsBaselineSeparator = false
         window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.center()
