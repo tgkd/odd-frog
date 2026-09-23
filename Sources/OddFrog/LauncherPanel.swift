@@ -22,6 +22,7 @@ final class LauncherPanel: NSPanel {
         isMovableByWindowBackground = true
         isOpaque = false
         backgroundColor = .clear
+        hasShadow = false
         animationBehavior = .utilityWindow
         isReleasedWhenClosed = false
         contentViewController = controller
@@ -49,7 +50,6 @@ final class LauncherPanel: NSPanel {
         let target = NSRect(x: x, y: y, width: Self.width, height: height)
         setFrame(target, display: true)
         makeKeyAndOrderFront(nil)
-        invalidateShadow()
     }
 
     func resize(height: CGFloat) {
@@ -57,7 +57,6 @@ final class LauncherPanel: NSPanel {
         target.origin.y -= height - target.height
         target.size.height = height
         setFrame(target, display: true)
-        invalidateShadow()
     }
 
     func dismiss() {

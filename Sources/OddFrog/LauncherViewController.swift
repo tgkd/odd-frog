@@ -4,6 +4,7 @@ import OddFrogCore
 @MainActor
 final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     static let cornerRadius: CGFloat = 18
+    static let queryInset: CGFloat = 10
     static let visibleRowCap = 8
 
     let searchField = SearchField()
@@ -66,8 +67,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         NSLayoutConstraint.activate([
             searchField.leadingAnchor.constraint(equalTo: header.layoutMarginsGuide.leadingAnchor),
             searchField.trailingAnchor.constraint(equalTo: header.layoutMarginsGuide.trailingAnchor),
-            searchField.topAnchor.constraint(equalTo: header.layoutMarginsGuide.topAnchor),
-            searchField.bottomAnchor.constraint(equalTo: header.layoutMarginsGuide.bottomAnchor),
+            searchField.topAnchor.constraint(equalTo: header.topAnchor, constant: Self.queryInset),
+            header.bottomAnchor.constraint(equalTo: searchField.bottomAnchor, constant: Self.queryInset),
         ])
 
         separator.boxType = .separator
