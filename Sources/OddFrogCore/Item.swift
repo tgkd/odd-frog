@@ -7,7 +7,7 @@ public enum CommandAction: Sendable, Hashable {
     case url(URL)
 }
 
-public struct CommandItem: Sendable, Hashable {
+public struct CommandItem: Sendable, Hashable, Identifiable {
     public var stableID: String
     public let name: String
     public var aliases: [String]
