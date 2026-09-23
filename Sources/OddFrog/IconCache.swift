@@ -47,38 +47,6 @@ final class IconCache {
         return image
     }
 
-    private func tile(name: String, color: NSColor, glyph: String, glyphSize: CGFloat, size: CGFloat) -> NSImage? {
-        tile(name: name, color: color, size: size) { rect in
-            let font = NSFont.monospacedSystemFont(ofSize: glyphSize * size / 24, weight: .bold)
-            let text = NSAttributedString(string: glyph, attributes: [.font: font, .foregroundColor: NSColor.white])
-            let bounds = text.size()
-            text.draw(at: NSPoint(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2))
-        }
-    }
-
-    private func tile(name: String, color: NSColor, symbol: String, symbolSize: CGFloat, size: CGFloat) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: symbolSize * size / 24, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
-        guard let glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return nil }
-        return tile(name: name, color: color, size: size) { rect in
-            let bounds = glyph.size
-            glyph.draw(in: NSRect(x: rect.midX - bounds.width / 2, y: rect.midY - bounds.height / 2, width: bounds.width, height: bounds.height))
-        }
-    }
-
-    private func tile(name: String, color: NSColor, size: CGFloat, content: @escaping (NSRect) -> Void) -> NSImage? {
-        let key = "tile:\(name):\(size)" as NSString
-        if let cached = cache.object(forKey: key) { return cached }
-        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            color.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: size / 4, yRadius: size / 4).fill()
-            content(rect)
-            return true
-        }
-        cache.setObject(image, forKey: key)
-        return image
-    }
-
     private func icon(forFile path: String, size: CGFloat) -> NSImage? {
         let sized = "app:\(size):\(path)" as NSString
         if let cached = cache.object(forKey: sized) { return cached }
