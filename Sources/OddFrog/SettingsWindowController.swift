@@ -11,7 +11,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         static let aliases = NSUserInterfaceItemIdentifier("aliases")
     }
 
-    let pluginsPane = PluginsPane()
+    let pluginsPane = PluginsPaneModel()
     var onChange: ((OddFrogCore.Settings) -> Void)?
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
     var onHotkey: ((Hotkey) -> Void)?
@@ -121,7 +121,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         generalHost.sizingOptions = []
         paneController.addChild(generalHost)
         paneController.addChild(hosted(makeItemsPane()))
-        paneController.addChild(hosted(pluginsPane))
+        let pluginsHost = NSHostingController(rootView: PluginsPaneView(model: pluginsPane))
+        pluginsHost.sizingOptions = []
+        paneController.addChild(pluginsHost)
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.canCollapse = false
