@@ -13,7 +13,7 @@ Calendar is the first independently packaged live-query provider. This is an inc
 - Return opens Calendar; Command-Return joins a recognized meeting URL when available, otherwise
   opens Calendar. Opening a specific event and editing/creating events are deferred.
 - Explicit permission action, denied/restricted states, and an empty-agenda result.
-- `cal month`: open a month calendar window (plain grid, no events, works without Calendar access).
+- `cal month`: open a month calendar window (the system date picker, no events, works without Calendar access).
 - Bare `cal` lists a Show month row after the agenda when at least two rows fit.
 
 ## Boundary

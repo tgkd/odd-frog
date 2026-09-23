@@ -115,6 +115,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(.separator())
         for writingItem in NSMenuItem.writingToolsItems { edit.addItem(writingItem) }
 
+        let view = NSMenu(title: "View")
+        let previous = NSMenuItem(title: "Previous Month", action: #selector(MonthWindowController.showPreviousMonth(_:)), keyEquivalent: String(NSEvent.SpecialKey.leftArrow.unicodeScalar))
+        previous.keyEquivalentModifierMask = [.command, .option]
+        view.addItem(previous)
+        let next = NSMenuItem(title: "Next Month", action: #selector(MonthWindowController.showNextMonth(_:)), keyEquivalent: String(NSEvent.SpecialKey.rightArrow.unicodeScalar))
+        next.keyEquivalentModifierMask = [.command, .option]
+        view.addItem(next)
+        view.addItem(.separator())
+        view.addItem(NSMenuItem(title: "Go to Today", action: #selector(MonthWindowController.goToToday(_:)), keyEquivalent: "t"))
+
         let window = NSMenu(title: "Window")
         window.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
         window.addItem(NSMenuItem(title: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: ""))
@@ -124,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(submenuItem(app))
         main.addItem(submenuItem(file))
         main.addItem(submenuItem(edit))
+        main.addItem(submenuItem(view))
         main.addItem(submenuItem(window))
         NSApp.mainMenu = main
         NSApp.windowsMenu = window
