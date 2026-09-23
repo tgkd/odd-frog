@@ -39,7 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var migrationReady = false
 
     private var config = Config.empty
-    private var settings = Settings.empty
+    private var settings = Settings.empty {
+        didSet {
+            executor.terminal = TerminalChoice(values: settings.plugins.first { $0.id == TerminalChoice.pluginID }?.values)
+        }
+    }
     private var allItems: [LauncherItem] = []
     private var lastWeightsRefresh: Date?
     private var toggleSignal: DispatchSourceSignal?

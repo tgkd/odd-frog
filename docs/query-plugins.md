@@ -126,6 +126,11 @@ omitted when no argument is supplied. Terminal argv is shell-quoted by the host.
 use `{query}` with percent encoding. `output = "notification"` reports bounded command output;
 otherwise stdout is discarded. Plain executable scripts remain ordinary commands, without JSON.
 
+The host opens every `terminal` action in the app chosen under Settings › Plugins › Terminal.
+Terminal is the default. agterm uses Terminal when agterm is not running. Custom runs its template
+through the configured login shell, with `{cwd}`, `{shell}` and `{command}` replaced by shell-quoted
+values. Example: `open -na kitty --args --directory {cwd} --hold {shell} -lc {command}`.
+
 Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
 from a document or chat window also receives the editor buffer in `text`. Success effects:
 `{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object}`. Errors use

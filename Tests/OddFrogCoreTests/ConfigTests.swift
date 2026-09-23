@@ -27,7 +27,6 @@ struct ConfigTests {
         let config = try ConfigParser.parse(text)
         #expect(config.general.hotkey.keyCode == 40)
         #expect(config.general.hotkey.modifiers == Hotkey.cmdKey | Hotkey.shiftKey)
-        #expect(config.general.terminal == .iterm)
         #expect(config.general.maxResults == 5)
         #expect(config.commands.count == 3)
         #expect(config.commands[0].aliases == ["build", "b"])

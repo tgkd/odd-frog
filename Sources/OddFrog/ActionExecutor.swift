@@ -91,6 +91,7 @@ final class ActionExecutor {
     let terminals = TerminalLauncher()
     let windows = WindowManager()
     var cascadeStep: CGFloat = 32
+    var terminal = TerminalChoice.preset(.terminal)
     var onFailure: ((String) -> Void)?
     var onRecorded: (() -> Void)?
     var onPluginAction: ((PluginResult, String?, Bool) -> Void)?
@@ -147,15 +148,24 @@ final class ActionExecutor {
     func recordPlugin(_ result: PluginResult) { if result.historyEligible { record(result.id) } }
 
     private func runInTerminal(id: String, name: String, command: String, cwd: URL?) {
-        let kind = config.general.terminal
         let shell = config.general.shell
-        Task { [weak self] in
-            guard let self else { return }
-            let outcome = await terminals.launch(command: command, cwd: cwd, name: name, kind: kind, shell: shell)
-            switch outcome {
-            case .launched: record(id)
-            case .failed(let message): fail("\(name): \(message)")
+        switch terminal {
+        case .preset(let kind):
+            Task { [weak self] in
+                guard let self else { return }
+                let outcome = await terminals.launch(command: command, cwd: cwd, name: name, kind: kind, shell: shell)
+                switch outcome {
+                case .launched: record(id)
+                case .failed(let message): fail("\(name): \(message)")
+                }
             }
+        case .custom(let template):
+            let directory = cwd ?? FileManager.default.homeDirectoryForCurrentUser
+            guard let result = ShellCommand.customTerminalCommand(template: template, shell: shell, cwd: directory.path, command: command) else {
+                fail("\(name): set a custom command containing {command} in Settings › Plugins › Terminal.")
+                return
+            }
+            spawn(id: id, name: name, executable: URL(fileURLWithPath: shell), arguments: ShellCommand.backgroundArguments(command: result), cwd: directory, reportOutput: false)
         }
     }
 

@@ -1,21 +1,13 @@
 import Foundation
 import TOMLKit
 
-public enum TerminalKind: String, Sendable, Decodable, CaseIterable {
-    case agterm
-    case terminal
-    case iterm
-}
-
 public struct GeneralConfig: Sendable, Equatable {
     public var hotkey: Hotkey
-    public var terminal: TerminalKind
     public var shell: String
     public var maxResults: Int
 
-    public init(hotkey: Hotkey = .default, terminal: TerminalKind = .agterm, shell: String = "/bin/zsh", maxResults: Int = 8) {
+    public init(hotkey: Hotkey = .default, shell: String = "/bin/zsh", maxResults: Int = 8) {
         self.hotkey = hotkey
-        self.terminal = terminal
         self.shell = shell
         self.maxResults = maxResults
     }
@@ -68,7 +60,6 @@ struct RawConfig: Decodable {
 
 struct RawGeneral: Decodable {
     var hotkey: String?
-    var terminal: TerminalKind?
     var shell: String?
     var max_results: Int?
 }
@@ -103,7 +94,6 @@ public enum ConfigParser {
             if let text = g.hotkey {
                 do { general.hotkey = try Hotkey.parse(text) } catch { throw ConfigError.invalidHotkey(String(describing: error)) }
             }
-            if let terminal = g.terminal { general.terminal = terminal }
             if let shell = g.shell, !shell.isEmpty { general.shell = shell }
             if let n = g.max_results {
                 guard (1...50).contains(n) else { throw ConfigError.invalidMaxResults(n) }
@@ -154,7 +144,7 @@ public enum ConfigParser {
     }
 
     public static func serialized(_ config: Config) throws -> String {
-        struct General: Encodable { var hotkey: String; var terminal: String; var shell: String; var max_results: Int }
+        struct General: Encodable { var hotkey: String; var shell: String; var max_results: Int }
         struct Entry: Encodable { var id: String; var name: String; var aliases: [String]; var command: String?; var path: String?; var url: String?; var cwd: String?; var terminal: Bool }
         struct Document: Encodable { var general: General; var commands: [Entry] }
         let commands = config.commands.map { command in
@@ -166,7 +156,7 @@ public enum ConfigParser {
             }
             return entry
         }
-        return try TOMLEncoder().encode(Document(general: General(hotkey: config.general.hotkey.serialized, terminal: config.general.terminal.rawValue, shell: config.general.shell, max_results: config.general.maxResults), commands: commands))
+        return try TOMLEncoder().encode(Document(general: General(hotkey: config.general.hotkey.serialized, shell: config.general.shell, max_results: config.general.maxResults), commands: commands))
     }
 
     public static func expandTilde(_ path: String) -> String {

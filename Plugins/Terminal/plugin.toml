@@ -5,3 +5,16 @@ api_version = 2
 mode = "one-shot"
 activation = "exclusive"
 prefix = ">"
+
+[[settings]]
+key = "app"
+title = "Terminal app"
+type = "choice"
+choices = ["Terminal", "agterm", "iTerm2", "Custom"]
+default = "Terminal"
+
+[[settings]]
+key = "custom_command"
+title = "Custom command ({cwd}, {shell} and {command} are filled in)"
+type = "string"
+default = ""

@@ -1,6 +1,5 @@
 [general]
 hotkey = "alt+space"
-terminal = "agterm"
 shell = "/bin/zsh"
 max_results = 8
 
