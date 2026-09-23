@@ -76,11 +76,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installMainMenu() {
+        let main = NSMenu()
+
+        let app = NSMenu(title: "Odd Frog")
+        app.addItem(NSMenuItem(title: "About Odd Frog", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""))
+        app.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        settingsItem.target = self
+        app.addItem(settingsItem)
+        app.addItem(.separator())
+        app.addItem(NSMenuItem(title: "Hide Odd Frog", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        app.addItem(hideOthers)
+        app.addItem(NSMenuItem(title: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
+        app.addItem(.separator())
+        app.addItem(NSMenuItem(title: "Quit Odd Frog", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+
         let file = NSMenu(title: "File")
         file.addItem(NSMenuItem(title: "Save", action: #selector(DocumentWindowController.saveDocument(_:)), keyEquivalent: "s"))
         file.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
-        let fileItem = NSMenuItem()
-        fileItem.submenu = file
+
         let edit = NSMenu(title: "Edit")
         edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
         let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
@@ -90,15 +106,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
         edit.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         edit.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        edit.addItem(NSMenuItem(title: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: ""))
         edit.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
-        let editItem = NSMenuItem()
-        editItem.submenu = edit
-        let main = NSMenu()
-        main.addItem(NSMenuItem())
-        main.addItem(fileItem)
-        main.addItem(editItem)
+        edit.addItem(.separator())
+        edit.addItem(findMenu())
+        edit.addItem(spellingMenu())
+        edit.addItem(substitutionsMenu())
+        edit.addItem(.separator())
+        for writingItem in NSMenuItem.writingToolsItems { edit.addItem(writingItem) }
+
+        let window = NSMenu(title: "Window")
+        window.addItem(NSMenuItem(title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m"))
+        window.addItem(NSMenuItem(title: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: ""))
+        window.addItem(.separator())
+        window.addItem(NSMenuItem(title: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: ""))
+
+        main.addItem(submenuItem(app))
+        main.addItem(submenuItem(file))
+        main.addItem(submenuItem(edit))
+        main.addItem(submenuItem(window))
         NSApp.mainMenu = main
+        NSApp.windowsMenu = window
     }
+
+    private func submenuItem(_ menu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.submenu = menu
+        return item
+    }
+
+    private func findMenu() -> NSMenuItem {
+        let menu = NSMenu(title: "Find")
+        menu.addItem(finder("Find…", tag: .showFindInterface, key: "f"))
+        let replace = finder("Find and Replace…", tag: .showReplaceInterface, key: "f")
+        replace.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(replace)
+        menu.addItem(finder("Find Next", tag: .nextMatch, key: "g"))
+        let previous = finder("Find Previous", tag: .previousMatch, key: "g")
+        previous.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(previous)
+        menu.addItem(finder("Use Selection for Find", tag: .setSearchString, key: "e"))
+        menu.addItem(NSMenuItem(title: "Jump to Selection", action: #selector(NSResponder.centerSelectionInVisibleArea(_:)), keyEquivalent: "j"))
+        return submenuItem(menu)
+    }
+
+    private func finder(_ title: String, tag: NSTextFinder.Action, key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(NSResponder.performTextFinderAction(_:)), keyEquivalent: key)
+        item.tag = tag.rawValue
+        return item
+    }
+
+    private func spellingMenu() -> NSMenuItem {
+        let menu = NSMenu(title: "Spelling and Grammar")
+        menu.addItem(NSMenuItem(title: "Show Spelling and Grammar", action: #selector(NSText.showGuessPanel(_:)), keyEquivalent: ":"))
+        menu.addItem(NSMenuItem(title: "Check Document Now", action: #selector(NSText.checkSpelling(_:)), keyEquivalent: ";"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Check Spelling While Typing", action: #selector(NSTextView.toggleContinuousSpellChecking(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Check Grammar With Spelling", action: #selector(NSTextView.toggleGrammarChecking(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Correct Spelling Automatically", action: #selector(NSTextView.toggleAutomaticSpellingCorrection(_:)), keyEquivalent: ""))
+        return submenuItem(menu)
+    }
+
+    private func substitutionsMenu() -> NSMenuItem {
+        let menu = NSMenu(title: "Substitutions")
+        menu.addItem(NSMenuItem(title: "Show Substitutions", action: #selector(NSTextView.orderFrontSubstitutionsPanel(_:)), keyEquivalent: ""))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Smart Copy/Paste", action: #selector(NSTextView.toggleSmartInsertDelete(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Smart Quotes", action: #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Smart Dashes", action: #selector(NSTextView.toggleAutomaticDashSubstitution(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Smart Links", action: #selector(NSTextView.toggleAutomaticLinkDetection(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Data Detectors", action: #selector(NSTextView.toggleAutomaticDataDetection(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Text Replacement", action: #selector(NSTextView.toggleAutomaticTextReplacement(_:)), keyEquivalent: ""))
+        return submenuItem(menu)
+    }
+
+    @objc private func openSettings(_ sender: Any?) { showSettings() }
 
     private func report(_ message: String) {
         status.lastFailure = message
@@ -311,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func wireStatusMenu() {
-        status.hotkeyDescription = config.general.hotkey.description
+        status.hotkey = config.general.hotkey
         status.onShow = { [weak self] in self?.togglePanel() }
         status.onSettings = { [weak self] in self?.showSettings() }
         status.onReloadConfig = { [weak self] in
@@ -340,7 +422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             report("Hotkey: \(error)")
             if config.general.hotkey != .default {
                 try? hotkeys.apply(.default)
-                status.hotkeyDescription = Hotkey.default.description
+                status.hotkey = Hotkey.default
             }
         }
     }
@@ -377,7 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         config = candidate
         executor.config = candidate
-        status.hotkeyDescription = candidate.general.hotkey.description
+        status.hotkey = candidate.general.hotkey
         controller.maxResults = candidate.general.maxResults
         plugins.refreshCatalogs()
         rebuildItems()
@@ -457,7 +539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         config.general.hotkey = hotkey
-        status.hotkeyDescription = hotkey.description
+        status.hotkey = hotkey
         settingsWindow.showHotkey(hotkey)
         do {
             let path = ConfigLoader.defaultPath

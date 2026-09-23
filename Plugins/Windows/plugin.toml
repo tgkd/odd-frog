@@ -18,7 +18,7 @@ maximum = 120
 id = "place:left:1-2"
 title = "Left ½"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.lefthalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:left:1-2" } }
 
@@ -26,7 +26,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:right:1-2"
 title = "Right ½"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.righthalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:right:1-2" } }
 
@@ -34,7 +34,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:left:2-3"
 title = "Left ⅔"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.lefthalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:left:2-3" } }
 
@@ -42,7 +42,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:right:2-3"
 title = "Right ⅔"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.righthalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:right:2-3" } }
 
@@ -50,7 +50,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:top:1-2"
 title = "Top ½"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.tophalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:top:1-2" } }
 
@@ -58,7 +58,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:bottom:1-2"
 title = "Bottom ½"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.bottomhalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:bottom:1-2" } }
 
@@ -66,7 +66,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:top:3-4"
 title = "Top ¾"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.tophalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:top:3-4" } }
 
@@ -74,7 +74,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "place:bottom:3-4"
 title = "Bottom ¾"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.bottomhalf.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "place:bottom:3-4" } }
 
@@ -82,7 +82,7 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "maximize"
 title = "Maximize"
 kind = "Window"
-symbol = "rectangle"
+symbol = "inset.filled.rectangle"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "maximize" } }
 
@@ -90,6 +90,6 @@ primary = { kind = "service", value = "windows.perform@1", payload = { action = 
 id = "tidy"
 title = "Tidy Windows"
 kind = "Window"
-symbol = "rectangle"
+symbol = "macwindow.stack"
 history = true
 primary = { kind = "service", value = "windows.perform@1", payload = { action = "tidy" } }

@@ -50,7 +50,7 @@ public enum RemindersProvider {
             let details = [dateLabel(item, calendar: calendar, now: request.now), item.listName,
                            (1...4).contains(item.priority) ? "High priority" : ""].filter { !$0.isEmpty }
             return PluginItem(id: item.id, title: title.isEmpty ? "Untitled reminder" : title,
-                              subtitle: (details + ["⌘↩ Complete"]).joined(separator: " · "), kind: "Reminder",
+                              subtitle: details.joined(separator: " · "), kind: "Reminder",
                               symbol: "checklist", primary: openReminders,
                               secondary: PluginAction(.service, "reminders.complete@1", payload: .object(["id": .string(item.id)])))
         }

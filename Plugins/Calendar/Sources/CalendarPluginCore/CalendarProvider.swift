@@ -91,7 +91,7 @@ public enum CalendarProvider {
             let meeting = meetingURL(event).map { PluginAction(.openURL, $0.absoluteString) }
             let title = event.title.trimmingCharacters(in: .whitespacesAndNewlines)
             return PluginItem(id: event.id, title: title.isEmpty ? "Untitled event" : title,
-                              subtitle: details + (meeting == nil ? "" : " · ⌘↩ Join"), kind: "Calendar",
+                              subtitle: details, kind: "Calendar",
                               symbol: "calendar", primary: openCalendar, secondary: meeting)
         }
         if items.isEmpty {

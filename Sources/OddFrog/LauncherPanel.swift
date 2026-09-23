@@ -33,12 +33,12 @@ final class LauncherPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    override func sendEvent(_ event: NSEvent) {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            let onKeyEquivalent, onKeyEquivalent(event) {
-            return
+            return true
         }
-        super.sendEvent(event)
+        return super.performKeyEquivalent(with: event)
     }
 
     func present(height: CGFloat) {

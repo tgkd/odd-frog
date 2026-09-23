@@ -33,6 +33,26 @@ public struct Hotkey: Sendable, Hashable {
         return parts.joined(separator: "+")
     }
 
+    public var keyEquivalent: String {
+        guard let name = Hotkey.keyName(for: keyCode) else { return "" }
+        switch name {
+        case "space": return " "
+        case "enter": return "\r"
+        case "tab": return "\t"
+        case "esc": return "\u{1b}"
+        case "delete": return "\u{8}"
+        case "up": return "\u{F700}"
+        case "down": return "\u{F701}"
+        case "left": return "\u{F702}"
+        case "right": return "\u{F703}"
+        default: break
+        }
+        if name.count > 1, name.hasPrefix("f"), let n = Int(name.dropFirst()), (1...15).contains(n) {
+            return String(UnicodeScalar(0xF703 + n)!)
+        }
+        return name
+    }
+
     public static func keyName(for keyCode: UInt32) -> String? {
         let preferred = ["space", "enter", "tab", "esc", "delete"]
         let names = keyCodes.filter { $0.value == keyCode }.map(\.key)

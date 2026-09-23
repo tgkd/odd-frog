@@ -92,6 +92,27 @@ struct ConfigTests {
         #expect(Hotkey(keyCode: 49, modifiers: 0) == nil)
     }
 
+    @Test func hotkeyKeyEquivalentsUseAppKitCharacters() throws {
+        let cases: [(String, String)] = [
+            ("alt+space", " "),
+            ("cmd+shift+k", "k"),
+            ("ctrl+return", "\r"),
+            ("alt+tab", "\t"),
+            ("alt+esc", "\u{1b}"),
+            ("alt+delete", "\u{8}"),
+            ("cmd+up", "\u{F700}"),
+            ("cmd+down", "\u{F701}"),
+            ("cmd+left", "\u{F702}"),
+            ("cmd+right", "\u{F703}"),
+            ("alt+f1", "\u{F704}"),
+            ("alt+f15", "\u{F712}"),
+            ("alt+,", ","),
+        ]
+        for (text, expected) in cases {
+            #expect(try Hotkey.parse(text).keyEquivalent == expected)
+        }
+    }
+
     @Test func replacingHotkeyKeepsTheRestOfTheFile() throws {
         let original = """
         # my config

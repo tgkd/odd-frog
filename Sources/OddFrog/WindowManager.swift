@@ -21,11 +21,6 @@ final class WindowManager {
         AXIsProcessTrustedWithOptions(options)
     }
 
-    static func openAccessibilitySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-        NSWorkspace.shared.open(url)
-    }
-
     func perform(_ action: WindowAction, cascadeStep: CGFloat) -> Outcome {
         guard Self.hasAccess else {
             Self.requestAccess()

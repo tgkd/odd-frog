@@ -251,6 +251,14 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             onSettings?()
             return true
         }
+        if event.charactersIgnoringModifiers == "q" || event.charactersIgnoringModifiers == "h" {
+            return true
+        }
+        if let characters = event.charactersIgnoringModifiers,
+           !characters.allSatisfy(\.isASCII),
+           event.keyCode == 12 || event.keyCode == 4 {
+            return true
+        }
         return false
     }
 

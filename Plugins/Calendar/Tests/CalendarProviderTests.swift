@@ -156,6 +156,7 @@ struct CalendarProviderTests {
         #expect(CalendarProvider.meetingURL(event)?.host == "us02web.zoom.us")
         let item = respond(to: request(events: [event])).items[0]
         #expect(item.secondary?.value == "https://us02web.zoom.us/j/123")
+        #expect(item.subtitle?.hasSuffix("Work · Join: https://us02web.zoom.us/j/123") == true)
     }
 
     @Test func requestAndResponseRoundTripWithUnixDates() throws {

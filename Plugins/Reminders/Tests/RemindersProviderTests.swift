@@ -162,7 +162,7 @@ struct RemindersProviderTests {
     @Test func reminderRowsCompleteOnTheSecondaryAction() {
         let response = respond(to: request(reminders: mixed))
         #expect(response.items[0].secondary == PluginAction(.service, "reminders.complete@1", payload: .object(["id": .string("overdue")])))
-        #expect(response.items[0].subtitle?.hasSuffix(" · ⌘↩ Complete") == true)
+        #expect(response.items[0].subtitle?.hasSuffix(" · Inbox") == true)
     }
 
     @Test func aSearchWithNoMatchesOffersToAddIt() {
