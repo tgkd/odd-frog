@@ -16,22 +16,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     var performSave: ((DocumentSession, Int, String, @escaping (Result<PluginEffects, any Error>) -> Void) -> Void)?
 
-    private let scroll = NSScrollView()
-    private let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 720, height: 492))
-    private let placeholderLabel = NSTextField(labelWithString: "")
-    private let statusLabel = NSTextField(labelWithString: "")
-    private let retryButton = NSButton(title: "Retry", target: nil, action: nil)
-    private let discardButton = NSButton(title: "Discard and Close", target: nil, action: nil)
+    private let scroll = NSTextView.scrollablePlainDocumentContentTextView()
+    private let textView: NSTextView
 
     private var session: DocumentSession?
-    private var placeholder: String?
     private var autosave: Timer?
     private var pending: (reason: Reason, completion: ((Bool) -> Void)?)?
-    private var notice: String?
+    private var choosing = false
     private var quitReply: ((Bool) -> Void)?
     private var quitTimer: Timer?
 
     init() {
+        textView = scroll.documentView as! NSTextView
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -61,6 +57,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
                     show(view, save: save, result: result, pluginName: pluginName)
                 } else {
                     activateWindow()
+                    presentChoices(nil)
                 }
             }
             return
@@ -74,19 +71,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         autosave = nil
         session.invalidate(message: reloadMessage(session))
         refresh()
+        if session.isDirty, window?.isVisible == true {
+            presentChoices(nil)
+        }
     }
 
     func prepareToTerminate(_ reply: @escaping (Bool) -> Void) -> Bool {
         guard let session, session.isDirty || session.inFlight != nil else { return false }
         quitReply = reply
         quitTimer?.invalidate()
-        quitTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+        quitTimer = Timer(timeInterval: 2, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.answerQuit(false, message: "Save did not finish. Retry or Discard and Close, then quit again.")
+                self?.answerQuit(false, detail: "Saving did not finish in time, so Odd Frog did not quit.")
             }
         }
+        RunLoop.main.add(quitTimer!, forMode: .common)
         flush(reason: .quit) { [weak self] saved in
-            self?.answerQuit(saved, message: nil)
+            self?.answerQuit(saved, detail: nil)
         }
         return true
     }
@@ -98,12 +99,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard let session, session.isDirty else { return true }
         if session.invalidated {
-            refresh()
-            return false
-        }
-        flush(reason: .close) { [weak self] saved in
-            guard saved else { return }
-            self?.window?.close()
+            presentChoices(nil)
+        } else {
+            saveAndClose()
         }
         return false
     }
@@ -111,7 +109,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     func textDidChange(_ notification: Notification) {
         guard let session else { return }
         session.edit(textView.string)
-        notice = nil
         refresh()
         autosave?.invalidate()
         autosave = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
@@ -119,19 +116,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
-    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard commandSelector == #selector(NSResponder.cancelOperation(_:)) else { return false }
-        window?.performClose(nil)
-        return true
-    }
-
     private func show(_ view: PluginView, save: PluginAction, result: PluginResult, pluginName: String) {
         autosave?.invalidate()
         autosave = nil
         pending = nil
-        notice = nil
         session = DocumentSession(view: view, save: save, result: result, pluginName: pluginName)
-        placeholder = view.placeholder
         textView.isEditable = true
         textView.string = view.text
         textView.undoManager?.removeAllActions()
@@ -162,7 +151,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             completion?(!session.isDirty)
             return
         }
-        notice = nil
         if reason.blocking {
             textView.isEditable = false
         }
@@ -209,20 +197,76 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         flush(reason: pending.reason, completion: pending.completion)
     }
 
-    private func answerQuit(_ ok: Bool, message: String?) {
+    private func answerQuit(_ ok: Bool, detail: String?) {
         guard let reply = quitReply else { return }
         quitReply = nil
         quitTimer?.invalidate()
         quitTimer = nil
-        if let message {
-            notice = message
-            refresh()
-        }
         reply(ok)
+        if !ok {
+            activateWindow()
+            presentChoices(detail)
+        }
+    }
+
+    private func saveAndClose() {
+        flush(reason: .close) { [weak self] saved in
+            guard let self else { return }
+            if saved {
+                window?.close()
+            } else {
+                presentChoices(nil)
+            }
+        }
+    }
+
+    private func discardAndClose() {
+        autosave?.invalidate()
+        autosave = nil
+        pending = nil
+        session = nil
+        textView.isEditable = true
+        refresh()
+        window?.close()
+    }
+
+    private func presentChoices(_ detail: String?) {
+        guard let window, let session, !choosing else { return }
+        choosing = true
+        let invalidated = session.invalidated
+        let alert = NSAlert()
+        if invalidated {
+            alert.messageText = "\(session.pluginName) was reloaded"
+            alert.informativeText = "Changes to “\(session.title)” can no longer be saved. Copy any text you want to keep, then choose Discard and Close."
+            alert.addButton(withTitle: "Keep Editing")
+            alert.addButton(withTitle: "Discard and Close").hasDestructiveAction = true
+        } else {
+            alert.messageText = "“\(session.title)” was not saved"
+            alert.informativeText = detail ?? session.error ?? ""
+            alert.addButton(withTitle: "Save and Close")
+            alert.addButton(withTitle: "Keep Editing").keyEquivalent = "\u{1b}"
+            alert.addButton(withTitle: "Discard and Close").hasDestructiveAction = true
+        }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            choosing = false
+            guard self.session === session else { return }
+            if invalidated {
+                if response == .alertSecondButtonReturn {
+                    discardAndClose()
+                }
+            } else {
+                switch response {
+                case .alertFirstButtonReturn: saveAndClose()
+                case .alertThirdButtonReturn: discardAndClose()
+                default: break
+                }
+            }
+        }
     }
 
     private func reloadMessage(_ session: DocumentSession) -> String {
-        "\(session.pluginName) was reloaded. Your text is kept here; copy it or choose Discard and Close."
+        "\(session.pluginName) was reloaded. Changes are no longer saved."
     }
 
     private func isSuperseded(_ error: any Error) -> Bool {
@@ -231,111 +275,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     private func refresh() {
-        let message = notice ?? session?.error
-        statusLabel.stringValue = message ?? ""
-        discardButton.isHidden = message == nil
-        retryButton.isHidden = message == nil || session?.invalidated == true
-        placeholderLabel.stringValue = placeholder ?? ""
-        placeholderLabel.isHidden = placeholder == nil || !textView.string.isEmpty
-    }
-
-    @objc private func retry() {
-        flush(reason: .close) { [weak self] saved in
-            guard saved else { return }
-            self?.window?.close()
-        }
-    }
-
-    @objc private func discardAndClose() {
-        autosave?.invalidate()
-        autosave = nil
-        pending = nil
-        notice = nil
-        session = nil
-        placeholder = nil
-        textView.isEditable = true
-        refresh()
-        window?.close()
+        window?.subtitle = session?.error ?? ""
     }
 
     private func buildContent() {
-        guard let content = window?.contentView else { return }
-        textView.isRichText = false
-        textView.usesFontPanel = false
-        textView.importsGraphics = false
         textView.allowsUndo = true
-        textView.font = .systemFont(ofSize: 14)
-        textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.delegate = self
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-
-        scroll.documentView = textView
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.borderType = .noBorder
-        scroll.drawsBackground = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-
-        placeholderLabel.font = .systemFont(ofSize: 14)
-        placeholderLabel.textColor = .secondaryLabelColor
-        placeholderLabel.isHidden = true
-        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        for (button, action) in [(retryButton, #selector(retry)), (discardButton, #selector(discardAndClose))] {
-            button.target = self
-            button.action = action
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: 11)
-            button.isHidden = true
-            button.translatesAutoresizingMaskIntoConstraints = false
-        }
-
-        let bar = NSView()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.addSubview(statusLabel)
-        bar.addSubview(retryButton)
-        bar.addSubview(discardButton)
-        content.addSubview(scroll)
-        content.addSubview(placeholderLabel)
-        content.addSubview(bar)
-
-        let padding = textView.textContainer?.lineFragmentPadding ?? 5
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: content.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bar.topAnchor),
-            placeholderLabel.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 12),
-            placeholderLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 12 + padding),
-            placeholderLabel.trailingAnchor.constraint(lessThanOrEqualTo: scroll.trailingAnchor, constant: -12),
-            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            bar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            bar.heightAnchor.constraint(equalToConstant: 28),
-            statusLabel.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
-            statusLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: retryButton.leadingAnchor, constant: -8),
-            retryButton.trailingAnchor.constraint(equalTo: discardButton.leadingAnchor, constant: -8),
-            retryButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            discardButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -12),
-            discardButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-        ])
+        window?.contentView = scroll
     }
 }

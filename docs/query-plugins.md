@@ -145,15 +145,18 @@ Effects may carry one `view`, whose `kind` selects the window the host opens: `e
 
 An editor view is `{kind: "editor", id, title, text, placeholder?, save}`. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
 document window, and a view whose plugin and `id` already match the open document just refocuses it
-without touching the buffer. `title` is the window title, `text` is the initial buffer, and
-`placeholder` is shown while the buffer is empty.
+without touching the buffer. `title` is the window title and `text` is the initial
+buffer; the document window does not display `placeholder`.
 
 `save` must be a `callback` action, and it is invoked with the editor text in `text`. The host
 autosaves one second after typing pauses, on Cmd+S, on close, when another document replaces this
 one, and on quit. A `view` returned from a save updates the window title only; the buffer and the
-selection are never replaced. A failed save keeps the text on screen with Retry and Discard and
-Close. Reloading plugins invalidates the open document: the host never re-sends a draft to a
-superseded provider, and the text stays editable and copyable so it can be recovered by hand.
+selection are never replaced. A failed autosave or Cmd+S shows the error as the window subtitle. When a save fails on close,
+on replacement or on quit, or a quit's save takes longer than two seconds, the quit is cancelled
+if one was pending, the text stays on screen, and a sheet offers Save and Close, Keep Editing, and
+Discard and Close. Reloading plugins invalidates the open document: the host never re-sends a draft to a
+superseded provider, and the text stays editable and copyable so it can be recovered by hand. The subtitle says so, and a
+sheet offering Keep Editing or Discard and Close appears whenever unsaved text is at stake.
 
 ### Chat
 
