@@ -165,10 +165,10 @@ turn streams like any other. `id` behaves like the editor's: a chat view whose p
 already match the open chat just refocuses its window.
 
 `send` must be a `callback` action, and it is invoked with the input text in `text`. While it runs,
-`messageDelta` events append to the reply bubble; the `messages` it returns replace the transcript
+`messageDelta` events append to the reply; the `messages` it returns replace the transcript
 and its `title` updates the window. The host keeps no transcript of its own, so a plugin that wants
-history must store it. A failed or cancelled send puts the text back into the input with an error
-line. Reloading plugins invalidates the open chat: the transcript stays selectable and the input is
+history must store it. A failed or cancelled send puts the text back into the input and shows the error as the
+window subtitle. Reloading plugins invalidates the open chat: the transcript stays selectable and the input is
 disabled.
 
 ### Month
