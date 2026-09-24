@@ -11,7 +11,7 @@ final class SearchField: NSTextField {
         font = ContentFont.current.font(.title2)
         placeholderString = "Search…"
         lineBreakMode = .byTruncatingTail
-        usesSingleLineMode = true
+        usesSingleLineMode = false
         cell?.wraps = false
         cell?.isScrollable = true
     }

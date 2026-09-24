@@ -276,7 +276,19 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        replaceLineBreaks()
         refresh()
+    }
+
+    private func replaceLineBreaks() {
+        guard let editor = searchField.currentEditor(),
+              editor.string.unicodeScalars.contains(where: CharacterSet.newlines.contains) else {
+            return
+        }
+        let selection = editor.selectedRange
+        let scalars = editor.string.unicodeScalars.map { CharacterSet.newlines.contains($0) ? " " : $0 }
+        editor.string = String(String.UnicodeScalarView(scalars))
+        editor.selectedRange = selection
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -295,7 +307,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             select(row: results.count - 1)
         case #selector(NSResponder.insertTab(_:)):
             if let item = selectedItem { fill(with: item) }
-        case #selector(NSResponder.insertBacktab(_:)):
+        case #selector(NSResponder.insertBacktab(_:)),
+             #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
+             #selector(NSResponder.insertLineBreak(_:)):
             break
         default:
             return false
