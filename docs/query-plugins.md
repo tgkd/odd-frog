@@ -176,14 +176,15 @@ disabled.
 
 ### Month
 
-A month view is `{kind: "month", id, title}`. The host opens its single month window titled `title`,
-showing today in the system's graphical date picker, which follows the user's calendar,
-first weekday, and locale. Navigation between
-months is local to the host, and no callback runs while browsing. Besides the picker's
-own buttons and the arrow keys, Option+Cmd+Left Arrow and Option+Cmd+Right Arrow step one
-month back and forward, and Cmd+T returns to today. Presenting any month view brings
-the window forward and resets it to the current month. The view carries no data; a plugin that
-wants more must wait for a later view contract.
+A month view is `{kind: "month", id, title}`. The host opens its single calendar window
+titled `title`, showing the current month in the user's calendar, first weekday, and
+locale, with today marked. A Month/Year control in the window's toolbar switches to the
+whole year as month tiles, and clicking a tile opens that month. Navigation is local to the
+host, and no callback runs while browsing. The toolbar's previous and next buttons, and
+Option+Cmd+Left Arrow and Option+Cmd+Right Arrow, step one month or one year back and
+forward; Cmd+1 and Cmd+2 choose Month or Year, and Cmd+T returns to today. Presenting any
+month view brings the window forward and resets it to the current month. The view carries
+no data; a plugin that wants more must wait for a later view contract.
 
 ## Host services
 

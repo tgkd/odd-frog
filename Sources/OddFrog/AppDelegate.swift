@@ -119,10 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for writingItem in NSMenuItem.writingToolsItems { edit.addItem(writingItem) }
 
         let view = NSMenu(title: "View")
-        let previous = NSMenuItem(title: "Previous Month", action: #selector(MonthWindowController.showPreviousMonth(_:)), keyEquivalent: String(NSEvent.SpecialKey.leftArrow.unicodeScalar))
+        view.addItem(NSMenuItem(title: "Month", action: #selector(MonthWindowController.showMonthView(_:)), keyEquivalent: "1"))
+        view.addItem(NSMenuItem(title: "Year", action: #selector(MonthWindowController.showYearView(_:)), keyEquivalent: "2"))
+        view.addItem(.separator())
+        let previous = NSMenuItem(title: "Previous", action: #selector(MonthWindowController.showPrevious(_:)), keyEquivalent: String(NSEvent.SpecialKey.leftArrow.unicodeScalar))
         previous.keyEquivalentModifierMask = [.command, .option]
         view.addItem(previous)
-        let next = NSMenuItem(title: "Next Month", action: #selector(MonthWindowController.showNextMonth(_:)), keyEquivalent: String(NSEvent.SpecialKey.rightArrow.unicodeScalar))
+        let next = NSMenuItem(title: "Next", action: #selector(MonthWindowController.showNext(_:)), keyEquivalent: String(NSEvent.SpecialKey.rightArrow.unicodeScalar))
         next.keyEquivalentModifierMask = [.command, .option]
         view.addItem(next)
         view.addItem(.separator())
