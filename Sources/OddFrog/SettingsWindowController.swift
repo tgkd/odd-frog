@@ -6,6 +6,7 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController {
     let pluginsPane = PluginsPaneModel()
     var onChange: ((OddFrogCore.Settings) -> Void)?
+    var onAppearance: ((OddFrogCore.Settings.Appearance) -> Void)?
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
     var onHotkey: ((Hotkey) -> Void)?
     var links: [CommandItem] = []
@@ -15,6 +16,7 @@ final class SettingsWindowController: NSWindowController {
     private let sidebar = SettingsSidebarController()
     private let paneController = NSTabViewController()
     private let general = GeneralPaneModel()
+    private let appearancePane = AppearancePaneModel()
     private let itemsPane: ItemsPaneController
 
     private var currentPane = SettingsPane.general
@@ -36,6 +38,7 @@ final class SettingsWindowController: NSWindowController {
 
     func present(settings: OddFrogCore.Settings, items: [LauncherItem], hotkey: Hotkey, focusing id: String? = nil) {
         itemsPane.settings = settings
+        appearancePane.show(settings.appearance)
         showHotkey(hotkey)
         general.refreshLogin()
         let revealing = itemsPane.show(items: items, revealing: id)
@@ -56,6 +59,11 @@ final class SettingsWindowController: NSWindowController {
 
     func update(pluginSettings: [PluginSetting]) { itemsPane.settings.plugins = pluginSettings }
 
+    func update(appearance: OddFrogCore.Settings.Appearance) {
+        itemsPane.settings.appearance = appearance
+        appearancePane.show(appearance)
+    }
+
     func showHotkey(_ hotkey: Hotkey, note: String? = nil) {
         general.show(hotkey, note: note)
     }
@@ -74,11 +82,15 @@ final class SettingsWindowController: NSWindowController {
         sidebar.onSelect = { [weak self] pane in self?.showPane(pane) }
         general.onHotkey = { [weak self] hotkey in self?.onHotkey?(hotkey) }
         itemsPane.onChange = { [weak self] in self?.onChange?($0) }
+        appearancePane.onChange = { [weak self] appearance in self?.onAppearance?(appearance) }
 
         paneController.tabStyle = .unspecified
         let generalHost = NSHostingController(rootView: GeneralPaneView(model: general))
         generalHost.sizingOptions = []
         paneController.addChild(generalHost)
+        let appearanceHost = NSHostingController(rootView: AppearancePaneView(model: appearancePane))
+        appearanceHost.sizingOptions = []
+        paneController.addChild(appearanceHost)
         paneController.addChild(itemsPane)
         let pluginsHost = NSHostingController(rootView: PluginsPaneView(model: pluginsPane))
         pluginsHost.sizingOptions = []

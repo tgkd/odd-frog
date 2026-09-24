@@ -280,10 +280,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     private func buildContent() {
         textView.allowsUndo = true
-        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.font = ContentFont.current.font(.body)
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.delegate = self
         window?.contentView = scroll
+    }
+
+    func applyContentFont() {
+        textView.font = ContentFont.current.font(.body)
     }
 }

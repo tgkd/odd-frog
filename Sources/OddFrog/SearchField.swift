@@ -8,7 +8,7 @@ final class SearchField: NSTextField {
         isBordered = false
         drawsBackground = false
         focusRingType = .none
-        font = NSFont.preferredFont(forTextStyle: .title2)
+        font = ContentFont.current.font(.title2)
         placeholderString = "Search…"
         lineBreakMode = .byTruncatingTail
         usesSingleLineMode = true

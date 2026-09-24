@@ -8,9 +8,9 @@ final class ChatMessageCell: NSTableCellView {
     private let body = NSTextField(wrappingLabelWithString: "")
     private let indicator = NSProgressIndicator()
     private let stack: NSStackView
+    private var appliedFont: ContentFont?
 
     init() {
-        speaker.font = NSFont.preferredFont(forTextStyle: .headline)
         indicator.style = .spinning
 
         let stack = NSStackView(views: [speaker, body, indicator])
@@ -30,11 +30,20 @@ final class ChatMessageCell: NSTableCellView {
             stack.topAnchor.constraint(equalToSystemSpacingBelow: topAnchor, multiplier: 1),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        applyFonts()
     }
 
     required init?(coder: NSCoder) { nil }
 
+    private func applyFonts() {
+        guard appliedFont != ContentFont.current else { return }
+        appliedFont = ContentFont.current
+        speaker.font = ContentFont.current.font(.headline)
+        body.font = ContentFont.current.font(.body)
+    }
+
     func show(_ text: String, speaker name: String, waiting: Bool) {
+        applyFonts()
         speaker.stringValue = name
         body.stringValue = text
         body.isHidden = waiting

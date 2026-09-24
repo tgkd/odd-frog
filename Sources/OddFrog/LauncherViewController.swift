@@ -74,6 +74,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         separator.boxType = .separator
 
         emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.font = ContentFont.current.font(.body)
         emptyLabel.alignment = .center
         emptyLabel.lineBreakMode = .byTruncatingTail
         emptyLabel.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
@@ -154,6 +155,12 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         }
         searchField.currentEditor()?.selectAll(nil)
         return ok
+    }
+
+    func applyContentFont() {
+        searchField.font = ContentFont.current.font(.title2)
+        emptyLabel.font = ContentFont.current.font(.body)
+        refresh(keepSelection: true)
     }
 
     override func viewDidLoad() {

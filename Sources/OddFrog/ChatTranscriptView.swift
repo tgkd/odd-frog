@@ -75,6 +75,26 @@ final class ChatTranscriptView: NSView, NSTableViewDataSource, NSTableViewDelega
         }
     }
 
+    func reloadAll() {
+        guard table.numberOfRows > 0 else {
+            table.reloadData()
+            return
+        }
+        let nearBottom = isNearBottom()
+        let visible = scroll.contentView.documentVisibleRect
+        let topRow = table.row(at: NSPoint(x: visible.minX, y: visible.minY))
+        table.reloadData()
+        table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<table.numberOfRows))
+        table.layoutSubtreeIfNeeded()
+        if nearBottom {
+            scrollToBottom()
+        } else {
+            let row = max(0, min(topRow, table.numberOfRows - 1))
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: table.rect(ofRow: row).minY))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+    }
+
     private func isNearBottom() -> Bool {
         let visible = scroll.contentView.documentVisibleRect
         let height = table.frame.height

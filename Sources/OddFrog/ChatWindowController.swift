@@ -171,6 +171,11 @@ final class ChatWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         transcript.render(session?.messages ?? [], streaming: session?.outgoing?.replyID, assistant: session?.pluginName ?? "")
     }
 
+    func applyContentFont() {
+        input.font = ContentFont.current.font(.body)
+        transcript.reloadAll()
+    }
+
     private func activateWindow() {
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
@@ -240,6 +245,7 @@ final class ChatWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return
         }
         input.delegate = self
+        input.font = ContentFont.current.font(.body)
         input.translatesAutoresizingMaskIntoConstraints = false
 
         let separator = NSBox()

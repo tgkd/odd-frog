@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = Settings.empty {
         didSet {
             executor.terminal = TerminalChoice(values: settings.plugins.first { $0.id == TerminalChoice.pluginID }?.values)
+            if settings.appearance != oldValue.appearance {
+                applyAppearance()
+            }
         }
     }
     private var allItems: [LauncherItem] = []
@@ -248,6 +251,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         executor.onRecorded = { [weak self] in Task { await self?.refreshWeights() } }
         settingsWindow.onChange = { [weak self] updated in self?.applySettings(updated, persist: true) }
+        settingsWindow.onAppearance = { [weak self] appearance in
+            guard let self else { return }
+            var updated = settings
+            updated.appearance = appearance
+            applySettings(updated, persist: true)
+        }
         settingsWindow.onApplyLink = { [weak self] original, draft in
             guard let self else { throw LinkEditError.message("Settings is no longer available.") }
             return try applyLink(original: original, draft: draft)
@@ -502,6 +511,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if changed { reloadPlugins() }
         else { do { try plugins.updateSettings(updated.plugins) } catch { report("Settings update failed: \(error)") } }
         rebuildItems()
+    }
+
+    private func applyAppearance() {
+        switch settings.appearance.theme {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+        ContentFont.current = ContentFont(settings.appearance)
+        controller.applyContentFont()
+        chats.applyContentFont()
+        documents.applyContentFont()
+        settingsWindow.update(appearance: settings.appearance)
     }
 
     private func refreshWeights() async {

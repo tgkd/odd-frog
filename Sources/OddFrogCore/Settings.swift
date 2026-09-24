@@ -114,20 +114,68 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Appearance: Codable, Sendable, Equatable {
+        public enum Theme: String, Codable, Sendable, CaseIterable {
+            case system
+            case light
+            case dark
+        }
+
+        public static let defaultSize: Double = 13
+        public static let sizeRange: ClosedRange<Double> = 10...24
+
+        public var theme: Theme
+        public var fontFamily: String?
+        public var fontSize: Double
+
+        public init(theme: Theme = .system, fontFamily: String? = nil, fontSize: Double = Appearance.defaultSize) {
+            self.theme = theme
+            let trimmed = fontFamily?.trimmingCharacters(in: .whitespaces) ?? ""
+            self.fontFamily = trimmed.isEmpty ? nil : trimmed
+            self.fontSize = min(max(fontSize, Appearance.sizeRange.lowerBound), Appearance.sizeRange.upperBound)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case theme
+            case fontFamily = "font_family"
+            case fontSize = "font_size"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let theme: Theme
+            if let raw = try? container.decodeIfPresent(String.self, forKey: .theme) {
+                theme = Theme(rawValue: raw) ?? .system
+            } else {
+                theme = .system
+            }
+            let family = try container.decodeIfPresent(String.self, forKey: .fontFamily)
+            let size: Double
+            if let integer = try? container.decode(Int.self, forKey: .fontSize) {
+                size = Double(integer)
+            } else {
+                size = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? Appearance.defaultSize
+            }
+            self.init(theme: theme, fontFamily: family, fontSize: size)
+        }
+    }
+
     public var scripts: Scripts
     public var items: [ItemOverride]
     public var search: Search
     public var currency: Currency
     public var window: Window
+    public var appearance: Appearance
     public var plugins: [PluginSetting]
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = []) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = [], appearance: Appearance = Appearance()) {
         self.scripts = scripts
         self.items = items
         self.search = search
         self.currency = currency
         self.window = window
         self.plugins = plugins
+        self.appearance = appearance
     }
 
     enum CodingKeys: String, CodingKey {
@@ -136,6 +184,7 @@ public struct Settings: Codable, Sendable, Equatable {
         case search
         case currency
         case window
+        case appearance
         case plugins
     }
 
@@ -146,6 +195,7 @@ public struct Settings: Codable, Sendable, Equatable {
         search = try container.decodeIfPresent(Search.self, forKey: .search) ?? Search()
         currency = try container.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         window = try container.decodeIfPresent(Window.self, forKey: .window) ?? Window()
+        appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance) ?? Appearance()
         plugins = try container.decodeIfPresent([PluginSetting].self, forKey: .plugins) ?? []
     }
 

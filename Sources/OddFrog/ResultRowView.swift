@@ -17,17 +17,16 @@ final class ResultRowView: NSTableCellView {
     let requirementLabel = NSTextField(labelWithString: "")
     let kindLabel = NSTextField(labelWithString: "")
     private let detailStack: NSStackView
+    private var appliedFont: ContentFont?
 
     init() {
         iconView.imageScaling = .scaleProportionallyDown
         iconView.symbolConfiguration = NSImage.SymbolConfiguration(textStyle: .title2)
 
-        titleLabel.font = .preferredFont(forTextStyle: .body)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         for label in [subtitleLabel, valueLabel] {
-            label.font = .preferredFont(forTextStyle: .subheadline)
             label.lineBreakMode = .byTruncatingMiddle
             label.maximumNumberOfLines = 1
             label.usesSingleLineMode = true
@@ -38,10 +37,8 @@ final class ResultRowView: NSTableCellView {
         valueLabel.textColor = .labelColor
         valueLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        requirementLabel.font = .preferredFont(forTextStyle: .subheadline)
         requirementLabel.textColor = .tertiaryLabelColor
 
-        kindLabel.font = .preferredFont(forTextStyle: .subheadline)
         kindLabel.textColor = .tertiaryLabelColor
         kindLabel.alignment = .right
         kindLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -76,11 +73,22 @@ final class ResultRowView: NSTableCellView {
 
         textField = titleLabel
         imageView = iconView
+        applyFonts()
     }
 
     required init?(coder: NSCoder) { nil }
 
+    private func applyFonts() {
+        guard appliedFont != ContentFont.current else { return }
+        appliedFont = ContentFont.current
+        titleLabel.font = ContentFont.current.font(.body)
+        for label in [subtitleLabel, valueLabel, requirementLabel, kindLabel] {
+            label.font = ContentFont.current.font(.subheadline)
+        }
+    }
+
     func configure(title: String, detail: String?, value: String?, tooltip: String?, kind: String?, requirement: Requirement?, icon: NSImage?) {
+        applyFonts()
         titleLabel.stringValue = title
         toolTip = tooltip
         iconView.image = icon
