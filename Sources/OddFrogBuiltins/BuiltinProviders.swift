@@ -1,13 +1,16 @@
 import Foundation
+import AppKit
 import BundledFeatures
 import CalendarPluginCore
 import RemindersPluginCore
 import NotesPluginCore
 import ChatPluginCore
+import ClipboardPluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
 public enum BuiltinProviders {
+    public static let clipboardArchive = ClipboardArchive()
     public static let factories: [String: PluginCoordinator.BuiltinProviderFactory] = [
         "applications": { FeatureProvider(.applications) },
         "commands": { FeatureProvider(.commands) },
@@ -19,5 +22,6 @@ public enum BuiltinProviders {
         "reminders": { RemindersHandler() },
         "notes": { NotesHandler() },
         "chat": { ChatHandler() },
+        "clipboard": { ClipboardHandler(archive: clipboardArchive, pasteboard: ClipboardPasteboard(name: .general)) },
     ]
 }

@@ -1,0 +1,24 @@
+id = "clipboard"
+name = "Clipboard"
+version = "0.1.0"
+api_version = 2
+keyword = "clip"
+mode = "persistent"
+activation = "exclusive"
+background = true
+enabled_by_default = false
+capabilities = []
+
+[[settings]]
+key = "limit"
+title = "History size"
+type = "number"
+default = 50
+minimum = 1
+maximum = 200
+
+[[settings]]
+key = "capture_images"
+title = "Save copied images"
+type = "boolean"
+default = true
