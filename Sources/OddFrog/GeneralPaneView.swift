@@ -28,6 +28,14 @@ struct GeneralPaneView: View {
                 if model.loginStatus == .requiresApproval {
                     Button("Open Login Items…") { model.openLoginItems() }
                 }
+
+                LabeledContent {
+                    Button("Reset") { model.resetPlacement() }
+                        .disabled(!model.hasCustomPlacement)
+                } label: {
+                    Text("Launcher position")
+                    placementHelper
+                }
             }
         }
         .formStyle(.grouped)
@@ -61,6 +69,15 @@ struct GeneralPaneView: View {
             default:
                 EmptyView()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var placementHelper: some View {
+        if model.hasCustomPlacement {
+            Text("Opens where you last dragged it.")
+        } else {
+            Text("Opens on the screen with the pointer. Drag the launcher by its edge to keep it in one place.")
         }
     }
 }

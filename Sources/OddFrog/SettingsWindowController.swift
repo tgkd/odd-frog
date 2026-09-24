@@ -41,6 +41,7 @@ final class SettingsWindowController: NSWindowController {
         appearancePane.show(settings.appearance)
         showHotkey(hotkey)
         general.refreshLogin()
+        general.refreshPlacement()
         let revealing = itemsPane.show(items: items, revealing: id)
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)

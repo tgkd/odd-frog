@@ -7,6 +7,8 @@ final class LauncherPanel: NSPanel {
     var onResignKey: (() -> Void)?
     var onKeyEquivalent: ((NSEvent) -> Bool)?
 
+    private var expectedTop: NSPoint?
+
     init(contentViewController controller: NSViewController) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 60),
@@ -29,6 +31,9 @@ final class LauncherPanel: NSPanel {
         NotificationCenter.default.addObserver(
             self, selector: #selector(didResignKey(_:)), name: NSWindow.didResignKeyNotification, object: self
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(didMove(_:)), name: NSWindow.didMoveNotification, object: self
+        )
     }
 
     override var canBecomeKey: Bool { true }
@@ -43,11 +48,17 @@ final class LauncherPanel: NSPanel {
     }
 
     func present(height: CGFloat) {
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let visible = screen.visibleFrame
-        let x = visible.midX - Self.width / 2
-        let y = visible.maxY - visible.height * 0.25 - height
-        let target = NSRect(x: x, y: y, width: Self.width, height: height)
+        let target: NSRect
+        if let top = LauncherPlacement.saved, NSScreen.screens.contains(where: { $0.frame.contains(NSPoint(x: top.x, y: top.y - 1)) }) {
+            target = NSRect(x: top.x - Self.width / 2, y: top.y - height, width: Self.width, height: height)
+        } else {
+            let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main ?? NSScreen.screens[0]
+            let visible = screen.visibleFrame
+            let x = visible.midX - Self.width / 2
+            let y = visible.maxY - visible.height * 0.25 - height
+            target = NSRect(x: x, y: y, width: Self.width, height: height)
+        }
+        expectedTop = NSPoint(x: target.midX, y: target.maxY)
         setFrame(target, display: true)
         makeKeyAndOrderFront(nil)
     }
@@ -56,7 +67,13 @@ final class LauncherPanel: NSPanel {
         var target = frame
         target.origin.y -= height - target.height
         target.size.height = height
+        expectedTop = NSPoint(x: target.midX, y: target.maxY)
         setFrame(target, display: true)
+    }
+
+    func resetPlacement() {
+        LauncherPlacement.clear()
+        expectedTop = nil
     }
 
     func dismiss() {
@@ -66,5 +83,19 @@ final class LauncherPanel: NSPanel {
 
     @objc private func didResignKey(_ note: Notification) {
         onResignKey?()
+    }
+
+    @objc private func didMove(_ note: Notification) {
+        guard isVisible else { return }
+        let top = NSPoint(x: frame.midX, y: frame.maxY)
+        guard let expectedTop else {
+            LauncherPlacement.save(top)
+            self.expectedTop = top
+            return
+        }
+        if abs(expectedTop.x - top.x) > 0.5 || abs(expectedTop.y - top.y) > 0.5 {
+            LauncherPlacement.save(top)
+            self.expectedTop = top
+        }
     }
 }

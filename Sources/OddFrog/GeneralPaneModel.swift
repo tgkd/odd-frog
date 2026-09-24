@@ -12,6 +12,7 @@ final class GeneralPaneModel {
     private(set) var isRecording = false
     private(set) var loginStatus = LoginItem.status
     private(set) var loginError: String?
+    private(set) var hasCustomPlacement = LauncherPlacement.saved != nil
 
     @ObservationIgnored private var lastRecorded: Hotkey?
     @ObservationIgnored var onHotkey: ((Hotkey) -> Void)?
@@ -50,6 +51,15 @@ final class GeneralPaneModel {
 
     func refreshLogin() {
         withMutation(keyPath: \.loginStatus) { _loginStatus = LoginItem.status }
+    }
+
+    func refreshPlacement() {
+        withMutation(keyPath: \.hasCustomPlacement) { _hasCustomPlacement = LauncherPlacement.saved != nil }
+    }
+
+    func resetPlacement() {
+        LauncherPlacement.clear()
+        refreshPlacement()
     }
 
     func toggleLogin() {
