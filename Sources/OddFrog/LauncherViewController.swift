@@ -128,7 +128,23 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         glass.cornerRadius = Self.cornerRadius
         glass.contentView = content
         glass.translatesAutoresizingMaskIntoConstraints = false
-        view = glass
+
+        // The glass draws its own shadow outside its rounded shape; the window is exactly the glass
+        // size, so that shadow shows as a square-cornered halo unless it is clipped to the same shape.
+        let clip = NSView()
+        clip.wantsLayer = true
+        clip.layer?.cornerRadius = Self.cornerRadius
+        clip.layer?.cornerCurve = .continuous
+        clip.layer?.masksToBounds = true
+        clip.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(glass)
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            glass.topAnchor.constraint(equalTo: clip.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+        ])
+        view = clip
     }
 
     var preferredHeight: CGFloat {
