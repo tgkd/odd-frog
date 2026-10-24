@@ -55,6 +55,16 @@ struct ClipboardProviderTests {
         #expect(items[0].title == "Clipboard history is not being saved")
     }
 
+    @Test func unfilteredListShowsTheFiveNewestEntries() {
+        let many = (1...8).map { entry("e\($0)", "Entry \($0)") }
+        let unfiltered = ClipboardProvider.respond(to: request(maxResults: 8), access: .allowed,
+                                                   entries: many, directory: dir(), failure: nil)
+        #expect(unfiltered.map(\.id) == ["e1", "e2", "e3", "e4", "e5", "clear"])
+        let filtered = ClipboardProvider.respond(to: request("entry", maxResults: 8), access: .allowed,
+                                                 entries: many, directory: dir(), failure: nil)
+        #expect(filtered.count == 8)
+    }
+
     @Test func clearRowAppearsOnlyWhenUnfilteredAndRoomExists() {
         let two = [entry("a", "Alpha"), entry("b", "Beta")]
         let unfiltered = ClipboardProvider.respond(to: request(maxResults: 8), access: .allowed,
@@ -87,7 +97,7 @@ struct ClipboardProviderTests {
         let items = ClipboardProvider.respond(to: request(maxResults: 8), access: .allowed,
                                               entries: [entry("a", "Alpha"), imageEntry("b")],
                                               directory: dir(), failure: nil)
-        #expect(items[0].primary == PluginAction(.callback, "copy", payload: .object(["id": .string("a")])))
+        #expect(items[0].primary == PluginAction(.callback, "paste", payload: .object(["id": .string("a")])))
         #expect(items[0].secondary == PluginAction(.callback, "delete", payload: .object(["id": .string("a")])))
         #expect(items[0].symbol == "doc.on.clipboard")
         #expect(items[0].icon == nil)

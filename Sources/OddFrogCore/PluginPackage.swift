@@ -45,6 +45,7 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
     public let activation: Activation?
     public let keyword: String?
     public let prefix: String?
+    public let hotkey: Hotkey?
     public let order: Int
     public let catalog: Bool
     public let background: Bool
@@ -53,7 +54,7 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
     public let settings: [PluginSettingDefinition]
     public let commands: [PluginItem]
     enum CodingKeys: String, CodingKey {
-        case id, name, version, mode, executable, activation, keyword, prefix, order, catalog, background, capabilities, settings, commands
+        case id, name, version, mode, executable, activation, keyword, prefix, hotkey, order, catalog, background, capabilities, settings, commands
         case apiVersion = "api_version", enabledByDefault = "enabled_by_default"
     }
     public init(from decoder: Decoder) throws {
@@ -64,6 +65,9 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         executable = try c.decodeIfPresent(String.self, forKey: .executable)
         activation = try c.decodeIfPresent(Activation.self, forKey: .activation)
         keyword = try c.decodeIfPresent(String.self, forKey: .keyword); prefix = try c.decodeIfPresent(String.self, forKey: .prefix)
+        hotkey = try c.decodeIfPresent(String.self, forKey: .hotkey).map { text in
+            do { return try Hotkey.parse(text) } catch { throw PluginError.message("Invalid hotkey '\(text)': \(error).") }
+        }
         order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
         catalog = try c.decodeIfPresent(Bool.self, forKey: .catalog) ?? false
         background = try c.decodeIfPresent(Bool.self, forKey: .background) ?? false
@@ -92,6 +96,7 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
                 throw PluginError.message("Exclusive activation requires one valid keyword or prefix.")
             }
         } else if value.keyword != nil || value.prefix != nil { throw PluginError.message("Triggers require exclusive activation.") }
+        if value.hotkey != nil && value.activation != .exclusive { throw PluginError.message("Hotkeys require exclusive activation.") }
         guard Set(value.settings.map(\.key)).count == value.settings.count else { throw PluginError.message("Duplicate settings keys.") }
         for setting in value.settings {
             guard !setting.key.isEmpty, !setting.title.isEmpty else { throw PluginError.message("Empty setting key or title.") }
@@ -127,9 +132,12 @@ public struct PluginSetting: Codable, Sendable, Equatable {
     public var source: String?
     public var values: [String: JSONValue]?
     public var trigger: String?
-    public init(id: String, enabled: Bool, source: String? = nil, values: [String: JSONValue]? = nil, trigger: String? = nil) {
+    /// Replaces the manifest hotkey; an empty string turns it off.
+    public var hotkey: String?
+    public init(id: String, enabled: Bool, source: String? = nil, values: [String: JSONValue]? = nil, trigger: String? = nil,
+                hotkey: String? = nil) {
         self.id = id; self.enabled = enabled; self.source = source; self.values = values
-        self.trigger = trigger
+        self.trigger = trigger; self.hotkey = hotkey
     }
 }
 public struct PluginPackage: Sendable, Equatable {
@@ -156,6 +164,19 @@ public struct PluginPackage: Sendable, Equatable {
             return manifestTrigger
         }
         return try manifestTrigger.replacing(override)
+    }
+    public func hotkey(in settings: [PluginSetting]) throws -> Hotkey? {
+        guard manifest.activation == .exclusive else {
+            return nil
+        }
+        guard let override = setting(in: settings)?.hotkey else {
+            return manifest.hotkey
+        }
+        let text = override.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else {
+            return nil
+        }
+        do { return try Hotkey.parse(text) } catch { throw PluginError.message("Invalid hotkey '\(override)': \(error).") }
     }
     public func query(from fullQuery: String, settings: [PluginSetting]) -> String? {
         let text = fullQuery.trimmingCharacters(in: .whitespacesAndNewlines)

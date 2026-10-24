@@ -156,8 +156,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         if isViewLoaded { tableView.reloadData() }
     }
 
-    func prepareForShow() {
-        searchField.stringValue = ""
+    func prepareForShow(query: String = "") {
+        searchField.stringValue = query
         refresh()
     }
 
@@ -169,7 +169,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             Log.write("makeFirstResponder(searchField) refused, retrying")
             return window.makeFirstResponder(searchField)
         }
-        searchField.currentEditor()?.selectAll(nil)
+        let length = (searchField.stringValue as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
         return ok
     }
 

@@ -70,6 +70,7 @@ import OddFrogPluginAPI
             }
             do {
                 _ = try package.trigger(in: settings)
+                _ = try package.hotkey(in: settings)
                 let values = package.setting(in: settings)?.values ?? [:]
                 contexts[id] = PluginContext(settings: try m.validatedSettings(values),
                                              storagePath: (storage ?? StoragePaths.support).appendingPathComponent("plugins/\(id)").path,
@@ -329,6 +330,7 @@ import OddFrogPluginAPI
         for package in packages { _ = try package.manifest.validatedSettings(package.setting(in: updated)?.values ?? [:]) }
         for package in packages {
             _ = try package.trigger(in: updated)
+            _ = try package.hotkey(in: updated)
         }
     }
     private func validateItems(_ items: [PluginItem], package: PluginPackage) throws {

@@ -248,6 +248,29 @@ struct PluginTests {
         let plain = Settings(plugins: [PluginSetting(id: "cal", enabled: true, source: "bundled")])
         #expect(try Settings.parse(plain.serialized()).plugins.first?.trigger == nil)
     }
+    @Test func hotkeysComeFromTheManifestAndCanBeOverriddenOrTurnedOff() throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clip = PluginPackage(manifest: try manifest(id: "clip", extra: "activation = 'exclusive'\nkeyword = 'clip'\nhotkey = 'cmd+shift+v'"),
+                                 directory: root, bundled: true)
+        #expect(try clip.hotkey(in: [])?.serialized == "cmd+shift+v")
+        #expect(try clip.trigger(in: [])?.launchQuery == "clip ")
+        let moved = [PluginSetting(id: "clip", enabled: true, source: clip.source, hotkey: "ctrl+alt+c")]
+        #expect(try clip.hotkey(in: moved)?.serialized == "ctrl+alt+c")
+        let off = [PluginSetting(id: "clip", enabled: true, source: clip.source, hotkey: "")]
+        #expect(try clip.hotkey(in: off) == nil)
+        let invalid = [PluginSetting(id: "clip", enabled: true, source: clip.source, hotkey: "v")]
+        #expect(throws: (any Error).self) { try clip.hotkey(in: invalid) }
+        let prefixed = PluginPackage(manifest: try manifest(id: "term", extra: "activation = 'exclusive'\nprefix = '>'"), directory: root, bundled: true)
+        #expect(try prefixed.hotkey(in: []) == nil)
+        #expect(try prefixed.trigger(in: [])?.launchQuery == ">")
+        let added = [PluginSetting(id: "term", enabled: true, source: prefixed.source, hotkey: "cmd+alt+t")]
+        #expect(try prefixed.hotkey(in: added)?.serialized == "cmd+alt+t")
+        #expect(throws: (any Error).self) { try manifest(id: "live", extra: "hotkey = 'cmd+shift+v'") }
+        #expect(throws: (any Error).self) { try manifest(id: "bad", extra: "activation = 'exclusive'\nkeyword = 'bad'\nhotkey = 'hyper+v'") }
+        let parsed = try Settings.parse(Settings(plugins: moved).serialized())
+        #expect(parsed.plugins.first?.hotkey == "ctrl+alt+c")
+    }
     @Test @MainActor func triggerConflictsUseOverrides() async throws {
         let root = try temp()
         defer { try? FileManager.default.removeItem(at: root) }

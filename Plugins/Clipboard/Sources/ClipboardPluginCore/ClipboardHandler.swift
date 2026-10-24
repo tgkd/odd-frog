@@ -105,29 +105,11 @@ public actor ClipboardHandler: ProviderHandler {
         let activation = try params["input"].decode(PluginActivation.self)
         switch activation.actionID {
         case "copy":
-            let id = activation.payload["id"].string ?? ""
-            let entries = await archive.entries(generation: generation)
-            guard let entry = entries.first(where: { $0.id == id }) else {
-                throw RPCError("clipboard", "This entry no longer exists.")
-            }
-            switch entry.kind {
-            case .text:
-                guard let text = entry.text else {
-                    throw RPCError("clipboard", "This entry no longer exists.")
-                }
-                guard await pasteboard.write(text: text) else {
-                    throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
-                }
-            case .image:
-                guard let data = await archive.imageData(generation: generation, id: id) else {
-                    throw RPCError("clipboard", "This entry no longer exists.")
-                }
-                guard await pasteboard.write(png: data) else {
-                    throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
-                }
-            }
-            try await archive.touch(generation: generation, id: id, now: Date())
+            try await restore(id: activation.payload["id"].string ?? "")
             return try .encode(PluginEffects())
+        case "paste":
+            try await restore(id: activation.payload["id"].string ?? "")
+            return try .encode(PluginEffects(paste: true))
         case "delete":
             try await archive.delete(generation: generation, id: activation.payload["id"].string ?? "")
             return try .encode(PluginEffects(refreshQuery: true))
@@ -155,6 +137,30 @@ public actor ClipboardHandler: ProviderHandler {
         default:
             throw RPCError("action", "Unknown action: \(activation.actionID)")
         }
+    }
+
+    private func restore(id: String) async throws {
+        let entries = await archive.entries(generation: generation)
+        guard let entry = entries.first(where: { $0.id == id }) else {
+            throw RPCError("clipboard", "This entry no longer exists.")
+        }
+        switch entry.kind {
+        case .text:
+            guard let text = entry.text else {
+                throw RPCError("clipboard", "This entry no longer exists.")
+            }
+            guard await pasteboard.write(text: text) else {
+                throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
+            }
+        case .image:
+            guard let data = await archive.imageData(generation: generation, id: id) else {
+                throw RPCError("clipboard", "This entry no longer exists.")
+            }
+            guard await pasteboard.write(png: data) else {
+                throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
+            }
+        }
+        try await archive.touch(generation: generation, id: id, now: Date())
     }
 
     private func startPoll() {
