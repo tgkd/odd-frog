@@ -41,6 +41,13 @@ make clean     # remove .build and build
 `make run` launches the bundle from `build/`, so use it for quick iteration; `make install` or
 `scripts/release.sh` when you want the installed copy updated.
 
+### File search (Files plugin)
+
+The bundled `files` plugin (keyword `f`, off by default) searches your folders with
+[fff](https://github.com/dmtrKovalenko/fff.nvim). `make bundle` fetches the pinned `libfff_c.dylib`
+through `scripts/fetch-fff.sh` (checksum verified, stored in `vendor/`) and copies it into
+`Contents/Frameworks`. Choose the indexed folders in Settings → Plugins → Files.
+
 ### Signing and permissions
 
 `SIGN` defaults to an ad-hoc signature (`-`). Rebuilding changes that identity and can invalidate

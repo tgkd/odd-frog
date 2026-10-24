@@ -6,3 +6,4 @@ build/
 *.xcodeproj
 .DS_Store
 .claude/worktrees/
+vendor/

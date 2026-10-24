@@ -298,6 +298,18 @@ import OddFrogPluginAPI
         }
         return id
     }
+    /// Delivers an action's `after` callback. Best effort: stale or failing plugins are ignored.
+    public func notifyStarted(_ result: PluginResult, after: PluginAfter) {
+        let token = generation
+        Task { [weak self] in
+            guard let self, token == generation,
+                  let package = enabled.first(where: { $0.manifest.id == result.pluginID }),
+                  package.manifest.mode != .declarative else { return }
+            guard (try? await initialize(package).value) != nil,
+                  let input = try? PluginActivation(actionID: after.callback, payload: after.payload ?? .null, item: result.item, argument: nil) else { return }
+            _ = try? await perform("activate", package: package, params: .encode(input), timeout: .seconds(10), activated: true)
+        }
+    }
     public func cancelAction(_ id: UUID) { actionTasks[id]?.cancel() }
     public func cancelActions() { for task in actionTasks.values { task.cancel() } }
     public func updateSettings(_ updated: [PluginSetting]) throws {
@@ -359,6 +371,7 @@ import OddFrogPluginAPI
     }
     private func validate(_ action: PluginAction, package: PluginPackage) throws {
         if action.kind == .service && !package.manifest.capabilities.contains(action.value) { throw RPCError("protocol", "Action uses an undeclared capability.") }
+        if let after = action.after, package.manifest.mode == .declarative || after.callback.isEmpty { throw RPCError("protocol", "Invalid after callback.") }
         if action.kind == .callback && (package.manifest.mode == .declarative || action.value.isEmpty) { throw RPCError("protocol", "Invalid callback action.") }
         if [.openURL, .openPath, .openApplication, .reveal, .execute, .service].contains(action.kind) && action.value.isEmpty { throw RPCError("protocol", "Empty action target.") }
         if action.kind == .execute && !action.value.hasPrefix("/") { throw RPCError("protocol", "Execute requires an absolute executable path.") }

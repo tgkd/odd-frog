@@ -1,0 +1,16 @@
+id = "files"
+name = "Files"
+version = "0.1.0"
+api_version = 2
+keyword = "f"
+mode = "persistent"
+activation = "exclusive"
+background = true
+enabled_by_default = false
+capabilities = []
+
+[[settings]]
+key = "folders"
+title = "Folders to index"
+type = "folders"
+default = ["~/Developer", "~/Documents", "~/Desktop", "~/Downloads"]

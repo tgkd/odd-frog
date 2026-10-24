@@ -95,6 +95,8 @@ final class ActionExecutor {
     var onFailure: ((String) -> Void)?
     var onRecorded: (() -> Void)?
     var onPluginAction: ((PluginResult, String?, Bool) -> Void)?
+    var onActionStarted: ((PluginResult, PluginAfter) -> Void)?
+    private var failureCount = 0
     private var running: [UUID: BackgroundRun] = [:]
 
     init(config: Config, frecency: FrecencyStore, notifier: Notifier) {
@@ -109,6 +111,12 @@ final class ActionExecutor {
     }
 
     func runHost(_ action: PluginAction, result: PluginResult, argument: String?) {
+        let failures = failureCount
+        perform(action, result: result, argument: argument)
+        if failureCount == failures, let after = action.after { onActionStarted?(result, after) }
+    }
+
+    private func perform(_ action: PluginAction, result: PluginResult, argument: String?) {
         let id = result.historyEligible ? result.id : ""
         let name = result.item.title
         let value: String
@@ -219,6 +227,7 @@ final class ActionExecutor {
     }
 
     private func fail(_ message: String) {
+        failureCount += 1
         Log.write("failure: \(message)")
         onFailure?(message)
         notifier.failure(message)

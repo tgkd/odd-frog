@@ -24,6 +24,7 @@ final class IconCache {
         case .plugin(let result):
             if let icon = result.item.icon {
                 if icon.hasPrefix("text:") { return emojiImage(String(icon.dropFirst(5)), size: size) }
+                if icon.hasPrefix("file:") { return self.icon(forFile: String(icon.dropFirst(5)), size: size) }
                 let path = icon.hasPrefix("/") ? icon : result.directory?.appendingPathComponent(icon).path
                 if let path {
                     if path.hasSuffix(".app") { return self.icon(forFile: path, size: size) }

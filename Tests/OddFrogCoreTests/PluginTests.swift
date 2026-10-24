@@ -176,6 +176,14 @@ struct PluginTests {
         #expect(coordinator.search("web", items: [], weights: [:], maxResults: 8).isEmpty)
         try await waitUntil { coordinator.search("web", items: [], weights: [:], maxResults: 8).first?.item.title == "web" }
     }
+    @Test func actionAfterCallbackRoundTripsAndIsOptional() throws {
+        let action = PluginAction(.openPath, "/tmp/a", after: PluginAfter("track", payload: .object(["n": .number(1)])))
+        let decoded = try JSONValue.encode(action).decode(PluginAction.self)
+        #expect(decoded == action)
+        #expect(decoded.after?.callback == "track")
+        let plain = try JSONDecoder().decode(PluginAction.self, from: Data(#"{"kind":"openPath","value":"/tmp/a"}"#.utf8))
+        #expect(plain.after == nil)
+    }
     @Test func blockedProviderInputStillHonorsDeadline() async throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
         let process = PluginProcess(executable: try fixture(root, source: "import time; time.sleep(30)"), persistent: true)
