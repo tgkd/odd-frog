@@ -124,12 +124,17 @@ final class ActionExecutor {
         case .copy:
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string); record(id)
         case .paste:
-            NSPasteboard.general.clearContents()
             if let path = action.payload?["png"].string {
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)), NSPasteboard.general.setData(data, forType: .png) else {
+                // Read before clearing: a missing file must not wipe the user's current clipboard.
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
                     fail("Could not read \(path)"); return
                 }
+                NSPasteboard.general.clearContents()
+                guard NSPasteboard.general.setData(data, forType: .png) else {
+                    fail("Could not copy \(path)"); return
+                }
             } else {
+                NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(value, forType: .string)
             }
             if !PasteKeystroke.send() {

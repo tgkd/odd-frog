@@ -21,6 +21,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private var scrollHeight: NSLayoutConstraint!
     private var emptyHeight: NSLayoutConstraint!
     private var tableInset: CGFloat = 10
+    private var emptyHeightFont: ContentFont?
 
     var items: [LauncherItem] = [] {
         didSet {
@@ -224,20 +225,18 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             select(row: tableView.selectedRow - 1)
             return
         }
-        if let index = historyIndex {
-            recallHistory(at: index + 1)
-        } else if fullQuery.allSatisfy(\.isWhitespace) {
-            recallHistory(at: 0)
+        if historyIndex != nil || fullQuery.allSatisfy(\.isWhitespace),
+           let next = QueryHistory.older(than: historyIndex, total: history.count) {
+            recallHistory(at: next)
         }
     }
 
-    /// ↓ walks back toward the newest query and then leaves history with an empty field, like a shell prompt.
     private func moveDown() {
         guard let index = historyIndex else {
             select(row: tableView.selectedRow + 1)
             return
         }
-        if index == 0 { setQuery("") } else { recallHistory(at: index - 1) }
+        if let next = QueryHistory.newer(than: index) { recallHistory(at: next) } else { setQuery("") }
     }
 
     /// The query the plugins see: the chip's trigger text followed by the field.
@@ -323,11 +322,16 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
         let visible = min(rows, Self.visibleRowCap)
+        let previousInset = tableInset
         if rows > 0 { tableInset = tableView.rect(ofRow: 0).minY }
         scrollHeight.constant = rows == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY + tableInset
         // Same height as a single result with a subtitle, so the panel does not jump between "No results" and one row.
-        configure(prototype, title: "Ag", detail: "Ag")
-        emptyHeight.constant = prototype.fittingSize.height + 2 * tableInset
+        // The row only changes height with the font, so it is measured then and not on every keystroke.
+        if emptyHeightFont != ContentFont.current || previousInset != tableInset {
+            emptyHeightFont = ContentFont.current
+            configure(prototype, title: "Ag", detail: "Ag")
+            emptyHeight.constant = prototype.fittingSize.height + 2 * tableInset
+        }
         let filter = searchField.stringValue
         let showsEmptyState = rows == 0 && !filter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         emptyLabel.stringValue = showsEmptyState ? "No results for “\(filter)”" : ""
