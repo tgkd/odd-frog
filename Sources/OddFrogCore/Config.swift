@@ -73,6 +73,7 @@ struct RawCommand: Decodable {
     var url: String?
     var cwd: String?
     var terminal: Bool?
+    var hotkey: String?
 }
 
 public enum ConfigParser {
@@ -137,7 +138,11 @@ public enum ConfigParser {
             }
 
             let cwd = rc.cwd.map { URL(fileURLWithPath: expandTilde($0)) }
-            commands.append(CommandItem(name: name, aliases: cleanAliases, action: action, cwd: cwd, terminal: terminal, stableID: rc.id))
+            var hotkey: Hotkey?
+            if let text = rc.hotkey?.trimmingCharacters(in: .whitespaces), !text.isEmpty {
+                do { hotkey = try Hotkey.parse(text) } catch { throw ConfigError.invalidHotkey("\(name): \(error)") }
+            }
+            commands.append(CommandItem(name: name, aliases: cleanAliases, action: action, cwd: cwd, terminal: terminal, stableID: rc.id, hotkey: hotkey))
         }
         guard Set(commands.map(\.stableID)).count == commands.count, commands.allSatisfy({ !$0.stableID.isEmpty }) else { throw ConfigError.toml("Command IDs must be nonempty and unique.") }
         return Config(general: general, commands: commands)

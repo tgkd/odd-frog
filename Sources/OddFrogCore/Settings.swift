@@ -5,17 +5,21 @@ public struct ItemOverride: Codable, Sendable, Equatable {
     public var id: String
     public var enabled: Bool
     public var aliases: [String]
+    /// A global shortcut that runs the item without opening the launcher, in `Hotkey.parse` form.
+    public var hotkey: String?
 
-    public init(id: String, enabled: Bool = true, aliases: [String] = []) {
+    public init(id: String, enabled: Bool = true, aliases: [String] = [], hotkey: String? = nil) {
         self.id = id
         self.enabled = enabled
         self.aliases = aliases
+        self.hotkey = hotkey
     }
 
     enum CodingKeys: String, CodingKey {
         case id
         case enabled
         case aliases
+        case hotkey
     }
 
     public init(from decoder: Decoder) throws {
@@ -23,9 +27,15 @@ public struct ItemOverride: Codable, Sendable, Equatable {
         id = try container.decode(String.self, forKey: .id)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        hotkey = try container.decodeIfPresent(String.self, forKey: .hotkey)
     }
 
-    public var isDefault: Bool { enabled && aliases.isEmpty }
+    public var isDefault: Bool { enabled && aliases.isEmpty && hotkey == nil }
+
+    public func parsedHotkey() throws -> Hotkey? {
+        guard let hotkey else { return nil }
+        do { return try Hotkey.parse(hotkey) } catch { throw ConfigError.invalidHotkey("'\(hotkey)': \(error)") }
+    }
 }
 
 public struct Settings: Codable, Sendable, Equatable {
@@ -231,6 +241,8 @@ public struct Settings: Codable, Sendable, Equatable {
             settings.items = settings.items.map { override in
                 var o = override
                 o.aliases = o.aliases.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
+                let hotkey = o.hotkey?.trimmingCharacters(in: .whitespaces) ?? ""
+                o.hotkey = hotkey.isEmpty ? nil : hotkey
                 return o
             }
             return settings

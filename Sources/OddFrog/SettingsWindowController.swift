@@ -10,6 +10,11 @@ final class SettingsWindowController: NSWindowController {
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
     var onHotkey: ((Hotkey) -> Void)?
     var links: [CommandItem] = []
+    /// Item hotkeys declared in config, shown in the Items pane until an override replaces them.
+    var defaultHotkeys: [String: Hotkey] {
+        get { itemsPane.defaultHotkeys }
+        set { itemsPane.defaultHotkeys = newValue }
+    }
 
     private let linkManager = LinkManagerController()
     private let splitController = NSSplitViewController()

@@ -56,7 +56,7 @@ public enum V2Migration {
             if id.hasPrefix("/") { return "plugin:applications:" + id }
             return id
         }
-        settings.items = settings.items.map { ItemOverride(id: identity($0.id), enabled: $0.enabled, aliases: $0.aliases) }
+        settings.items = settings.items.map { ItemOverride(id: identity($0.id), enabled: $0.enabled, aliases: $0.aliases, hotkey: $0.hotkey) }
         let oldPlugins = settings.plugins
         settings.plugins = packages.map { package in
             let id = package.manifest.id

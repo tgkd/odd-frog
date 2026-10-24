@@ -14,17 +14,22 @@ public struct CommandItem: Sendable, Hashable, Identifiable {
     public let action: CommandAction
     public let cwd: URL?
     public let terminal: Bool
+    /// Global shortcut from config; an item override in settings replaces it.
+    public let hotkey: Hotkey?
 
-    public init(name: String, aliases: [String], action: CommandAction, cwd: URL?, terminal: Bool, stableID: String? = nil) {
+    public init(name: String, aliases: [String], action: CommandAction, cwd: URL?, terminal: Bool, stableID: String? = nil, hotkey: Hotkey? = nil) {
         self.stableID = stableID ?? StoragePaths.stableID(name)
         self.name = name
         self.aliases = aliases
         self.action = action
         self.cwd = cwd
         self.terminal = terminal
+        self.hotkey = hotkey
     }
 
     public var id: String { "command:\(stableID)" }
+    /// The id of the launcher item the commands plugin publishes for this command.
+    public var itemID: String { "plugin:commands:\(stableID)" }
 }
 
 public enum LauncherItem: Sendable, Hashable {

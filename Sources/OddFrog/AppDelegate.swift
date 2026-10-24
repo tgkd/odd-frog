@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private var allItems: [LauncherItem] = []
     private var reportedHotkeys: [String: Hotkey] = [:]
+    private var reportedItemHotkeys: [String: String] = [:]
+    /// Titles of items holding a hotkey, so a catalog rebuild does not drop their registrations.
+    private var itemHotkeyTitles: [String: String] = [:]
     private var lastWeightsRefresh: Date?
     private var toggleSignal: DispatchSourceSignal?
     private var snapshotSignal: DispatchSourceSignal?
@@ -227,6 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wirePanel() {
         controller.maxResults = config.general.maxResults
+        settingsWindow.defaultHotkeys = commandHotkeys
         controller.onSubmit = { [weak self] item, argument, secondary in
             guard let self else { return }
             hidePanel()
@@ -351,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         packageWatcher.watch(watched) { [weak self] in Task { @MainActor in self?.reloadPlugins() } }
         // The watcher reloads on any file change, so only an explicit reload repeats a hotkey complaint.
-        if retryHotkeys { reportedHotkeys = [:] }
+        if retryHotkeys { reportedHotkeys = [:]; reportedItemHotkeys = [:] }
         syncPluginHotkeys()
     }
 
@@ -373,6 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             report("\(pluginName(id)): \(message)")
         }
         for (id, hotkey) in resolution.assigned.sorted(by: { $0.key < $1.key }) where reportedHotkeys[id] != hotkey && hotkeys.hotkey(for: .plugin(id)) != hotkey {
+            // An item may hold the hotkey a plugin now asks for; the plugin wins and the item is told below.
+            if let slot = hotkeys.slot(holding: hotkey), case .item = slot { try? hotkeys.apply(nil, for: slot) }
             do {
                 try hotkeys.apply(hotkey, for: .plugin(id))
                 Log.write("\(pluginName(id)) hotkey \(hotkey.description) registered")
@@ -381,6 +387,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 report("\(pluginName(id)) hotkey: \(error)")
             }
         }
+        syncItemHotkeys()
+    }
+
+    /// Items take whatever the launcher and plugins left free, so this runs after `syncPluginHotkeys`.
+    private func syncItemHotkeys() {
+        var reserved: [Hotkey: String] = [config.general.hotkey: "the launcher"]
+        for id in hotkeys.pluginIDs {
+            if let hotkey = hotkeys.hotkey(for: .plugin(id)) { reserved[hotkey] = pluginName(id) }
+        }
+        let retaining = itemHotkeyTitles.filter { hotkeys.hotkey(for: .item($0.key)) != nil }
+        let resolution = ItemHotkeys.resolve(items: allItems, retaining: retaining, settings: settings,
+                                             defaults: commandHotkeys, reserved: reserved)
+        for id in hotkeys.itemIDs where resolution.assigned[id] == nil {
+            try? hotkeys.apply(nil, for: .item(id))
+        }
+        itemHotkeyTitles = resolution.assigned.keys.reduce(into: [:]) { titles, id in
+            titles[id] = allItems.first { $0.id == id }?.title ?? retaining[id] ?? id
+        }
+        let requested = resolution.requested
+        reportedItemHotkeys = reportedItemHotkeys.filter { requested[$0.key] == $0.value }
+        for (id, message) in resolution.conflicts.sorted(by: { $0.key < $1.key }) where reportedItemHotkeys[id] != requested[id] {
+            reportedItemHotkeys[id] = requested[id]
+            report("\(itemTitle(id)): \(message)")
+        }
+        for (id, hotkey) in resolution.assigned.sorted(by: { $0.key < $1.key }) where reportedItemHotkeys[id] != requested[id] && hotkeys.hotkey(for: .item(id)) != hotkey {
+            do {
+                try hotkeys.apply(hotkey, for: .item(id))
+                Log.write("\(itemTitle(id)) hotkey \(hotkey.description) registered")
+            } catch {
+                reportedItemHotkeys[id] = requested[id]
+                report("\(itemTitle(id)) hotkey: \(error)")
+            }
+        }
+    }
+
+    /// Hotkeys declared on `[[commands]]` in config, keyed by the command's launcher item id.
+    private var commandHotkeys: [String: Hotkey] {
+        Dictionary(config.commands.compactMap { command in command.hotkey.map { (command.itemID, $0) } }, uniquingKeysWith: { a, _ in a })
+    }
+
+    private func itemTitle(_ id: String) -> String {
+        allItems.first { $0.id == id }?.title ?? itemHotkeyTitles[id] ?? id
     }
 
     private func pluginName(_ id: String) -> String {
@@ -485,6 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch slot {
             case .launcher: self?.togglePanel()
             case .plugin(let id): self?.togglePlugin(id)
+            case .item(let id): self?.runItem(id)
             }
         }
         do {
@@ -534,6 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         executor.config = candidate
         status.hotkey = candidate.general.hotkey
         controller.maxResults = candidate.general.maxResults
+        settingsWindow.defaultHotkeys = commandHotkeys
         syncPluginHotkeys()
         plugins.refreshCatalogs()
         rebuildItems()
@@ -594,11 +644,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func rebuildItems() {
+        let previous = allItems
         allItems = plugins.catalogItems
         let items = settings.apply(to: allItems)
         if items != controller.items {
             controller.items = items
         }
+        if allItems != previous { syncItemHotkeys() }
         if settingsWindow.window?.isVisible == true {
             settingsWindow.update(items: allItems)
         }
@@ -646,6 +698,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func togglePanel() {
         if panel.isVisible { hidePanel() } else { showPanel() }
+    }
+
+    private func runItem(_ id: String) {
+        guard let item = controller.items.first(where: { $0.id == id }) else { return }
+        if panel.isVisible { hidePanel() }
+        executor.run(item)
     }
 
     private func togglePlugin(_ id: String) {

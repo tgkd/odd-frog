@@ -7,6 +7,7 @@ max_results = 8
 name = "Open Projects"
 aliases = ["projects", "repos"]
 path = "~/Projects"
+# hotkey = "ctrl+alt+p"   # opens it from anywhere, without the launcher
 
 [[commands]]
 name = "GitHub"
