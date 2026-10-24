@@ -12,10 +12,21 @@ public struct PluginAction: Codable, Sendable, Hashable {
     public var argv: [String]?
     public var cwd: String?
     public var output: String?
+    /// Callback the host sends to the owning plugin once it has started this action without an
+    /// immediate error. Fire-and-forget: the plugin's reply is ignored.
+    public var after: PluginAfter?
     public init(_ kind: Kind, _ value: String = "", payload: JSONValue? = nil,
-                argv: [String]? = nil, cwd: String? = nil, output: String? = nil) {
+                argv: [String]? = nil, cwd: String? = nil, output: String? = nil, after: PluginAfter? = nil) {
         self.kind = kind; self.value = value; self.payload = payload
-        self.argv = argv; self.cwd = cwd; self.output = output
+        self.argv = argv; self.cwd = cwd; self.output = output; self.after = after
+    }
+}
+/// Names the plugin `activate` action the host calls after a host-run action (open, reveal, paste, …).
+public struct PluginAfter: Codable, Sendable, Hashable {
+    public var callback: String
+    public var payload: JSONValue?
+    public init(_ callback: String, payload: JSONValue? = nil) {
+        self.callback = callback; self.payload = payload
     }
 }
 public struct PluginArgument: Codable, Sendable, Hashable {

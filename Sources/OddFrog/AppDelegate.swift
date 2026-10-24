@@ -293,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updatePluginsPane()
             if panel.isVisible { controller.refresh(keepSelection: true) }
         }
+        executor.onActionStarted = { [weak self] result, after in self?.plugins.notifyStarted(result, after: after) }
         executor.onPluginAction = { [weak self] result, argument, secondary in self?.runPluginAction(result, argument: argument, secondary: secondary) }
         documents.performSave = { [weak self] session, revision, text, completion in
             _ = self?.plugins.activate(session.result, action: session.save, argument: nil, text: text, completion: completion)

@@ -17,7 +17,8 @@ let package = Package(
         .target(name: "NotesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Notes/Sources/NotesPluginCore"),
         .target(name: "ChatPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Chat/Sources/ChatPluginCore"),
         .target(name: "ClipboardPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Clipboard/Sources/ClipboardPluginCore"),
-        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
+        .target(name: "FilesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Files/Sources/FilesPluginCore"),
+        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "FilesPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
             dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
@@ -29,13 +30,14 @@ let package = Package(
         .testTarget(name: "BundledFeatureTests", dependencies: ["BundledFeatures", "OddFrogCore"], path: "Plugins/Shared/Tests", resources: [.copy("Fixtures")]),
         .testTarget(
             name: "OddFrogCoreTests",
-            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "BundledFeatures", "OddFrogBuiltins", "ClipboardPluginCore"],
+            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "BundledFeatures", "OddFrogBuiltins", "ClipboardPluginCore", "FilesPluginCore"],
             resources: [.copy("Fixtures")]
         ),
         .testTarget(name: "CalendarPluginTests", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Tests"),
         .testTarget(name: "RemindersPluginTests", dependencies: ["RemindersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Reminders/Tests"),
         .testTarget(name: "NotesPluginTests", dependencies: ["NotesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Notes/Tests"),
         .testTarget(name: "ChatPluginTests", dependencies: ["ChatPluginCore", "OddFrogPluginAPI"], path: "Plugins/Chat/Tests"),
+        .testTarget(name: "FilesPluginTests", dependencies: ["FilesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Files/Tests"),
         .testTarget(name: "ClipboardPluginTests", dependencies: ["ClipboardPluginCore", "OddFrogPluginAPI"], path: "Plugins/Clipboard/Tests"),
     ]
 )

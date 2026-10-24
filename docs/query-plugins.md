@@ -102,8 +102,8 @@ providers finish and there are no live or catalog matches. Selection follows ite
 ## Items and actions
 
 All catalog and query items use the same shape. Required: local `id` and `title`. Optional:
-`subtitle`, `kind` label, SF Symbol `symbol`, `icon` (absolute file, package-relative asset, or
-`text:` glyph), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
+`subtitle`, `kind` label, SF Symbol `symbol`, `icon` (absolute file, package-relative asset,
+`text:` glyph, or `file:<absolute path>` for the Finder icon of any file or folder), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
 `secondary`, and `history`. Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
 within a catalog/response. Set `history: true` for reusable catalog items; live results are always
 transient. Missing secondary action uses primary. Missing primary produces an inert status row.
@@ -130,6 +130,13 @@ The host opens every `terminal` action in the app chosen under Settings › Plug
 Terminal is the default. agterm uses Terminal when agterm is not running. Custom runs its template
 through the configured login shell, with `{cwd}`, `{shell}` and `{command}` replaced by shell-quoted
 values. Example: `open -na kitty --args --directory {cwd} --hold {shell} -lc {command}`.
+
+An action in a result row that the host runs itself (not `callback` or `service`) may carry
+`after: {callback, payload?}`. Once the host has started that action without an
+immediate error, it sends the owning provider an `activate` request with `actionID` set to `callback`
+and `payload` as given, and the selected `item`. The call is fire-and-forget: the response is ignored
+and failures are silent. Use it to learn from host-run actions, such as a file index raising the rank of
+an opened path. Declarative packages cannot use `after`.
 
 Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
 from a document or chat window also receives the editor buffer in `text`. Success effects:
