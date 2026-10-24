@@ -19,6 +19,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private let emptyLabel = NSTextField(labelWithString: "")
     private let prototype = ResultRowView()
     private var scrollHeight: NSLayoutConstraint!
+    private var emptyHeight: NSLayoutConstraint!
+    private var tableInset: CGFloat = 10
 
     var items: [LauncherItem] = [] {
         didSet {
@@ -98,9 +100,10 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         NSLayoutConstraint.activate([
             emptyLabel.leadingAnchor.constraint(equalTo: emptyBand.layoutMarginsGuide.leadingAnchor),
             emptyLabel.trailingAnchor.constraint(equalTo: emptyBand.layoutMarginsGuide.trailingAnchor),
-            emptyLabel.topAnchor.constraint(equalTo: emptyBand.layoutMarginsGuide.topAnchor),
-            emptyLabel.bottomAnchor.constraint(equalTo: emptyBand.layoutMarginsGuide.bottomAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: emptyBand.centerYAnchor),
         ])
+        emptyHeight = emptyBand.heightAnchor.constraint(equalToConstant: 0)
+        emptyHeight.isActive = true
 
         let column = NSTableColumn(identifier: ResultRowView.identifier)
         column.resizingMask = .autoresizingMask
@@ -320,7 +323,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
         let visible = min(rows, Self.visibleRowCap)
-        scrollHeight.constant = rows == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY + tableView.rect(ofRow: 0).minY
+        if rows > 0 { tableInset = tableView.rect(ofRow: 0).minY }
+        scrollHeight.constant = rows == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY + tableInset
+        // Same height as a single result with a subtitle, so the panel does not jump between "No results" and one row.
+        configure(prototype, title: "Ag", detail: "Ag")
+        emptyHeight.constant = prototype.fittingSize.height + 2 * tableInset
         let filter = searchField.stringValue
         let showsEmptyState = rows == 0 && !filter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         emptyLabel.stringValue = showsEmptyState ? "No results for “\(filter)”" : ""
@@ -490,6 +497,10 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let cell = (tableView.makeView(withIdentifier: ResultRowView.identifier, owner: nil) as? ResultRowView) ?? ResultRowView()
         configure(cell, row: row, icon: icons.icon(for: results[row].item, size: ResultRowView.iconSide))
         return cell
+    }
+
+    private func configure(_ cell: ResultRowView, title: String, detail: String) {
+        cell.configure(title: title, detail: detail, value: nil, tooltip: nil, kind: nil, requirement: nil, icon: nil)
     }
 
     private func configure(_ cell: ResultRowView, row: Int, icon: NSImage?) {
