@@ -26,6 +26,8 @@ import OddFrogPluginAPI
     private var live: [String: [PluginResult]] = [:]
     private var queryErrors: [String: String] = [:]
     private var completed = Set<String>()
+    private var queryStartedAt = ContinuousClock.now
+    private static let loadingDelay: Duration = .milliseconds(300)
     private var contexts: [String: PluginContext] = [:]
     public init(services: HostServiceRegistry) {
         self.services = services
@@ -229,10 +231,17 @@ import OddFrogPluginAPI
             let same = currentQuery == nil
             queryTask?.cancel(); queryGeneration = UUID(); currentQuery = query; currentLimit = maxResults
             if !same { live = [:] }; completed = []; queryErrors = [:]
+            queryStartedAt = .now
             let token = queryGeneration, packageToken = generation
             queryTask = Task { [weak self] in
-                do { try await Task.sleep(for: .milliseconds(75)); try Task.checkCancellation() } catch { return }
+                // The first query after opening the launcher runs at once; later keystrokes are debounced.
+                do { if !same { try await Task.sleep(for: .milliseconds(75)) }; try Task.checkCancellation() } catch { return }
                 guard let self else { return }
+                Task { [weak self] in
+                    try? await Task.sleep(for: Self.loadingDelay)
+                    guard let self, token == queryGeneration else { return }
+                    onChange?()
+                }
                 await withTaskGroup(of: Void.self) { group in
                     for package in providers where failures[package.manifest.id] == nil { group.addTask { await self.runQuery(package, query: query, limit: maxResults, token: token, packageToken: packageToken) } }
                 }
@@ -249,7 +258,7 @@ import OddFrogPluginAPI
         if answer.isEmpty, let package = exclusive.first {
             let error = failures[package.manifest.id] ?? queryErrors[package.manifest.id]
             if let error { answer = status(package, title: "\(package.manifest.name): \(error)") }
-            else if !completed.contains(package.manifest.id) { answer = status(package, title: "Loading \(package.manifest.name)…") }
+            else if !completed.contains(package.manifest.id), ContinuousClock.now - queryStartedAt >= Self.loadingDelay { answer = status(package, title: "Loading \(package.manifest.name)…") }
         }
         return Array(answer.prefix(maxResults))
     }
@@ -330,8 +339,8 @@ import OddFrogPluginAPI
             guard let self, token == generation,
                   let package = enabled.first(where: { $0.manifest.id == result.pluginID }),
                   package.manifest.mode != .declarative else { return }
-            guard (try? await initialize(package).value) != nil,
-                  let input = try? PluginActivation(actionID: after.callback, payload: after.payload ?? .null, item: result.item, argument: nil) else { return }
+            guard (try? await initialize(package).value) != nil else { return }
+            let input = PluginActivation(actionID: after.callback, payload: after.payload ?? .null, item: result.item, argument: nil)
             _ = try? await perform("activate", package: package, params: .encode(input), timeout: .seconds(10), activated: true)
         }
     }

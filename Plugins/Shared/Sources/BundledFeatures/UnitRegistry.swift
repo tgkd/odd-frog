@@ -2,7 +2,7 @@ import Foundation
 import OddFrogCore
 
 public enum UnitRegistry {
-    nonisolated(unsafe) private static let table: [String: Dimension] = {
+    private static let table: [String: Dimension] = {
         let entries: [(Dimension, [String])] = [
             (UnitLength.millimeters, ["mm", "millimeter", "millimeters"]),
             (UnitLength.centimeters, ["cm", "centimeter", "centimeters"]),
