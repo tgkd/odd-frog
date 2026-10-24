@@ -2,6 +2,8 @@ import AppKit
 
 @MainActor
 final class SearchField: NSTextField {
+    static let placeholder = "Search…"
+
     init() {
         super.init(frame: .zero)
         isBezeled = false
@@ -9,7 +11,7 @@ final class SearchField: NSTextField {
         drawsBackground = false
         focusRingType = .none
         font = ContentFont.current.font(.title2)
-        placeholderString = "Search…"
+        placeholderString = Self.placeholder
         lineBreakMode = .byTruncatingTail
         usesSingleLineMode = false
         cell?.wraps = false
