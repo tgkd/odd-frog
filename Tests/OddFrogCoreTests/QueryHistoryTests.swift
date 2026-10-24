@@ -27,6 +27,14 @@ struct QueryHistoryTests {
         #expect(!history.queries.contains("q0"))
     }
 
+    @Test func windowStaysInsideTheList() {
+        #expect(QueryHistory.window(around: 0, count: 5, total: 2) == 0..<2)
+        #expect(QueryHistory.window(around: 0, count: 5, total: 20) == 0..<5)
+        #expect(QueryHistory.window(around: 7, count: 5, total: 20) == 5..<10)
+        #expect(QueryHistory.window(around: 19, count: 5, total: 20) == 15..<20)
+        #expect(QueryHistory.window(around: 0, count: 5, total: 0).isEmpty)
+    }
+
     @Test func storeRoundTrips() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("odd-frog-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

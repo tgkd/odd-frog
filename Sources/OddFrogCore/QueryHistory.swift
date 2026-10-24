@@ -16,6 +16,13 @@ public struct QueryHistory: Codable, Sendable, Equatable {
         queries.insert(query, at: 0)
         if queries.count > Self.limit { queries.removeLast(queries.count - Self.limit) }
     }
+
+    /// The `count` indices to show around `index`, clamped so the window never runs past either end.
+    public static func window(around index: Int, count: Int, total: Int) -> Range<Int> {
+        let size = max(0, min(count, total))
+        let low = max(0, min(index - size / 2, total - size))
+        return low..<low + size
+    }
 }
 
 public actor QueryHistoryStore {

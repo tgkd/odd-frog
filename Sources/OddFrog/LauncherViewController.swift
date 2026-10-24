@@ -13,6 +13,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private let contentStack = NSStackView()
     private let separator = NSBox()
     private let chip = TriggerChip()
+    private let historySeparator = NSBox()
+    private let historyStrip = HistoryStrip()
     private let emptyBand = NSView()
     private let emptyLabel = NSTextField(labelWithString: "")
     private let prototype = ResultRowView()
@@ -126,6 +128,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         contentStack.addArrangedSubview(separator)
         contentStack.addArrangedSubview(scrollView)
         contentStack.addArrangedSubview(emptyBand)
+        historySeparator.boxType = .separator
+        historyStrip.onPick = { [weak self] index in self?.recallHistory(at: index) }
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(contentStack)
 
@@ -186,12 +190,34 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     private func recallHistory(at index: Int) {
         guard history.indices.contains(index) else { return }
-        setQuery(history[index])
+        setActiveTrigger(nil)
+        setFieldText(history[index])
+        absorbTypedTrigger()
         historyIndex = index
+        refresh()
+    }
+
+    /// The strip joins and leaves the stack instead of hiding: a detached hidden view comes back unaligned.
+    private func updateHistoryStrip() {
+        let attached = historyStrip.superview != nil
+        guard let index = historyIndex else {
+            if attached {
+                for view in [historySeparator, historyStrip] {
+                    contentStack.removeArrangedSubview(view)
+                    view.removeFromSuperview()
+                }
+            }
+            return
+        }
+        historyStrip.show(history: history, current: index)
+        if !attached {
+            contentStack.addArrangedSubview(historySeparator)
+            contentStack.addArrangedSubview(historyStrip)
+        }
     }
 
     private func moveUp() {
-        if tableView.selectedRow != 0, !results.isEmpty {
+        if historyIndex == nil, tableView.selectedRow != 0, !results.isEmpty {
             select(row: tableView.selectedRow - 1)
             return
         }
@@ -200,6 +226,15 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         } else if fullQuery.allSatisfy(\.isWhitespace) {
             recallHistory(at: 0)
         }
+    }
+
+    /// ↓ walks back toward the newest query and then leaves history with an empty field, like a shell prompt.
+    private func moveDown() {
+        guard let index = historyIndex else {
+            select(row: tableView.selectedRow + 1)
+            return
+        }
+        if index == 0 { setQuery("") } else { recallHistory(at: index - 1) }
     }
 
     /// The query the plugins see: the chip's trigger text followed by the field.
@@ -265,6 +300,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     func applyContentFont() {
         searchField.font = ContentFont.current.font(.title2)
         chip.applyContentFont()
+        historyStrip.applyContentFont()
         emptyLabel.font = ContentFont.current.font(.body)
         refresh(keepSelection: true)
     }
@@ -295,6 +331,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             let row = selectedID.flatMap { id in results.firstIndex { $0.item.id == id } } ?? 0
             select(row: row)
         }
+        updateHistoryStrip()
         onHeightChange?(preferredHeight)
     }
 
@@ -421,7 +458,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.moveDown(_:)):
-            select(row: tableView.selectedRow + 1)
+            moveDown()
         case #selector(NSResponder.moveUp(_:)):
             moveUp()
         case #selector(NSResponder.insertNewline(_:)):
