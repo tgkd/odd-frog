@@ -2,6 +2,8 @@ import Foundation
 import OddFrogPluginAPI
 
 public enum ClipboardProvider {
+    public static let recentCount = 5
+
     public enum Access: Sendable {
         case allowed
         case setup
@@ -54,7 +56,7 @@ public enum ClipboardProvider {
             return rows
         }
         if filter.isEmpty && available > 1 {
-            let limited = Array(matches.prefix(available - 1))
+            let limited = Array(matches.prefix(min(available - 1, recentCount)))
             rows += limited.map { entryRow($0, now: request.now, calendar: calendar, directory: directory) }
             rows.append(clearRow(count: entries.count))
         } else {
@@ -70,12 +72,15 @@ public enum ClipboardProvider {
 
     private static func entryRow(_ entry: ClipboardEntry, now: Date, calendar: Calendar, directory: URL) -> PluginItem {
         let isImage = entry.kind == .image
+        let paste = isImage
+            ? PluginAction(.paste, payload: .object(["png": .string(ClipboardArchive.imagePath(in: directory, id: entry.id))]))
+            : PluginAction(.paste, entry.text ?? "")
         return PluginItem(id: entry.id, title: ClipboardEntry.title(for: entry),
                           subtitle: dateLabel(entry.copied, calendar: calendar, now: now),
                           kind: "Clipboard",
                           symbol: isImage ? "photo" : "doc.on.clipboard",
                           icon: isImage ? ClipboardArchive.thumbnailPath(in: directory, id: entry.id) : nil,
-                          primary: PluginAction(.callback, "copy", payload: .object(["id": .string(entry.id)])),
+                          primary: paste,
                           secondary: PluginAction(.callback, "delete", payload: .object(["id": .string(entry.id)])))
     }
 

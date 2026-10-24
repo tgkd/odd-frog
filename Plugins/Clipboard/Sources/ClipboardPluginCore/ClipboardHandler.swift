@@ -104,30 +104,6 @@ public actor ClipboardHandler: ProviderHandler {
     private func activate(params: JSONValue) async throws -> JSONValue {
         let activation = try params["input"].decode(PluginActivation.self)
         switch activation.actionID {
-        case "copy":
-            let id = activation.payload["id"].string ?? ""
-            let entries = await archive.entries(generation: generation)
-            guard let entry = entries.first(where: { $0.id == id }) else {
-                throw RPCError("clipboard", "This entry no longer exists.")
-            }
-            switch entry.kind {
-            case .text:
-                guard let text = entry.text else {
-                    throw RPCError("clipboard", "This entry no longer exists.")
-                }
-                guard await pasteboard.write(text: text) else {
-                    throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
-                }
-            case .image:
-                guard let data = await archive.imageData(generation: generation, id: id) else {
-                    throw RPCError("clipboard", "This entry no longer exists.")
-                }
-                guard await pasteboard.write(png: data) else {
-                    throw RPCError("clipboard", "The clipboard changed while copying. Try again.")
-                }
-            }
-            try await archive.touch(generation: generation, id: id, now: Date())
-            return try .encode(PluginEffects())
         case "delete":
             try await archive.delete(generation: generation, id: activation.payload["id"].string ?? "")
             return try .encode(PluginEffects(refreshQuery: true))

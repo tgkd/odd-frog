@@ -1,8 +1,10 @@
 import Foundation
 
 public struct PluginAction: Codable, Sendable, Hashable {
+    /// `paste` puts `value` on the clipboard and presses ⌘V in the app that was active before the
+    /// launcher opened; `payload.png` names a PNG file to paste instead of text.
     public enum Kind: String, Codable, Sendable {
-        case copy, openURL, openPath, openApplication, reveal, execute, terminal, service, callback
+        case copy, paste, openURL, openPath, openApplication, reveal, execute, terminal, service, callback
     }
     public var kind: Kind
     public var value: String

@@ -4,6 +4,11 @@ import OddFrogCore
 
 @MainActor
 final class HotKeyManager {
+    enum Slot: Hashable {
+        case launcher
+        case plugin(String)
+    }
+
     enum RegistrationError: Error, CustomStringConvertible {
         case taken(Hotkey)
         case failed(Hotkey, OSStatus)
@@ -16,15 +21,20 @@ final class HotKeyManager {
         }
     }
 
+    private struct Registration {
+        let hotkey: Hotkey
+        let ref: EventHotKeyRef
+        let id: UInt32
+    }
+
     private static let signature: OSType = 0x4F44_4446
     nonisolated(unsafe) private static weak var instance: HotKeyManager?
 
     private var handlerRef: EventHandlerRef?
-    private var hotKeyRef: EventHotKeyRef?
-    private var activeID: UInt32 = 0
+    private var registrations: [Slot: Registration] = [:]
     private var nextID: UInt32 = 1
-    private(set) var current: Hotkey?
-    var onPress: (() -> Void)?
+    var current: Hotkey? { registrations[.launcher]?.hotkey }
+    var onPress: ((Slot) -> Void)?
 
     init() {
         Self.instance = self
@@ -42,8 +52,28 @@ final class HotKeyManager {
         }, 1, &spec, nil, &handlerRef)
     }
 
+    func hotkey(for slot: Slot) -> Hotkey? {
+        registrations[slot]?.hotkey
+    }
+
+    func slot(holding hotkey: Hotkey) -> Slot? {
+        registrations.first { $0.value.hotkey == hotkey }?.key
+    }
+
+    var pluginIDs: [String] {
+        registrations.keys.compactMap { if case .plugin(let id) = $0 { id } else { nil } }
+    }
+
     func apply(_ hotkey: Hotkey) throws {
-        if hotkey == current { return }
+        try apply(hotkey, for: .launcher)
+    }
+
+    func apply(_ hotkey: Hotkey?, for slot: Slot) throws {
+        if hotkey == registrations[slot]?.hotkey { return }
+        guard let hotkey else {
+            if let old = registrations.removeValue(forKey: slot) { UnregisterEventHotKey(old.ref) }
+            return
+        }
         let id = nextID
         nextID += 1
         var ref: EventHotKeyRef?
@@ -56,14 +86,12 @@ final class HotKeyManager {
             if status == OSStatus(eventHotKeyExistsErr) { throw RegistrationError.taken(hotkey) }
             throw RegistrationError.failed(hotkey, status)
         }
-        if let old = hotKeyRef { UnregisterEventHotKey(old) }
-        hotKeyRef = ref
-        activeID = id
-        current = hotkey
+        if let old = registrations[slot] { UnregisterEventHotKey(old.ref) }
+        registrations[slot] = Registration(hotkey: hotkey, ref: ref, id: id)
     }
 
     private func handlePress(id: UInt32) {
-        guard id == activeID else { return }
-        onPress?()
+        guard let slot = registrations.first(where: { $0.value.id == id })?.key else { return }
+        onPress?(slot)
     }
 }

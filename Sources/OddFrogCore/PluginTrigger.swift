@@ -13,6 +13,16 @@ public enum PluginTrigger: Sendable, Equatable {
         }
     }
 
+    /// What the launcher's query field holds when the plugin is opened directly.
+    public var launchQuery: String {
+        switch self {
+        case .keyword(let value):
+            return value + " "
+        case .prefix(let value):
+            return value
+        }
+    }
+
     public var label: String {
         switch self {
         case .keyword:

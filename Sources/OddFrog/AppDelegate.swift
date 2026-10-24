@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private var allItems: [LauncherItem] = []
+    private var reportedHotkeys: [String: Hotkey] = [:]
     private var lastWeightsRefresh: Date?
     private var toggleSignal: DispatchSourceSignal?
     private var snapshotSignal: DispatchSourceSignal?
@@ -299,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updated.plugins.removeAll { $0.id == id }
             guard let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
             let previous = package.setting(in: settings.plugins)
-            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: previous?.values, trigger: previous?.trigger))
+            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: previous?.values, trigger: previous?.trigger, hotkey: previous?.hotkey))
             applySettings(updated, persist: true)
         }
         settingsWindow.pluginsPane.onSetting = { [weak self] id, key, value in
@@ -327,7 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             settingsWindow.links = config.commands.filter { if case .url = $0.action { true } else { false } }; settingsWindow.manageLinks()
         }
-        status.onReloadPlugins = { [weak self] in self?.reloadPlugins() }
+        status.onReloadPlugins = { [weak self] in self?.reloadPlugins(retryHotkeys: true) }
         calendarObserver = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.storeDidChange() }
         }
@@ -335,7 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadPlugins()
     }
 
-    private func reloadPlugins() {
+    private func reloadPlugins(retryHotkeys: Bool = false) {
         let bundled = Bundle.main.resourceURL?.appendingPathComponent("Plugins", isDirectory: true)
         let user = ConfigLoader.defaultDirectory.appendingPathComponent("plugins", isDirectory: true)
         let discovery = PluginDiscovery.scan(bundled: bundled, user: user)
@@ -349,6 +350,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         packageWatcher.watch(watched) { [weak self] in Task { @MainActor in self?.reloadPlugins() } }
+        // The watcher reloads on any file change, so only an explicit reload repeats a hotkey complaint.
+        if retryHotkeys { reportedHotkeys = [:] }
+        syncPluginHotkeys()
+    }
+
+    private func syncPluginHotkeys() {
+        let resolution = PluginHotkeys.resolve(packages: plugins.packages, settings: settings.plugins,
+                                               failures: Set(plugins.failures.keys), reserved: config.general.hotkey)
+        for id in hotkeys.pluginIDs where resolution.assigned[id] == nil {
+            try? hotkeys.apply(nil, for: .plugin(id))
+        }
+        var requested: [String: Hotkey] = resolution.assigned
+        for id in resolution.conflicts.keys {
+            if let package = plugins.packages.first(where: { $0.manifest.id == id }), let hotkey = try? package.hotkey(in: settings.plugins) {
+                requested[id] = hotkey
+            }
+        }
+        reportedHotkeys = reportedHotkeys.filter { requested[$0.key] == $0.value }
+        for (id, message) in resolution.conflicts.sorted(by: { $0.key < $1.key }) where reportedHotkeys[id] != requested[id] {
+            reportedHotkeys[id] = requested[id]
+            report("\(pluginName(id)): \(message)")
+        }
+        for (id, hotkey) in resolution.assigned.sorted(by: { $0.key < $1.key }) where reportedHotkeys[id] != hotkey && hotkeys.hotkey(for: .plugin(id)) != hotkey {
+            do {
+                try hotkeys.apply(hotkey, for: .plugin(id))
+                Log.write("\(pluginName(id)) hotkey \(hotkey.description) registered")
+            } catch {
+                reportedHotkeys[id] = hotkey
+                report("\(pluginName(id)) hotkey: \(error)")
+            }
+        }
+    }
+
+    private func pluginName(_ id: String) -> String {
+        plugins.packages.first { $0.manifest.id == id }?.manifest.name ?? id
+    }
+
+    /// A plugin may hold the hotkey the launcher is about to take; the launcher wins and the plugin is told.
+    private func applyLauncherHotkey(_ hotkey: Hotkey) throws {
+        if let slot = hotkeys.slot(holding: hotkey), slot != .launcher {
+            try? hotkeys.apply(nil, for: slot)
+        }
+        try hotkeys.apply(hotkey)
     }
 
     private func updatePluginsPane() {
@@ -437,17 +481,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func wireHotkey() {
-        hotkeys.onPress = { [weak self] in self?.togglePanel() }
+        hotkeys.onPress = { [weak self] slot in
+            switch slot {
+            case .launcher: self?.togglePanel()
+            case .plugin(let id): self?.togglePlugin(id)
+            }
+        }
         do {
-            try hotkeys.apply(config.general.hotkey)
+            try applyLauncherHotkey(config.general.hotkey)
             Log.write("hotkey \(config.general.hotkey.description) registered")
         } catch {
             report("Hotkey: \(error)")
             if config.general.hotkey != .default {
-                try? hotkeys.apply(.default)
+                try? applyLauncherHotkey(.default)
                 status.hotkey = Hotkey.default
             }
         }
+        syncPluginHotkeys()
     }
 
     private func wireSignals() {
@@ -474,7 +524,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if candidate.general.hotkey != hotkeys.current {
             do {
-                try hotkeys.apply(candidate.general.hotkey)
+                try applyLauncherHotkey(candidate.general.hotkey)
             } catch {
                 report("Config not applied (\(source)): hotkey \(error)")
                 return
@@ -484,6 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         executor.config = candidate
         status.hotkey = candidate.general.hotkey
         controller.maxResults = candidate.general.maxResults
+        syncPluginHotkeys()
         plugins.refreshCatalogs()
         rebuildItems()
         Log.write("config applied (\(source)): \(candidate.commands.count) commands, hotkey \(candidate.general.hotkey.description)")
@@ -512,7 +563,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settings = updated
         if changed { reloadPlugins() }
-        else { do { try plugins.updateSettings(updated.plugins) } catch { report("Settings update failed: \(error)") } }
+        else {
+            do { try plugins.updateSettings(updated.plugins) } catch { report("Settings update failed: \(error)") }
+            syncPluginHotkeys()
+        }
         rebuildItems()
     }
 
@@ -569,7 +623,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setHotkey(_ hotkey: Hotkey) {
         do {
-            try hotkeys.apply(hotkey)
+            try applyLauncherHotkey(hotkey)
         } catch {
             settingsWindow.showHotkey(hotkeys.current ?? config.general.hotkey, note: "\(error)")
             return
@@ -577,6 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         config.general.hotkey = hotkey
         status.hotkey = hotkey
         settingsWindow.showHotkey(hotkey)
+        syncPluginHotkeys()
         do {
             let path = ConfigLoader.defaultPath
             let text = (try? String(contentsOf: path, encoding: .utf8)) ?? ""
@@ -593,9 +648,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if panel.isVisible { hidePanel() } else { showPanel() }
     }
 
-    private func showPanel() {
+    private func togglePlugin(_ id: String) {
+        guard let package = plugins.packages.first(where: { $0.manifest.id == id }),
+              let trigger = try? package.trigger(in: settings.plugins) else { return }
+        let query = trigger.launchQuery
+        if panel.isVisible, controller.searchField.stringValue == query {
+            hidePanel()
+            return
+        }
+        showPanel(query: query)
+    }
+
+    private func showPanel(query: String = "") {
         controller.prepareForShow()
         panel.present(height: controller.preferredHeight)
+        // Plugins answer only while the panel is visible, so a prefilled trigger is set once it is.
+        if !query.isEmpty { controller.setQuery(query) }
         let focused = controller.focusField()
         Log.write("panel shown key=\(panel.isKeyWindow) focus=\(focused) results=\(controller.results.count)")
         refreshWeightsIfStale()

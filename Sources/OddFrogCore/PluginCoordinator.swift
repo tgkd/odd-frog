@@ -70,6 +70,7 @@ import OddFrogPluginAPI
             }
             do {
                 _ = try package.trigger(in: settings)
+                _ = try package.hotkey(in: settings)
                 let values = package.setting(in: settings)?.values ?? [:]
                 contexts[id] = PluginContext(settings: try m.validatedSettings(values),
                                              storagePath: (storage ?? StoragePaths.support).appendingPathComponent("plugins/\(id)").path,
@@ -329,6 +330,7 @@ import OddFrogPluginAPI
         for package in packages { _ = try package.manifest.validatedSettings(package.setting(in: updated)?.values ?? [:]) }
         for package in packages {
             _ = try package.trigger(in: updated)
+            _ = try package.hotkey(in: updated)
         }
     }
     private func validateItems(_ items: [PluginItem], package: PluginPackage) throws {
@@ -361,6 +363,7 @@ import OddFrogPluginAPI
         if action.kind == .service && !package.manifest.capabilities.contains(action.value) { throw RPCError("protocol", "Action uses an undeclared capability.") }
         if action.kind == .callback && (package.manifest.mode == .declarative || action.value.isEmpty) { throw RPCError("protocol", "Invalid callback action.") }
         if [.openURL, .openPath, .openApplication, .reveal, .execute, .service].contains(action.kind) && action.value.isEmpty { throw RPCError("protocol", "Empty action target.") }
+        if action.kind == .paste && action.value.isEmpty && action.payload?["png"].string == nil { throw RPCError("protocol", "Paste needs text or a PNG path.") }
         if action.kind == .execute && !action.value.hasPrefix("/") { throw RPCError("protocol", "Execute requires an absolute executable path.") }
         if action.kind == .openURL {
             guard let url = URL(string: action.value), let scheme = url.scheme, !["javascript", "data"].contains(scheme.lowercased()) else {

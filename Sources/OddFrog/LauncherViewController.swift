@@ -161,6 +161,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         refresh()
     }
 
+    func setQuery(_ query: String) {
+        searchField.stringValue = query
+        refresh()
+    }
+
     @discardableResult
     func focusField() -> Bool {
         guard let window = view.window else { return false }
@@ -169,7 +174,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             Log.write("makeFirstResponder(searchField) refused, retrying")
             return window.makeFirstResponder(searchField)
         }
-        searchField.currentEditor()?.selectAll(nil)
+        let length = (searchField.stringValue as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
         return ok
     }
 
