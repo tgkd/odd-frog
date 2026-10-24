@@ -319,6 +319,40 @@ struct PluginTests {
         #expect(coordinator.failures.isEmpty)
         try await waitUntil { coordinator.search("x hi", items: [], weights: [:], maxResults: 8).first?.item.title == "hi" }
     }
+    @Test @MainActor func exclusivePluginsAppearAsRootSearchRows() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let clip = PluginPackage(manifest: try manifest(id: "clip", extra: "activation = 'exclusive'\nkeyword = 'clip'\nhotkey = 'cmd+shift+v'"),
+                                 directory: root, bundled: true)
+        let term = PluginPackage(manifest: try manifest(id: "term", extra: "activation = 'exclusive'\nprefix = '>'"), directory: root, bundled: true)
+        let live = PluginPackage(manifest: try manifest(id: "live"), directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [clip, term, live]), settings: [])
+        let rows = coordinator.catalogItems.filter { coordinator.pluginEntry(for: $0) != nil }
+        #expect(rows.map(\.id) == ["plugin:clip:host-plugin", "plugin:term:host-plugin"])
+        let row = try #require(rows.first)
+        #expect(row.title == "clip" && row.subtitle == "clip · ⇧⌘V" && row.kindLabel == "Plugin" && row.aliases == ["clip"])
+        #expect(row.result.item.primary == nil && row.result.historyEligible)
+        #expect(rows.last?.subtitle == ">")
+        #expect(coordinator.pluginEntry(for: row)?.trigger == .keyword("clip"))
+        #expect(coordinator.pluginEntries.map(\.package.manifest.id) == ["clip", "term"])
+        let items = coordinator.catalogItems
+        #expect(coordinator.search("cli", items: items, weights: [:], maxResults: 8).first?.item.id == row.id)
+        #expect(SearchEngine.search(query: "clip", items: items, weights: [:], maxResults: 8).first?.exactAlias == true)
+        #expect(coordinator.search("", items: items, weights: [row.id: 2], maxResults: 8).map(\.item.id) == [row.id])
+        #expect(coordinator.search("clip x", items: items, weights: [:], maxResults: 8).allSatisfy { coordinator.pluginEntry(for: $0.item) == nil })
+        let renamed = [PluginSetting(id: "clip", enabled: true, source: clip.source, trigger: "cb", hotkey: "")]
+        coordinator.reload(discovery: PluginDiscovery(packages: [clip, term]), settings: renamed)
+        let moved = try #require(coordinator.catalogItems.first { $0.id == row.id })
+        #expect(moved.subtitle == "cb" && moved.aliases == ["cb"])
+        coordinator.reload(discovery: PluginDiscovery(packages: [clip, term]), settings: [PluginSetting(id: "clip", enabled: false, source: clip.source)])
+        #expect(coordinator.catalogItems.map(\.id) == ["plugin:term:host-plugin"])
+        let conflicting = PluginPackage(manifest: try manifest(id: "two", extra: "activation = 'exclusive'\nprefix = '>>'"), directory: root, bundled: true)
+        coordinator.reload(discovery: PluginDiscovery(packages: [term, conflicting]), settings: [])
+        #expect(coordinator.catalogItems.isEmpty)
+    }
     @Test func queryKeywordIsTheFirstTypedWord() {
         #expect(PluginQuery(query: "", fullQuery: "  CaL  month").keyword == "cal")
         #expect(PluginQuery(query: "", fullQuery: "").keyword == "")

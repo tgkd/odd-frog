@@ -34,8 +34,32 @@ import OddFrogPluginAPI
             invalidate()
         }
     }
-    public var catalogItems: [LauncherItem] { packages.flatMap { catalogs[$0.manifest.id] ?? [] }.map(LauncherItem.plugin) }
+    public var catalogItems: [LauncherItem] {
+        pluginEntries.map { LauncherItem.plugin(entryRow($0.package, trigger: $0.trigger)) }
+            + packages.flatMap { catalogs[$0.manifest.id] ?? [] }.map(LauncherItem.plugin)
+    }
     private var enabled: [PluginPackage] { packages.filter { $0.isEnabled(settings: settings) && failures[$0.manifest.id] == nil } }
+    /// Item ID of the synthesized row that opens an exclusive plugin from the root search.
+    public static let entryItemID = "host-plugin"
+    /// Enabled exclusive plugins the launcher can enter, with their resolved triggers.
+    public var pluginEntries: [(package: PluginPackage, trigger: PluginTrigger)] {
+        enabled.compactMap { package in
+            guard package.manifest.activation == .exclusive, let trigger = try? package.trigger(in: settings) else { return nil }
+            return (package, trigger)
+        }
+    }
+    /// The plugin a root search row enters, or nil for a regular result.
+    public func pluginEntry(for item: LauncherItem) -> (package: PluginPackage, trigger: PluginTrigger)? {
+        guard item.result.item.id == Self.entryItemID else { return nil }
+        return pluginEntries.first { $0.package.manifest.id == item.result.pluginID }
+    }
+    private func entryRow(_ package: PluginPackage, trigger: PluginTrigger) -> PluginResult {
+        let hotkey = (try? package.hotkey(in: settings))?.description
+        let subtitle = ([trigger.text] + [hotkey].compactMap { $0 }).joined(separator: " · ")
+        let item = PluginItem(id: Self.entryItemID, title: package.manifest.name, subtitle: subtitle, kind: "Plugin",
+                              symbol: "puzzlepiece.extension", aliases: [trigger.text], history: true)
+        return PluginResult(pluginID: package.manifest.id, item: item, generation: generation, catalog: true, directory: package.directory)
+    }
     public func reload(discovery: PluginDiscovery, settings: [PluginSetting], storage: URL? = nil, config: URL? = nil) {
         stop()
         packages = discovery.packages.sorted { a, b in a.manifest.order == b.manifest.order ? a.manifest.id < b.manifest.id : a.manifest.order < b.manifest.order }; discoveryErrors = discovery.errors; self.settings = settings; failures = [:]
