@@ -118,6 +118,24 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Launcher: Codable, Sendable, Equatable {
+        /// Lists the enabled exclusive plugins in the empty launcher so the user can see what to type.
+        public var showPlugins: Bool
+
+        public init(showPlugins: Bool = true) {
+            self.showPlugins = showPlugins
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case showPlugins = "show_plugins"
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            showPlugins = try container.decodeIfPresent(Bool.self, forKey: .showPlugins) ?? true
+        }
+    }
+
     public struct Appearance: Codable, Sendable, Equatable {
         public enum Theme: String, Codable, Sendable, CaseIterable {
             case system
@@ -170,9 +188,10 @@ public struct Settings: Codable, Sendable, Equatable {
     public var currency: Currency
     public var window: Window
     public var appearance: Appearance
+    public var launcher: Launcher
     public var plugins: [PluginSetting]
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = [], appearance: Appearance = Appearance()) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = [], appearance: Appearance = Appearance(), launcher: Launcher = Launcher()) {
         self.scripts = scripts
         self.items = items
         self.search = search
@@ -180,6 +199,7 @@ public struct Settings: Codable, Sendable, Equatable {
         self.window = window
         self.plugins = plugins
         self.appearance = appearance
+        self.launcher = launcher
     }
 
     enum CodingKeys: String, CodingKey {
@@ -189,6 +209,7 @@ public struct Settings: Codable, Sendable, Equatable {
         case currency
         case window
         case appearance
+        case launcher
         case plugins
     }
 
@@ -200,6 +221,7 @@ public struct Settings: Codable, Sendable, Equatable {
         currency = try container.decodeIfPresent(Currency.self, forKey: .currency) ?? Currency()
         window = try container.decodeIfPresent(Window.self, forKey: .window) ?? Window()
         appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance) ?? Appearance()
+        launcher = try container.decodeIfPresent(Launcher.self, forKey: .launcher) ?? Launcher()
         plugins = try container.decodeIfPresent([PluginSetting].self, forKey: .plugins) ?? []
     }
 

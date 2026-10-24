@@ -46,6 +46,21 @@ package keeps a prefix, validated exactly like the manifest and refused when it 
 another enabled trigger. A provider that mentions its own trigger in a row should read the typed
 first word from `fullQuery` instead of quoting the manifest keyword.
 
+An exclusive provider can also appear in the root search, without its trigger. Declare
+`root_results = N` (0–10, default 0, exclusive activation only) and the host asks the provider for up
+to N rows whenever the user types something else. These rows take their own slots after the
+catalog matches and live answers, and they never replace the fallback rows. The query has
+`root: true` and `fullQuery` as typed. Return only real matches in that mode: no status, hint,
+loading or error rows, and an empty array when there is nothing to show. The Plugins pane lets the user
+lower, raise (up to 10) or turn off the count for a package with `root_results`; the override is stored as
+`root_results` in the package's `[[plugins]]` entry. Packages without the manifest field are never asked
+for root rows. Triggered queries (`f query`) behave as before and always omit `root`.
+
+With nothing typed, the launcher lists each enabled exclusive package with its trigger and hotkey,
+below the recent items, so the user can see what to type. Recents give up slots before an entry
+does. The Plugins pane has a switch for this list, stored as `show_plugins` in the `[launcher]` table
+of `settings.toml`.
+
 Settings definitions have `key`, `title`, `type`, and `default`. Types are `boolean`, `string`,
 `number` (optional `minimum`/`maximum`), `choice` (required `choices`), and `folders` (array of
 nonempty paths). The host validates defaults and edits. Invalid external edits retain the last
@@ -74,7 +89,7 @@ Host operations use `params = {apiVersion: 2, context: {...}, input: ...}`:
 | --- | --- | --- |
 | `initialize` | `{}` | `{"apiVersion":2}` |
 | `catalog` | `{}` | Array of items; replaces the provider catalog |
-| `query` | query, fullQuery, now, timeZoneIdentifier, maxResults | Array of at most 50 items |
+| `query` | query, fullQuery, now, timeZoneIdentifier, maxResults, optional root | Array of at most 50 items |
 | `activate` | actionID, payload, item, optional argument, optional text | Effects object, optionally with a view |
 | `settings` | `{}`; updated values are in context | Acknowledgement object |
 

@@ -20,6 +20,11 @@ public enum FilesProvider {
     }
 
     public static func respond(to request: PluginQuery, state: State, hits: [FileHit], home: String) -> [PluginItem] {
+        if request.root {
+            // Root search shows only real hits: status notices belong to the plugin's own view.
+            guard case .ready = state else { return [] }
+            return rows(hits, for: request, home: home)
+        }
         switch state {
         case .unavailable(let reason):
             return [notice("unavailable", "File search is unavailable", reason, symbol: "exclamationmark.triangle")]
@@ -37,10 +42,13 @@ public enum FilesProvider {
                                scanning ? "Results will appear when indexing finishes." : "Try a different name.",
                                symbol: scanning ? "hourglass" : "magnifyingglass")]
             }
-            let cap = max(1, min(request.maxResults, 50))
-            let typed = request.query.trimmingCharacters(in: .whitespaces)
-            return hits.prefix(cap).map { row($0, query: typed, home: home) }
+            return rows(hits, for: request, home: home)
         }
+    }
+
+    private static func rows(_ hits: [FileHit], for request: PluginQuery, home: String) -> [PluginItem] {
+        let cap = max(1, min(request.maxResults, 50)), typed = request.query.trimmingCharacters(in: .whitespaces)
+        return hits.prefix(cap).map { row($0, query: typed, home: home) }
     }
 
     public static func merge(_ groups: [[FileHit]]) -> [FileHit] {

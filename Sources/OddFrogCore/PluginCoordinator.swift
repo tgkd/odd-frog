@@ -40,6 +40,8 @@ import OddFrogPluginAPI
         pluginEntries.map { LauncherItem.plugin(entryRow($0.package, trigger: $0.trigger)) }
             + packages.flatMap { catalogs[$0.manifest.id] ?? [] }.map(LauncherItem.plugin)
     }
+    /// Lists the enabled exclusive plugins when nothing is typed, so the user can see what the launcher can do.
+    public var showsEntriesWhenEmpty = true
     private var enabled: [PluginPackage] { packages.filter { $0.isEnabled(settings: settings) && failures[$0.manifest.id] == nil } }
     /// Item ID of the synthesized row that opens an exclusive plugin from the root search.
     public static let entryItemID = "host-plugin"
@@ -227,6 +229,12 @@ import OddFrogPluginAPI
         let applicable = packages.filter { $0.isEnabled(settings: settings) && $0.query(from: query, settings: settings) != nil }
         let exclusive = applicable.filter { $0.manifest.activation == .exclusive }
         let providers = exclusive.isEmpty ? applicable : exclusive
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rooted: [(package: PluginPackage, limit: Int)] = exclusive.isEmpty && !trimmed.isEmpty ? enabled.compactMap {
+            guard $0.manifest.activation == .exclusive, $0.query(from: query, settings: settings) == nil,
+                  let limit = try? $0.rootResults(in: settings), limit > 0 else { return nil }
+            return ($0, limit)
+        } : []
         if currentQuery != query || currentLimit != maxResults {
             let same = currentQuery == nil
             queryTask?.cancel(); queryGeneration = UUID(); currentQuery = query; currentLimit = maxResults
@@ -244,6 +252,7 @@ import OddFrogPluginAPI
                 }
                 await withTaskGroup(of: Void.self) { group in
                     for package in providers where failures[package.manifest.id] == nil { group.addTask { await self.runQuery(package, query: query, limit: maxResults, token: token, packageToken: packageToken) } }
+                    for (package, limit) in rooted { group.addTask { await self.runQuery(package, query: query, limit: limit, root: true, token: token, packageToken: packageToken) } }
                 }
             }
         }
@@ -255,6 +264,13 @@ import OddFrogPluginAPI
             answer = providers.filter { $0.manifest.activation == .fallback }.flatMap { live[$0.manifest.id] ?? [] }
                 .map { RankedItem(item: .plugin($0), lexical: 0, weight: 0, exactAlias: false) }
         }
+        if trimmed.isEmpty && showsEntriesWhenEmpty {
+            answer = Self.fitEntries(into: answer, entries: items.filter { pluginEntry(for: $0) != nil }, limit: maxResults)
+        }
+        // Root rows own their slots: catalog matches would otherwise fill the whole list and push them out.
+        let rootRows = rooted.flatMap { Array((live[$0.package.manifest.id] ?? []).prefix($0.limit)) }
+            .map { RankedItem(item: .plugin($0), lexical: 0, weight: 0, exactAlias: false) }
+        if !rootRows.isEmpty { answer = Array(answer.prefix(max(1, maxResults - rootRows.count))) + rootRows }
         if answer.isEmpty, let package = exclusive.first {
             let error = failures[package.manifest.id] ?? queryErrors[package.manifest.id]
             if let error { answer = status(package, title: "\(package.manifest.name): \(error)") }
@@ -262,11 +278,22 @@ import OddFrogPluginAPI
         }
         return Array(answer.prefix(maxResults))
     }
-    private func runQuery(_ package: PluginPackage, query: String, limit: Int, token: UUID, packageToken: UUID) async {
+    /// Keeps every plugin entry visible in the empty launcher: recents fill only the slots the entries leave free.
+    private static func fitEntries(into recents: [RankedItem], entries: [LauncherItem], limit: Int) -> [RankedItem] {
+        var kept: [RankedItem] = []
+        for recent in recents {
+            let candidate = kept + [recent], shown = Set(candidate.map(\.item.id))
+            if candidate.count + entries.filter({ !shown.contains($0.id) }).count <= limit { kept = candidate }
+        }
+        let shown = Set(kept.map(\.item.id))
+        return Array((kept + entries.filter { !shown.contains($0.id) }
+            .map { RankedItem(item: $0, lexical: 0, weight: 0, exactAlias: false) }).prefix(limit))
+    }
+    private func runQuery(_ package: PluginPackage, query: String, limit: Int, root: Bool = false, token: UUID, packageToken: UUID) async {
         let id = package.manifest.id
         do {
             try await initialize(package).value; try Task.checkCancellation()
-            let input = PluginQuery(query: package.query(from: query, settings: settings) ?? query, fullQuery: query, maxResults: limit)
+            let input = PluginQuery(query: package.query(from: query, settings: settings) ?? query, fullQuery: query, maxResults: limit, root: root)
             let output = try await perform("query", package: package, params: .encode(input), timeout: .seconds(2))
             let items = try output.decode([PluginItem].self)
             guard items.count <= 50 else { throw RPCError("protocol", "Query returned more than 50 rows.") }
@@ -376,6 +403,7 @@ import OddFrogPluginAPI
         for package in packages {
             _ = try package.trigger(in: updated)
             _ = try package.hotkey(in: updated)
+            _ = try package.rootResults(in: updated)
         }
     }
     private func validateItems(_ items: [PluginItem], package: PluginPackage) throws {

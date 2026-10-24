@@ -6,6 +6,7 @@ keyword = "f"
 mode = "persistent"
 activation = "exclusive"
 background = true
+root_results = 3
 enabled_by_default = false
 capabilities = []
 

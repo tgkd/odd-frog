@@ -349,7 +349,7 @@ struct PluginTests {
         let items = coordinator.catalogItems
         #expect(coordinator.search("cli", items: items, weights: [:], maxResults: 8).first?.item.id == row.id)
         #expect(SearchEngine.search(query: "clip", items: items, weights: [:], maxResults: 8).first?.exactAlias == true)
-        #expect(coordinator.search("", items: items, weights: [row.id: 2], maxResults: 8).map(\.item.id) == [row.id])
+        #expect(coordinator.search("", items: items, weights: [row.id: 2], maxResults: 8).map(\.item.id) == [row.id, "plugin:term:host-plugin"])
         #expect(coordinator.search("clip x", items: items, weights: [:], maxResults: 8).allSatisfy { coordinator.pluginEntry(for: $0.item) == nil })
         let renamed = [PluginSetting(id: "clip", enabled: true, source: clip.source, trigger: "cb", hotkey: "")]
         coordinator.reload(discovery: PluginDiscovery(packages: [clip, term]), settings: renamed)
@@ -360,6 +360,96 @@ struct PluginTests {
         let conflicting = PluginPackage(manifest: try manifest(id: "two", extra: "activation = 'exclusive'\nprefix = '>>'"), directory: root, bundled: true)
         coordinator.reload(discovery: PluginDiscovery(packages: [term, conflicting]), settings: [])
         #expect(coordinator.catalogItems.isEmpty)
+    }
+    @Test @MainActor func exclusivePluginAddsRootResultsToKeywordlessQueries() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let files = PluginPackage(manifest: try manifest(id: "files", extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 2"),
+                                  directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [files]), settings: [])
+        let items = coordinator.catalogItems
+        func titles(_ query: String) -> [String] { coordinator.search(query, items: items, weights: [:], maxResults: 8).map(\.item.title) }
+        try await waitUntil { titles("hello").contains("hello") }
+        // The keyword form stays exclusive: no entry row, only the plugin's own answer.
+        try await waitUntil { titles("f hello") == ["hello"] }
+        #expect(titles("").contains("files"))
+    }
+    private func catalogRows(_ count: Int, directory: URL) -> [LauncherItem] {
+        (0..<count).map {
+            .plugin(PluginResult(pluginID: "cat", item: PluginItem(id: "c\($0)", title: "hello \($0)"), generation: UUID(), catalog: true, directory: directory))
+        }
+    }
+    @Test @MainActor func rootRowsKeepTheirSlotsWhenCatalogMatchesFillTheList() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let files = PluginPackage(manifest: try manifest(id: "files", extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 2"),
+                                  directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [files]), settings: [])
+        let items = catalogRows(10, directory: root)
+        func titles() -> [String] { coordinator.search("hello", items: items, weights: [:], maxResults: 8).map(\.item.title) }
+        try await waitUntil { titles().last == "hello" }
+        #expect(titles().count == 8 && titles().filter { $0.hasPrefix("hello ") }.count == 7)
+    }
+    @Test @MainActor func emptyLauncherKeepsEveryPluginEntryVisibleAmongRecents() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let clip = PluginPackage(manifest: try manifest(id: "clip", extra: "activation = 'exclusive'\nkeyword = 'clip'"), directory: root, bundled: true)
+        let term = PluginPackage(manifest: try manifest(id: "term", extra: "activation = 'exclusive'\nprefix = '>'"), directory: root, bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [clip, term]), settings: [])
+        let recents = catalogRows(8, directory: root)
+        let items = recents + coordinator.catalogItems
+        let weights = Dictionary(uniqueKeysWithValues: recents.map { ($0.id, 1.0) })
+        let entryIDs = ["plugin:clip:host-plugin", "plugin:term:host-plugin"]
+        let shown = coordinator.search("", items: items, weights: weights, maxResults: 8).map(\.item.id)
+        #expect(shown.count == 8 && entryIDs.allSatisfy(shown.contains))
+        coordinator.showsEntriesWhenEmpty = false
+        #expect(coordinator.search("", items: items, weights: weights, maxResults: 8).map(\.item.id) == recents.map(\.id))
+    }
+    @Test @MainActor func userOverrideChangesOrSilencesRootResults() async throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try fixture(root, source: echo)
+        let files = PluginPackage(manifest: try manifest(id: "files", extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 3"),
+                                  directory: root, bundled: true)
+        let plain = PluginPackage(manifest: try manifest(id: "plain", extra: "activation = 'exclusive'\nkeyword = 'p'"), directory: root, bundled: true)
+        func setting(_ package: PluginPackage, _ count: Int?) -> [PluginSetting] {
+            [PluginSetting(id: package.manifest.id, enabled: true, source: package.source, rootResults: count)]
+        }
+        #expect(try files.rootResults(in: []) == 3)
+        #expect(try files.rootResults(in: setting(files, 0)) == 0)
+        #expect(try files.rootResults(in: setting(files, 7)) == 7)
+        #expect(throws: (any Error).self) { try files.rootResults(in: setting(files, 11)) }
+        #expect(try plain.rootResults(in: setting(plain, 5)) == 0)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: PluginDiscovery(packages: [files]), settings: setting(files, 0))
+        #expect(throws: (any Error).self) { try coordinator.validateSettings(setting(files, -1)) }
+        _ = coordinator.search("hello", items: [], weights: [:], maxResults: 8)
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(coordinator.search("hello", items: [], weights: [:], maxResults: 8).isEmpty)
+    }
+    @Test func rootResultsOverrideAndLauncherToggleSurviveSettingsRoundTrip() throws {
+        let settings = Settings(plugins: [PluginSetting(id: "files", enabled: true, source: "bundled", rootResults: 5)],
+                                launcher: .init(showPlugins: false))
+        let text = try settings.serialized()
+        #expect(text.contains("root_results") && text.contains("show_plugins"))
+        let parsed = try Settings.parse(text)
+        #expect(parsed.plugins.first?.rootResults == 5 && !parsed.launcher.showPlugins)
+        #expect(try Settings.parse("").launcher.showPlugins)
+    }
+    @Test func rootResultsRequireExclusiveActivationAndASmallCount() throws {
+        #expect(throws: (any Error).self) { try manifest(extra: "activation = 'live'\nroot_results = 1") }
+        #expect(throws: (any Error).self) { try manifest(extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 11") }
+        #expect(try manifest(extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 3").rootResults == 3)
     }
     @Test func queryKeywordIsTheFirstTypedWord() {
         #expect(PluginQuery(query: "", fullQuery: "  CaL  month").keyword == "cal")

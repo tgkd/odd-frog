@@ -13,6 +13,12 @@ struct PluginsPaneView: View {
         let bundled = model.packages.filter(\.bundled)
         let installed = model.packages.filter { !$0.bundled }
         Form {
+            Section {
+                Toggle(isOn: Binding(get: { model.showPlugins }, set: { model.onShowPlugins?($0) })) {
+                    Text("Show plugins in the empty launcher")
+                    Text("Lists each enabled plugin with its trigger, so you can see what to type.")
+                }
+            }
             ForEach(Array(bundled.enumerated()), id: \.element.manifest.id) { index, package in
                 section(for: package, header: index == 0 && !installed.isEmpty ? "Bundled" : nil)
             }
@@ -95,6 +101,19 @@ struct PluginsPaneView: View {
                 value: model.resolvedTrigger(of: package),
                 onCommit: { model.commitTrigger($0, for: package) }
             )
+        }
+
+        if manifest.rootResults > 0 {
+            Picker(selection: Binding(
+                get: { model.rootResults(of: package) },
+                set: { model.commitRootResults($0, for: package) }
+            )) {
+                Text("Off").tag(0)
+                ForEach(1...PluginManifest.rootResultsRange.upperBound, id: \.self) { Text("\($0)").tag($0) }
+            } label: {
+                Text("Results in the main search")
+                Text("Rows shown when you type without \(manifest.name)'s trigger.")
+            }
         }
 
         ForEach(manifest.settings, id: \.key) { definition in

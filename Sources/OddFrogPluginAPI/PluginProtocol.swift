@@ -98,14 +98,23 @@ public struct PluginQuery: Codable, Sendable {
     public var now: Date
     public var timeZoneIdentifier: String
     public var maxResults: Int
+    /// True when the host asks an exclusive plugin for a few rows of the root search, without its keyword.
+    public var root: Bool
     public var keyword: String {
         fullQuery.split(maxSplits: 1, whereSeparator: \.isWhitespace).first?.lowercased() ?? ""
     }
     public init(query: String, fullQuery: String, now: Date = Date(),
-                timeZoneIdentifier: String = TimeZone.current.identifier, maxResults: Int = 8) {
+                timeZoneIdentifier: String = TimeZone.current.identifier, maxResults: Int = 8, root: Bool = false) {
         self.query = query; self.fullQuery = fullQuery; self.now = now
-        self.timeZoneIdentifier = timeZoneIdentifier; self.maxResults = maxResults
+        self.timeZoneIdentifier = timeZoneIdentifier; self.maxResults = maxResults; self.root = root
     }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        query = try c.decode(String.self, forKey: .query); fullQuery = try c.decode(String.self, forKey: .fullQuery)
+        now = try c.decode(Date.self, forKey: .now); timeZoneIdentifier = try c.decode(String.self, forKey: .timeZoneIdentifier)
+        maxResults = try c.decode(Int.self, forKey: .maxResults); root = try c.decodeIfPresent(Bool.self, forKey: .root) ?? false
+    }
+    private enum CodingKeys: String, CodingKey { case query, fullQuery, now, timeZoneIdentifier, maxResults, root }
 }
 public struct PluginActivation: Codable, Sendable {
     public var actionID: String

@@ -49,13 +49,16 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
     public let order: Int
     public let catalog: Bool
     public let background: Bool
+    public static let rootResultsRange = 0...10
+    /// How many rows an exclusive plugin adds to the root search. Zero keeps it behind its trigger.
+    public let rootResults: Int
     public let enabledByDefault: Bool
     public let capabilities: [String]
     public let settings: [PluginSettingDefinition]
     public let commands: [PluginItem]
     enum CodingKeys: String, CodingKey {
         case id, name, version, mode, executable, activation, keyword, prefix, hotkey, order, catalog, background, capabilities, settings, commands
-        case apiVersion = "api_version", enabledByDefault = "enabled_by_default"
+        case apiVersion = "api_version", enabledByDefault = "enabled_by_default", rootResults = "root_results"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -71,6 +74,7 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
         catalog = try c.decodeIfPresent(Bool.self, forKey: .catalog) ?? false
         background = try c.decodeIfPresent(Bool.self, forKey: .background) ?? false
+        rootResults = try c.decodeIfPresent(Int.self, forKey: .rootResults) ?? 0
         enabledByDefault = try c.decodeIfPresent(Bool.self, forKey: .enabledByDefault) ?? true
         capabilities = try c.decodeIfPresent([String].self, forKey: .capabilities) ?? []
         settings = try c.decodeIfPresent([PluginSettingDefinition].self, forKey: .settings) ?? []
@@ -96,6 +100,9 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
                 throw PluginError.message("Exclusive activation requires one valid keyword or prefix.")
             }
         } else if value.keyword != nil || value.prefix != nil { throw PluginError.message("Triggers require exclusive activation.") }
+        guard rootResultsRange.contains(value.rootResults), value.rootResults == 0 || value.activation == .exclusive else {
+            throw PluginError.message("root_results needs exclusive activation and a value up to \(rootResultsRange.upperBound).")
+        }
         if value.hotkey != nil && value.activation != .exclusive { throw PluginError.message("Hotkeys require exclusive activation.") }
         guard Set(value.settings.map(\.key)).count == value.settings.count else { throw PluginError.message("Duplicate settings keys.") }
         for setting in value.settings {
@@ -134,10 +141,16 @@ public struct PluginSetting: Codable, Sendable, Equatable {
     public var trigger: String?
     /// Replaces the manifest hotkey; an empty string turns it off.
     public var hotkey: String?
+    /// Replaces the manifest `root_results`; zero keeps the plugin out of the root search.
+    public var rootResults: Int?
     public init(id: String, enabled: Bool, source: String? = nil, values: [String: JSONValue]? = nil, trigger: String? = nil,
-                hotkey: String? = nil) {
+                hotkey: String? = nil, rootResults: Int? = nil) {
         self.id = id; self.enabled = enabled; self.source = source; self.values = values
-        self.trigger = trigger; self.hotkey = hotkey
+        self.trigger = trigger; self.hotkey = hotkey; self.rootResults = rootResults
+    }
+    enum CodingKeys: String, CodingKey {
+        case id, enabled, source, values, trigger, hotkey
+        case rootResults = "root_results"
     }
 }
 public struct PluginPackage: Sendable, Equatable {
@@ -177,6 +190,16 @@ public struct PluginPackage: Sendable, Equatable {
             return nil
         }
         do { return try Hotkey.parse(text) } catch { throw PluginError.message("Invalid hotkey '\(override)': \(error).") }
+    }
+    /// Rows this plugin adds to the root search. Only plugins that declare `root_results` handle root queries,
+    /// so a user override can lower or raise the count but never switch the feature on for other plugins.
+    public func rootResults(in settings: [PluginSetting]) throws -> Int {
+        guard manifest.rootResults > 0 else { return 0 }
+        guard let override = setting(in: settings)?.rootResults else { return manifest.rootResults }
+        guard PluginManifest.rootResultsRange.contains(override) else {
+            throw PluginError.message("Root results must be between 0 and \(PluginManifest.rootResultsRange.upperBound).")
+        }
+        return override
     }
     public func query(from fullQuery: String, settings: [PluginSetting]) -> String? {
         let text = fullQuery.trimmingCharacters(in: .whitespacesAndNewlines)

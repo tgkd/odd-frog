@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = Settings.empty {
         didSet {
             executor.terminal = TerminalChoice(values: settings.plugins.first { $0.id == TerminalChoice.pluginID }?.values)
+            plugins.showsEntriesWhenEmpty = settings.launcher.showPlugins
             if settings.appearance != oldValue.appearance {
                 applyAppearance()
             }
@@ -314,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updated.plugins.removeAll { $0.id == id }
             guard let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
             let previous = package.setting(in: settings.plugins)
-            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: previous?.values, trigger: previous?.trigger, hotkey: previous?.hotkey))
+            updated.plugins.append(PluginSetting(id: id, enabled: enabled, source: package.source, values: previous?.values, trigger: previous?.trigger, hotkey: previous?.hotkey, rootResults: previous?.rootResults))
             applySettings(updated, persist: true)
         }
         settingsWindow.pluginsPane.onSetting = { [weak self] id, key, value in
@@ -336,6 +337,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setting.trigger = trigger
             updated.plugins.removeAll { $0.id == id }
             updated.plugins.append(setting)
+            applySettings(updated, persist: true)
+        }
+        settingsWindow.pluginsPane.onRootResults = { [weak self] id, count in
+            guard let self, let package = plugins.packages.first(where: { $0.manifest.id == id }) else { return }
+            var updated = settings
+            var setting = package.setting(in: updated.plugins)
+                ?? PluginSetting(id: id, enabled: package.isEnabled(settings: settings.plugins), source: package.source)
+            setting.rootResults = count
+            updated.plugins.removeAll { $0.id == id }
+            updated.plugins.append(setting)
+            applySettings(updated, persist: true)
+        }
+        settingsWindow.pluginsPane.onShowPlugins = { [weak self] show in
+            guard let self else { return }
+            var updated = settings
+            updated.launcher.showPlugins = show
             applySettings(updated, persist: true)
         }
         settingsWindow.pluginsPane.onManageLinks = { [weak self] in
@@ -461,7 +478,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updatePluginsPane() {
         settingsWindow.update(pluginSettings: settings.plugins)
         settingsWindow.pluginsPane.update(packages: plugins.packages, settings: settings.plugins,
-                                          failures: plugins.failures, errors: plugins.discoveryErrors)
+                                          failures: plugins.failures, errors: plugins.discoveryErrors,
+                                          showPlugins: settings.launcher.showPlugins)
     }
 
     @objc private func storeDidChange() {
@@ -633,6 +651,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             syncPluginHotkeys()
         }
         rebuildItems()
+        updatePluginsPane()
     }
 
     private func applyAppearance() {

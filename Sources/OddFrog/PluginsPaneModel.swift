@@ -11,15 +11,20 @@ final class PluginsPaneModel {
     private(set) var failures: [String: String] = [:]
     private(set) var errors: [String] = []
     private(set) var message: (package: String, text: String)?
+    private(set) var showPlugins = true
 
     @ObservationIgnored var onToggle: ((String, Bool) -> Void)?
     @ObservationIgnored var onReload: (() -> Void)?
     @ObservationIgnored var onSetting: ((String, String, JSONValue) -> Void)?
     @ObservationIgnored var onTrigger: ((String, String?) -> Void)?
+    @ObservationIgnored var onRootResults: ((String, Int?) -> Void)?
+    @ObservationIgnored var onShowPlugins: ((Bool) -> Void)?
     @ObservationIgnored var onManageLinks: (() -> Void)?
 
-    func update(packages: [PluginPackage], settings: [PluginSetting], failures: [String: String], errors: [String]) {
-        guard packages != self.packages || settings != self.settings || failures != self.failures || errors != self.errors else { return }
+    func update(packages: [PluginPackage], settings: [PluginSetting], failures: [String: String], errors: [String], showPlugins: Bool) {
+        guard packages != self.packages || settings != self.settings || failures != self.failures || errors != self.errors
+                || showPlugins != self.showPlugins else { return }
+        self.showPlugins = showPlugins
         self.packages = packages
         self.settings = settings
         self.failures = failures
@@ -33,6 +38,16 @@ final class PluginsPaneModel {
 
     func resolvedTrigger(of package: PluginPackage) -> String {
         (try? package.trigger(in: settings))?.text ?? package.manifest.trigger?.text ?? ""
+    }
+
+    func rootResults(of package: PluginPackage) -> Int {
+        (try? package.rootResults(in: settings)) ?? package.manifest.rootResults
+    }
+
+    func commitRootResults(_ count: Int, for package: PluginPackage) {
+        guard rootResults(of: package) != count else { return }
+        message = nil
+        onRootResults?(package.manifest.id, count == package.manifest.rootResults ? nil : count)
     }
 
     func commit(_ value: JSONValue, for definition: PluginSettingDefinition, in package: PluginPackage) {

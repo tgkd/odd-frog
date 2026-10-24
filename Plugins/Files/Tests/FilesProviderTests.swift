@@ -23,6 +23,15 @@ struct FilesProviderTests {
         #expect(rows[0].secondary?.after == remember)
     }
 
+    @Test func rootSearchReturnsHitsWithoutNotices() {
+        var root = request("main", max: 3); root.root = true
+        let hits = [FileHit(root: "/r", relativePath: "main.swift", isDirectory: false, score: 10)]
+        #expect(FilesProvider.respond(to: root, state: .ready(scanning: false), hits: hits, home: "/h").map(\.title) == ["main.swift"])
+        #expect(FilesProvider.respond(to: root, state: .ready(scanning: true), hits: [], home: "/h").isEmpty)
+        #expect(FilesProvider.respond(to: root, state: .noFolders, hits: [], home: "/h").isEmpty)
+        #expect(FilesProvider.respond(to: root, state: .unavailable("x"), hits: [], home: "/h").isEmpty)
+    }
+
     @Test func mergeKeepsBestScorePerPathAndSortsDescending() {
         let merged = FilesProvider.merge([
             [FileHit(root: "", relativePath: "a", isDirectory: false, score: 5), FileHit(root: "", relativePath: "b", isDirectory: true, score: 9)],
