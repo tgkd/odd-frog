@@ -122,11 +122,9 @@ public struct PluginEffects: Codable, Sendable {
     public var refreshCatalog: Bool
     public var refreshQuery: Bool
     public var view: PluginView?
-    /// Asks the host to press ⌘V in the app that was frontmost before the launcher opened.
-    public var paste: Bool?
     public init(notification: String? = nil, refreshCatalog: Bool = false, refreshQuery: Bool = false,
-                view: PluginView? = nil, paste: Bool? = nil) {
+                view: PluginView? = nil) {
         self.notification = notification; self.refreshCatalog = refreshCatalog; self.refreshQuery = refreshQuery
-        self.view = view; self.paste = paste
+        self.view = view
     }
 }

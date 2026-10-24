@@ -93,11 +93,12 @@ struct ClipboardProviderTests {
         #expect(image.map(\.id) == ["b"])
     }
 
-    @Test func entryRowsCarryCopyDeleteAndThumbnail() {
+    @Test func entryRowsCarryPasteDeleteAndThumbnail() {
         let items = ClipboardProvider.respond(to: request(maxResults: 8), access: .allowed,
                                               entries: [entry("a", "Alpha"), imageEntry("b")],
                                               directory: dir(), failure: nil)
-        #expect(items[0].primary == PluginAction(.callback, "paste", payload: .object(["id": .string("a")])))
+        #expect(items[0].primary == PluginAction(.paste, "Alpha"))
+        #expect(items[1].primary == PluginAction(.paste, payload: .object(["png": .string("/tmp/clip/images/b.png")])))
         #expect(items[0].secondary == PluginAction(.callback, "delete", payload: .object(["id": .string("a")])))
         #expect(items[0].symbol == "doc.on.clipboard")
         #expect(items[0].icon == nil)

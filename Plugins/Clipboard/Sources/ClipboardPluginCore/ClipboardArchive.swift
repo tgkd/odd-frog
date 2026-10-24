@@ -69,6 +69,10 @@ public actor ClipboardArchive {
         return try? Data(contentsOf: url)
     }
 
+    public nonisolated static func imagePath(in directory: URL, id: String) -> String {
+        imageURL(in: directory, id: id).path
+    }
+
     public nonisolated static func thumbnailPath(in directory: URL, id: String) -> String {
         directory.appendingPathComponent("images", isDirectory: true)
             .appendingPathComponent("\(id)-thumb.png", isDirectory: false).path

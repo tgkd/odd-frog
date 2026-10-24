@@ -421,9 +421,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch response {
                 case .success(let effects):
                     if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
-                    if effects.paste == true, !PasteKeystroke.send() {
-                        notifier.post(title: result.item.title, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: false)
-                    }
                     executor.recordPlugin(result)
                     if let view = effects.view {
                         switch view.kind {

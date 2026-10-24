@@ -123,6 +123,19 @@ final class ActionExecutor {
         switch action.kind {
         case .copy:
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string); record(id)
+        case .paste:
+            NSPasteboard.general.clearContents()
+            if let path = action.payload?["png"].string {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)), NSPasteboard.general.setData(data, forType: .png) else {
+                    fail("Could not read \(path)"); return
+                }
+            } else {
+                NSPasteboard.general.setString(value, forType: .string)
+            }
+            if !PasteKeystroke.send() {
+                notifier.post(title: name, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: false)
+            }
+            record(id)
         case .openURL, .openPath:
             let url = action.kind == .openPath ? URL(fileURLWithPath: ConfigParser.expandTilde(value)) : URL(string: value)
             guard let url, NSWorkspace.shared.open(url) else { fail("Could not open \(value)"); return }; record(id)

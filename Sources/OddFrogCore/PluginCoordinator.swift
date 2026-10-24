@@ -363,6 +363,7 @@ import OddFrogPluginAPI
         if action.kind == .service && !package.manifest.capabilities.contains(action.value) { throw RPCError("protocol", "Action uses an undeclared capability.") }
         if action.kind == .callback && (package.manifest.mode == .declarative || action.value.isEmpty) { throw RPCError("protocol", "Invalid callback action.") }
         if [.openURL, .openPath, .openApplication, .reveal, .execute, .service].contains(action.kind) && action.value.isEmpty { throw RPCError("protocol", "Empty action target.") }
+        if action.kind == .paste && action.value.isEmpty && action.payload?["png"].string == nil { throw RPCError("protocol", "Paste needs text or a PNG path.") }
         if action.kind == .execute && !action.value.hasPrefix("/") { throw RPCError("protocol", "Execute requires an absolute executable path.") }
         if action.kind == .openURL {
             guard let url = URL(string: action.value), let scheme = url.scheme, !["javascript", "data"].contains(scheme.lowercased()) else {

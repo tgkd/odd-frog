@@ -103,7 +103,7 @@ struct ClipboardHandlerTests {
         let items = try await handler.handle("query", params: queryParams("", storage: root), operation: operation)
             .decode([PluginItem].self)
         let captured = try #require(items.first { $0.title == "hello clipboard" })
-        #expect(captured.primary == PluginAction(.callback, "paste", payload: .object(["id": .string(captured.id)])))
+        #expect(captured.primary == PluginAction(.paste, "hello clipboard"))
     }
 
     @Test func pollEmitsQueryInvalidatedAfterACapture() async throws {
@@ -138,53 +138,6 @@ struct ClipboardHandlerTests {
         #expect(image.title == "Image 6×4")
         #expect(image.icon == ClipboardArchive.thumbnailPath(in: root, id: image.id))
         #expect(FileManager.default.fileExists(atPath: image.icon!))
-    }
-
-    @Test func copyWritesTheEntryBackToThePasteboard() async throws {
-        let root = temp(); defer { try? FileManager.default.removeItem(at: root) }
-        let name = NSPasteboard.Name("odd-frog-clip-\(UUID().uuidString)")
-        let handler = ClipboardHandler(archive: ClipboardArchive(), pasteboard: ClipboardPasteboard(name: name),
-                                       interval: .milliseconds(20))
-        defer { Task { await handler.shutdown() } }
-        _ = try await handler.handle("initialize", params: initParams(storage: root), operation: operation)
-        writeText("secret", to: name)
-        try await wait {
-            let items = try? await handler.handle("query", params: queryParams("", storage: root), operation: operation)
-                .decode([PluginItem].self)
-            return items?.contains { $0.title == "secret" } == true
-        }
-        let items = try await handler.handle("query", params: queryParams("", storage: root), operation: operation)
-            .decode([PluginItem].self)
-        let captured = try #require(items.first { $0.title == "secret" })
-        NSPasteboard(name: name).clearContents()
-        _ = try await handler.handle("activate",
-                                     params: activateParams("copy", payload: .object(["id": .string(captured.id)]), storage: root),
-                                     operation: operation)
-        #expect(NSPasteboard(name: name).string(forType: .string) == "secret")
-    }
-
-    @Test func pasteWritesTheEntryAndAsksTheHostToPaste() async throws {
-        let root = temp(); defer { try? FileManager.default.removeItem(at: root) }
-        let name = NSPasteboard.Name("odd-frog-clip-\(UUID().uuidString)")
-        let handler = ClipboardHandler(archive: ClipboardArchive(), pasteboard: ClipboardPasteboard(name: name),
-                                       interval: .milliseconds(20))
-        defer { Task { await handler.shutdown() } }
-        _ = try await handler.handle("initialize", params: initParams(storage: root), operation: operation)
-        writeText("pasted", to: name)
-        try await wait {
-            let items = try? await handler.handle("query", params: queryParams("", storage: root), operation: operation)
-                .decode([PluginItem].self)
-            return items?.contains { $0.title == "pasted" } == true
-        }
-        let items = try await handler.handle("query", params: queryParams("", storage: root), operation: operation)
-            .decode([PluginItem].self)
-        let captured = try #require(items.first { $0.title == "pasted" })
-        NSPasteboard(name: name).clearContents()
-        let effects = try await handler.handle("activate",
-                                               params: activateParams("paste", payload: .object(["id": .string(captured.id)]), storage: root),
-                                               operation: operation).decode(PluginEffects.self)
-        #expect(effects.paste == true)
-        #expect(NSPasteboard(name: name).string(forType: .string) == "pasted")
     }
 
     @Test func deleteRemovesAnEntry() async throws {
