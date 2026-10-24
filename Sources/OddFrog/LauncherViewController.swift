@@ -33,6 +33,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
     private(set) var results: [RankedItem] = []
+    var history: [String] = [] { didSet { historyIndex = nil } }
+    private var historyIndex: Int?
 
     let icons: IconCache
     var onSubmit: ((LauncherItem, String?, Bool) -> Void)?
@@ -40,6 +42,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var onHeightChange: ((CGFloat) -> Void)?
     var onReveal: ((LauncherItem) -> Void)?
     var onSettings: (() -> Void)?
+    var onRecordQuery: ((String) -> Void)?
     var pluginQuery: ((String, [LauncherItem], [String: Double], Int) -> [RankedItem])?
 
     init(icons: IconCache) {
@@ -157,13 +160,44 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     func prepareForShow() {
+        historyIndex = nil
         searchField.stringValue = ""
         refresh()
     }
 
     func setQuery(_ query: String) {
+        historyIndex = nil
         searchField.stringValue = query
         refresh()
+    }
+
+    private func replaceQuery(with text: String) {
+        searchField.stringValue = text
+        moveCaretToEnd()
+    }
+
+    private func moveCaretToEnd() {
+        let length = (searchField.stringValue as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
+    }
+
+    private func recallHistory(at index: Int) {
+        guard history.indices.contains(index) else { return }
+        replaceQuery(with: history[index])
+        historyIndex = index
+        refresh()
+    }
+
+    private func moveUp() {
+        if tableView.selectedRow != 0, !results.isEmpty {
+            select(row: tableView.selectedRow - 1)
+            return
+        }
+        if let index = historyIndex {
+            recallHistory(at: index + 1)
+        } else if searchField.stringValue.allSatisfy(\.isWhitespace) {
+            recallHistory(at: 0)
+        }
     }
 
     @discardableResult
@@ -174,8 +208,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             Log.write("makeFirstResponder(searchField) refused, retrying")
             return window.makeFirstResponder(searchField)
         }
-        let length = (searchField.stringValue as NSString).length
-        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
+        moveCaretToEnd()
         return ok
     }
 
@@ -233,9 +266,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     private func fill(with item: LauncherItem) {
-        searchField.stringValue = completion(for: item)
-        let length = (searchField.stringValue as NSString).length
-        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
+        historyIndex = nil
+        replaceQuery(with: completion(for: item))
         refresh(keepSelection: true)
     }
 
@@ -248,6 +280,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             fill(with: result.item)
             return
         }
+        onRecordQuery?(searchField.stringValue)
         onSubmit?(result.item, result.argument, secondary)
     }
 
@@ -298,6 +331,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        historyIndex = nil
         replaceLineBreaks()
         refresh()
     }
@@ -318,7 +352,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         case #selector(NSResponder.moveDown(_:)):
             select(row: tableView.selectedRow + 1)
         case #selector(NSResponder.moveUp(_:)):
-            select(row: tableView.selectedRow - 1)
+            moveUp()
         case #selector(NSResponder.insertNewline(_:)):
             submit()
         case #selector(NSResponder.cancelOperation(_:)):

@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = Notifier()
     private let hotkeys = HotKeyManager()
     private lazy var frecency = FrecencyStore(url: FrecencyStore.defaultURL)
+    private lazy var queryHistory = QueryHistoryStore(url: QueryHistoryStore.defaultURL)
     private let status = StatusMenu()
     private lazy var controller = LauncherViewController(icons: icons)
     lazy var panel = LauncherPanel(contentViewController: controller)
@@ -76,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         Task { await refreshWeights() }
+        Task { await refreshQueryHistory() }
 
     }
 
@@ -233,6 +235,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             executor.run(item, argument: argument, secondary: secondary)
         }
         controller.onDismiss = { [weak self] in self?.hidePanel() }
+        controller.onRecordQuery = { [weak self] query in
+            Task { [weak self] in
+                guard let self else { return }
+                await queryHistory.record(query)
+                await refreshQueryHistory()
+            }
+        }
         controller.onReveal = { [weak self] item in
             guard let self else { return }
             hidePanel()
@@ -586,6 +595,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshWeights() async {
         controller.weights = await frecency.decayedWeights()
         lastWeightsRefresh = Date()
+    }
+
+    private func refreshQueryHistory() async {
+        controller.history = await queryHistory.snapshot().queries
     }
 
     private func refreshWeightsIfStale() {
