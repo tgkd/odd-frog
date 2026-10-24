@@ -11,11 +11,12 @@ struct QueryHistoryTests {
         #expect(history.queries == ["safari", "notes"])
     }
 
-    @Test func ignoresBlankAndTrimsWhitespace() {
+    @Test func ignoresBlankButKeepsTriggerSpacing() {
         var history = QueryHistory()
         history.record("   ")
-        history.record("  mail ")
-        #expect(history.queries == ["mail"])
+        history.record("")
+        history.record("clip ")
+        #expect(history.queries == ["clip "])
     }
 
     @Test func dropsOldestPastLimit() {

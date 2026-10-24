@@ -242,6 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 await refreshQueryHistory()
             }
         }
+        controller.onEnterPlugin = { [weak self] item in self?.executor.recordPlugin(item.result) }
         controller.onReveal = { [weak self] item in
             guard let self else { return }
             hidePanel()
@@ -607,6 +608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func rebuildItems() {
+        controller.pluginEntries = plugins.pluginEntries
         allItems = plugins.catalogItems
         let items = settings.apply(to: allItems)
         if items != controller.items {
@@ -664,12 +666,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func togglePlugin(_ id: String) {
         guard let package = plugins.packages.first(where: { $0.manifest.id == id }),
               let trigger = try? package.trigger(in: settings.plugins) else { return }
-        let query = trigger.launchQuery
-        if panel.isVisible, controller.searchField.stringValue == query {
+        if panel.isVisible, controller.activeTrigger?.package.manifest.id == id {
             hidePanel()
             return
         }
-        showPanel(query: query)
+        showPanel(query: trigger.launchQuery)
     }
 
     private func showPanel(query: String = "") {

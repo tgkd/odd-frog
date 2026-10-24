@@ -12,6 +12,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private let scrollView = NSScrollView()
     private let contentStack = NSStackView()
     private let separator = NSBox()
+    private let chip = TriggerChip()
     private let emptyBand = NSView()
     private let emptyLabel = NSTextField(labelWithString: "")
     private let prototype = ResultRowView()
@@ -33,6 +34,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     }
     var maxResults = 8 { didSet { refresh(keepSelection: true) } }
     private(set) var results: [RankedItem] = []
+    /// Plugins the field can enter; set by the host whenever plugins or their triggers change.
+    var pluginEntries: [(package: PluginPackage, trigger: PluginTrigger)] = []
+    private(set) var activeTrigger: (package: PluginPackage, trigger: PluginTrigger)?
     var history: [String] = [] { didSet { historyIndex = nil } }
     private var historyIndex: Int?
 
@@ -42,6 +46,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     var onHeightChange: ((CGFloat) -> Void)?
     var onReveal: ((LauncherItem) -> Void)?
     var onSettings: (() -> Void)?
+    var onEnterPlugin: ((LauncherItem) -> Void)?
     var onRecordQuery: ((String) -> Void)?
     var pluginQuery: ((String, [LauncherItem], [String: Double], Int) -> [RankedItem])?
 
@@ -65,13 +70,18 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
         let header = NSView()
         searchField.delegate = self
-        searchField.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(searchField)
+        chip.isHidden = true
+        let queryRow = NSStackView(views: [chip, searchField])
+        queryRow.orientation = .horizontal
+        queryRow.alignment = .centerY
+        queryRow.spacing = 6
+        queryRow.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(queryRow)
         NSLayoutConstraint.activate([
-            searchField.leadingAnchor.constraint(equalTo: header.layoutMarginsGuide.leadingAnchor),
-            searchField.trailingAnchor.constraint(equalTo: header.layoutMarginsGuide.trailingAnchor),
-            searchField.topAnchor.constraint(equalTo: header.topAnchor, constant: Self.queryInset),
-            header.bottomAnchor.constraint(equalTo: searchField.bottomAnchor, constant: Self.queryInset),
+            queryRow.leadingAnchor.constraint(equalTo: header.layoutMarginsGuide.leadingAnchor),
+            queryRow.trailingAnchor.constraint(equalTo: header.layoutMarginsGuide.trailingAnchor),
+            queryRow.topAnchor.constraint(equalTo: header.topAnchor, constant: Self.queryInset),
+            header.bottomAnchor.constraint(equalTo: queryRow.bottomAnchor, constant: Self.queryInset),
         ])
 
         separator.boxType = .separator
@@ -161,31 +171,23 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     func prepareForShow() {
         historyIndex = nil
+        setActiveTrigger(nil)
         searchField.stringValue = ""
         refresh()
     }
 
     func setQuery(_ query: String) {
         historyIndex = nil
-        searchField.stringValue = query
+        setActiveTrigger(nil)
+        setFieldText(query)
+        absorbTypedTrigger()
         refresh()
-    }
-
-    private func replaceQuery(with text: String) {
-        searchField.stringValue = text
-        moveCaretToEnd()
-    }
-
-    private func moveCaretToEnd() {
-        let length = (searchField.stringValue as NSString).length
-        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
     }
 
     private func recallHistory(at index: Int) {
         guard history.indices.contains(index) else { return }
-        replaceQuery(with: history[index])
+        setQuery(history[index])
         historyIndex = index
-        refresh()
     }
 
     private func moveUp() {
@@ -195,8 +197,55 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         }
         if let index = historyIndex {
             recallHistory(at: index + 1)
-        } else if searchField.stringValue.allSatisfy(\.isWhitespace) {
+        } else if fullQuery.allSatisfy(\.isWhitespace) {
             recallHistory(at: 0)
+        }
+    }
+
+    /// The query the plugins see: the chip's trigger text followed by the field.
+    var fullQuery: String { (activeTrigger?.trigger.launchQuery ?? "") + searchField.stringValue }
+
+    func enterPlugin(_ entry: (package: PluginPackage, trigger: PluginTrigger), filter: String = "") {
+        setActiveTrigger(entry)
+        setFieldText(filter)
+        refresh()
+    }
+
+    func leavePlugin() {
+        guard activeTrigger != nil else { return }
+        setActiveTrigger(nil)
+        setFieldText("")
+        refresh()
+    }
+
+    private func setActiveTrigger(_ entry: (package: PluginPackage, trigger: PluginTrigger)?) {
+        activeTrigger = entry
+        chip.title = entry?.package.manifest.name ?? ""
+        chip.isHidden = entry == nil
+        searchField.placeholderString = entry.map { "Search \($0.package.manifest.name)…" } ?? SearchField.placeholder
+    }
+
+    private func setFieldText(_ text: String) {
+        searchField.stringValue = text
+        let length = (text as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
+    }
+
+    /// Turns a trigger typed into the root field (`clip ` or `>`) into the chip, leaving only the filter in the field.
+    private func absorbTypedTrigger() {
+        guard activeTrigger == nil else { return }
+        let text = searchField.stringValue
+        for entry in pluginEntries {
+            switch entry.trigger {
+            case .keyword(let keyword):
+                let head = text.prefix { !$0.isWhitespace }
+                guard head.lowercased() == keyword, text.count > head.count else { continue }
+                enterPlugin(entry, filter: String(text.dropFirst(head.count + 1)))
+            case .prefix(let prefix):
+                guard text.hasPrefix(prefix) else { continue }
+                enterPlugin(entry, filter: String(text.dropFirst(prefix.count)))
+            }
+            return
         }
     }
 
@@ -208,12 +257,14 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             Log.write("makeFirstResponder(searchField) refused, retrying")
             return window.makeFirstResponder(searchField)
         }
-        moveCaretToEnd()
+        let length = (searchField.stringValue as NSString).length
+        searchField.currentEditor()?.selectedRange = NSRange(location: length, length: 0)
         return ok
     }
 
     func applyContentFont() {
         searchField.font = ContentFont.current.font(.title2)
+        chip.applyContentFont()
         emptyLabel.font = ContentFont.current.font(.body)
         refresh(keepSelection: true)
     }
@@ -226,7 +277,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     func refresh(keepSelection: Bool = false) {
         guard isViewLoaded else { return }
         let selectedID = keepSelection ? selectedItem?.id : nil
-        let query = searchField.stringValue
+        let query = fullQuery
         results = pluginQuery?(query, items, weights, maxResults)
             ?? SearchEngine.search(query: query, items: items, weights: weights, maxResults: maxResults)
         tableView.reloadData()
@@ -234,8 +285,9 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let rows = results.count
         let visible = min(rows, Self.visibleRowCap)
         scrollHeight.constant = rows == 0 ? 0 : tableView.rect(ofRow: visible - 1).maxY + tableView.rect(ofRow: 0).minY
-        let showsEmptyState = rows == 0 && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        emptyLabel.stringValue = showsEmptyState ? "No results for “\(query)”" : ""
+        let filter = searchField.stringValue
+        let showsEmptyState = rows == 0 && !filter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        emptyLabel.stringValue = showsEmptyState ? "No results for “\(filter)”" : ""
         emptyBand.isHidden = !showsEmptyState
         scrollView.isHidden = rows == 0
         separator.isHidden = rows == 0 && !showsEmptyState
@@ -265,9 +317,23 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         return item.acceptsArgument ? base + " " : base
     }
 
+    private func pluginEntry(for item: LauncherItem) -> (package: PluginPackage, trigger: PluginTrigger)? {
+        guard item.result.item.id == PluginCoordinator.entryItemID else { return nil }
+        return pluginEntries.first { $0.package.manifest.id == item.result.pluginID }
+    }
+
+    private func enter(_ item: LauncherItem, _ entry: (package: PluginPackage, trigger: PluginTrigger)) {
+        onEnterPlugin?(item)
+        enterPlugin(entry)
+    }
+
     private func fill(with item: LauncherItem) {
         historyIndex = nil
-        replaceQuery(with: completion(for: item))
+        if let entry = pluginEntry(for: item) {
+            enter(item, entry)
+            return
+        }
+        setFieldText(completion(for: item))
         refresh(keepSelection: true)
     }
 
@@ -275,12 +341,16 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let row = tableView.selectedRow
         guard row >= 0, row < results.count else { return }
         let result = results[row]
+        if let entry = pluginEntry(for: result.item) {
+            enter(result.item, entry)
+            return
+        }
         if case .plugin(let live) = result.item, live.item.primary == nil { return }
         if case .plugin(let plugin) = result.item, let spec = plugin.item.argument, !spec.optional, result.argument == nil {
             fill(with: result.item)
             return
         }
-        onRecordQuery?(searchField.stringValue)
+        onRecordQuery?(fullQuery)
         onSubmit?(result.item, result.argument, secondary)
     }
 
@@ -333,6 +403,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     func controlTextDidChange(_ obj: Notification) {
         historyIndex = nil
         replaceLineBreaks()
+        absorbTypedTrigger()
         refresh()
     }
 
@@ -356,7 +427,10 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         case #selector(NSResponder.insertNewline(_:)):
             submit()
         case #selector(NSResponder.cancelOperation(_:)):
-            onDismiss?()
+            if activeTrigger != nil { leavePlugin() } else { onDismiss?() }
+        case #selector(NSResponder.deleteBackward(_:)):
+            guard activeTrigger != nil, searchField.stringValue.isEmpty else { return false }
+            leavePlugin()
         case #selector(NSResponder.moveToBeginningOfDocument(_:)):
             select(row: 0)
         case #selector(NSResponder.moveToEndOfDocument(_:)):

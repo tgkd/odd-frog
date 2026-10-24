@@ -9,11 +9,11 @@ public struct QueryHistory: Codable, Sendable, Equatable {
         self.queries = queries
     }
 
+    /// Whitespace is kept: a keyword trigger needs its trailing space (`clip `) to reopen as the plugin chip.
     public mutating func record(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        queries.removeAll { $0 == trimmed }
-        queries.insert(trimmed, at: 0)
+        guard !query.allSatisfy(\.isWhitespace) else { return }
+        queries.removeAll { $0 == query }
+        queries.insert(query, at: 0)
         if queries.count > Self.limit { queries.removeLast(queries.count - Self.limit) }
     }
 }
