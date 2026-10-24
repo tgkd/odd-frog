@@ -15,7 +15,7 @@ public struct CommandItem: Sendable, Hashable, Identifiable {
     public let cwd: URL?
     public let terminal: Bool
     /// Global shortcut from config; an item override in settings replaces it.
-    public let hotkey: Hotkey?
+    public var hotkey: Hotkey?
 
     public init(name: String, aliases: [String], action: CommandAction, cwd: URL?, terminal: Bool, stableID: String? = nil, hotkey: Hotkey? = nil) {
         self.stableID = stableID ?? StoragePaths.stableID(name)
@@ -28,8 +28,8 @@ public struct CommandItem: Sendable, Hashable, Identifiable {
     }
 
     public var id: String { "command:\(stableID)" }
-    /// The id of the launcher item the commands plugin publishes for this command.
-    public var itemID: String { "plugin:commands:\(stableID)" }
+    public static func itemID(forStableID stableID: String) -> String { "plugin:commands:" + stableID }
+    public var itemID: String { Self.itemID(forStableID: stableID) }
 }
 
 public enum LauncherItem: Sendable, Hashable {

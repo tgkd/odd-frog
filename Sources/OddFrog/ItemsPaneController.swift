@@ -16,12 +16,10 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
 
     var settings = Settings.empty
     var defaultHotkeys: [String: Hotkey] = [:] {
-        didSet {
-            guard defaultHotkeys != oldValue, !visibleItems.isEmpty else { return }
-            let column = table.column(withIdentifier: Column.hotkey)
-            guard column >= 0 else { return }
-            table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<visibleItems.count), columnIndexes: IndexSet(integer: column))
-        }
+        didSet { if defaultHotkeys != oldValue { reloadHotkeyColumn() } }
+    }
+    var hotkeyConflicts: [String: String] = [:] {
+        didSet { if hotkeyConflicts != oldValue { reloadHotkeyColumn() } }
     }
     var onChange: ((Settings) -> Void)?
 
@@ -229,6 +227,23 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         table.reloadData(forRowIndexes: [row], columnIndexes: [name, kind])
     }
 
+    private func reloadHotkeyColumn() {
+        let column = table.column(withIdentifier: Column.hotkey)
+        guard column >= 0, !visibleItems.isEmpty else { return }
+        table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<visibleItems.count), columnIndexes: IndexSet(integer: column))
+    }
+
+    private func showHotkey(_ title: String, in recorder: HotkeyRecorder, conflict: String?) {
+        guard conflict != nil else {
+            recorder.title = title
+            return
+        }
+        recorder.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: NSColor.systemRed,
+            .font: recorder.font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        ])
+    }
+
     private func setHotkey(_ hotkey: Hotkey?, for itemID: String) {
         let stored = settings.override(for: itemID)?.hotkey
         let serialized = hotkey?.serialized
@@ -361,13 +376,15 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         case Column.hotkey:
             guard let recorder = cell.subviews.first as? HotkeyRecorder, let clear = cell.subviews.last as? NSButton else { return }
             let title = hotkeyTitle(for: item, override: override)
-            recorder.title = title
-            recorder.toolTip = override?.hotkey == nil && defaultHotkeys[item.id] != nil
+            let conflict = hotkeyConflicts[item.id]
+            showHotkey(title, in: recorder, conflict: conflict)
+            recorder.toolTip = conflict ?? (override?.hotkey == nil && defaultHotkeys[item.id] != nil
                 ? "Set in config.toml. Click to record a replacement; Esc cancels."
-                : "Click, then type a shortcut. Esc cancels."
+                : "Click, then type a shortcut. Esc cancels.")
             recorder.onRecord = { [weak self] hotkey in self?.setHotkey(hotkey, for: item.id) }
-            recorder.onRecordingChanged = { [weak recorder] recording in
-                recorder?.title = recording ? "Type shortcut…" : title
+            recorder.onRecordingChanged = { [weak self, weak recorder] recording in
+                guard let self, let recorder else { return }
+                if recording { recorder.title = "Type shortcut…" } else { showHotkey(title, in: recorder, conflict: conflict) }
             }
             clear.isHidden = override?.hotkey == nil
         default:

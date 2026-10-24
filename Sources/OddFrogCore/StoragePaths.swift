@@ -49,7 +49,7 @@ public enum V2Migration {
             if id.hasPrefix("command:") {
                 let name = String(id.dropFirst(8))
                 let local = original.commands.first { $0.name == name || $0.stableID == name }?.stableID ?? StoragePaths.stableID(name)
-                return "plugin:commands:\(local)"
+                return CommandItem.itemID(forStableID: local)
             }
             if id.hasPrefix("script:") { return "plugin:scripts:" + id.dropFirst(7) }
             if id.hasPrefix("window:") { return "plugin:windows:" + id.dropFirst(7) }

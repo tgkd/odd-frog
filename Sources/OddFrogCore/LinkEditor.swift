@@ -44,7 +44,10 @@ public enum LinkEditor {
     public static func updating(_ text: String, original: CommandItem?, draft: LinkDraft?) throws -> String {
         let config = try ConfigParser.parse(text)
         var replacement = try draft?.command()
-        if let original { replacement?.stableID = original.stableID }
+        if let original {
+            replacement?.stableID = original.stableID
+            replacement?.hotkey = original.hotkey
+        }
         var commands = config.commands
         var index: Int?
         if let original {

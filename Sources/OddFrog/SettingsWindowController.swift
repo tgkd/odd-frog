@@ -15,6 +15,11 @@ final class SettingsWindowController: NSWindowController {
         get { itemsPane.defaultHotkeys }
         set { itemsPane.defaultHotkeys = newValue }
     }
+    /// Why an item's hotkey is not active, keyed by item id.
+    var hotkeyConflicts: [String: String] {
+        get { itemsPane.hotkeyConflicts }
+        set { itemsPane.hotkeyConflicts = newValue }
+    }
 
     private let linkManager = LinkManagerController()
     private let splitController = NSSplitViewController()

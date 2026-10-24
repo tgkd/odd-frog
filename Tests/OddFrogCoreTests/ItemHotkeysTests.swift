@@ -13,7 +13,7 @@ struct ItemHotkeysTests {
         settings.setOverride(ItemOverride(id: "plugin:applications:/Applications/Safari.app", hotkey: "cmd+shift+s"))
         let parsed = try Settings.parse(settings.serialized())
         #expect(parsed == settings)
-        #expect(try parsed.items.first?.parsedHotkey() == Hotkey.parse("cmd+shift+s"))
+        #expect(parsed.items.first?.hotkey == "cmd+shift+s")
 
         let trimmed = try Settings.parse("""
         [[items]]
@@ -26,7 +26,6 @@ struct ItemHotkeysTests {
         """)
         #expect(trimmed.items.map(\.hotkey) == ["ctrl+alt+a", nil])
         #expect(ItemOverride(id: "x", hotkey: "cmd+x").isDefault == false)
-        #expect(throws: (any Error).self) { try ItemOverride(id: "x", hotkey: "x").parsedHotkey() }
     }
 
     @Test func resolutionGivesEachHotkeyToOneItemAndNamesConflicts() throws {
@@ -82,13 +81,13 @@ extension ItemHotkeysTests {
         let defaults = [config.commands[0].itemID: try Hotkey.parse("ctrl+alt+o")]
         let fromConfig = ItemHotkeys.resolve(items: [dev], settings: Settings(), defaults: defaults)
         #expect(fromConfig.assigned == defaults)
-        #expect(fromConfig.requested == [dev.id: "ctrl+alt+o"])
+        #expect(ItemHotkeys.requests(settings: Settings(), defaults: defaults) == [dev.id: "ctrl+alt+o"])
 
         var settings = Settings()
         settings.setOverride(ItemOverride(id: dev.id, hotkey: "cmd+shift+o"))
         let overridden = ItemHotkeys.resolve(items: [dev], settings: settings, defaults: defaults)
         #expect(overridden.assigned == [dev.id: try Hotkey.parse("cmd+shift+o")])
-        #expect(overridden.requested == [dev.id: "cmd+shift+o"])
+        #expect(ItemHotkeys.requests(settings: settings, defaults: defaults) == [dev.id: "cmd+shift+o"])
 
         settings.setOverride(ItemOverride(id: dev.id, enabled: false))
         #expect(ItemHotkeys.resolve(items: [dev], settings: settings, defaults: defaults) == ItemHotkeys.Resolution())
@@ -96,17 +95,34 @@ extension ItemHotkeysTests {
 }
 
 extension ItemHotkeysTests {
-    @Test func retainedItemsKeepTheirHotkeyWhileTheCatalogRefills() throws {
+    @Test func theCurrentHolderKeepsAHotkeyWhenTheCatalogOrderChanges() throws {
+        let mail = item("mail", "Mail")
+        let notes = item("notes", "Notes")
         var settings = Settings()
-        settings.setOverride(ItemOverride(id: "plugin:applications:/Applications/Mail.app", hotkey: "cmd+shift+m"))
-        settings.setOverride(ItemOverride(id: "plugin:applications:/Applications/Notes.app", hotkey: "cmd+shift+m"))
-        let retained = ["plugin:applications:/Applications/Mail.app": "Mail"]
-        let empty = ItemHotkeys.resolve(items: [], retaining: retained, settings: settings)
-        #expect(empty.assigned == ["plugin:applications:/Applications/Mail.app": try Hotkey.parse("cmd+shift+m")])
-        let notes = item("/Applications/Notes.app", "Notes")
-        let refilled = ItemHotkeys.resolve(items: [notes], retaining: retained, settings: settings)
-        #expect(refilled.assigned[notes.id] == nil)
-        #expect(refilled.conflicts[notes.id] == "Hotkey ⇧⌘M is already used by Mail.")
-        #expect(ItemHotkeys.resolve(items: [], retaining: [:], settings: settings) == ItemHotkeys.Resolution())
+        settings.setOverride(ItemOverride(id: mail.id, hotkey: "cmd+shift+m"))
+        settings.setOverride(ItemOverride(id: notes.id, hotkey: "cmd+shift+m"))
+        let first = ItemHotkeys.resolve(items: [mail, notes], settings: settings)
+        #expect(first.assigned.keys.sorted() == [mail.id])
+        let reordered = ItemHotkeys.resolve(items: [notes, mail], holding: [mail.id], settings: settings)
+        #expect(reordered.assigned.keys.sorted() == [mail.id])
+        #expect(reordered.conflicts == [notes.id: "Hotkey ⇧⌘M is already used by Mail."])
+        let fresh = ItemHotkeys.resolve(items: [notes, mail], settings: settings)
+        #expect(fresh.assigned.keys.sorted() == [notes.id])
+    }
+
+    @Test func linkEditsKeepTheConfigHotkey() throws {
+        let text = """
+        [[commands]]
+        id = "gh"
+        name = "GitHub"
+        aliases = ["gh"]
+        url = "https://github.com"
+        hotkey = "ctrl+alt+g"
+        """
+        let original = try #require(try ConfigParser.parse(text).commands.first)
+        let edited = try LinkEditor.updating(text, original: original, draft: LinkDraft(name: "GitHub Issues", url: "https://github.com/issues", aliases: "ghi"))
+        let command = try #require(try ConfigParser.parse(edited).commands.first)
+        #expect(command.name == "GitHub Issues")
+        #expect(command.hotkey == (try Hotkey.parse("ctrl+alt+g")))
     }
 }
