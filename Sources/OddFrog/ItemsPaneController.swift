@@ -9,11 +9,18 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         static let kind = NSUserInterfaceItemIdentifier("kind")
         static let builtin = NSUserInterfaceItemIdentifier("builtin")
         static let aliases = NSUserInterfaceItemIdentifier("aliases")
+        static let hotkey = NSUserInterfaceItemIdentifier("hotkey")
     }
 
     private static let iconSize: CGFloat = 16
 
     var settings = Settings.empty
+    var defaultHotkeys: [String: Hotkey] = [:] {
+        didSet { if defaultHotkeys != oldValue { reloadHotkeyColumn() } }
+    }
+    var hotkeyConflicts: [String: String] = [:] {
+        didSet { if hotkeyConflicts != oldValue { reloadHotkeyColumn() } }
+    }
     var onChange: ((Settings) -> Void)?
 
     private let icons: IconCache
@@ -50,7 +57,7 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        let helper = NSTextField(wrappingLabelWithString: "Click an Aliases cell or press Return to add your own aliases, separated by commas. Return saves, Esc cancels.")
+        let helper = NSTextField(wrappingLabelWithString: "Click an Aliases cell or press Return to add your own aliases, separated by commas. Return saves, Esc cancels. A hotkey runs the item from anywhere without opening the launcher.")
         helper.font = .preferredFont(forTextStyle: .subheadline)
         helper.textColor = .secondaryLabelColor
         helper.translatesAutoresizingMaskIntoConstraints = false
@@ -106,15 +113,23 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         enabled.resizingMask = []
         table.addTableColumn(enabled)
 
-        addColumn(Column.name, title: "Item", width: 160)
-        addColumn(Column.kind, title: "Kind", width: 60)
-        addColumn(Column.builtin, title: "Built-in Aliases", width: 90)
+        // Starting widths must sum below the pane width: the table grows its columns to fit, but never shrinks them.
+        addColumn(Column.name, title: "Item", width: 140)
+        addColumn(Column.kind, title: "Kind", width: 50)
+        addColumn(Column.builtin, title: "Built-in Aliases", width: 80)
 
         let aliases = NSTableColumn(identifier: Column.aliases)
         aliases.title = "Aliases"
-        aliases.width = 90
+        aliases.width = 80
         aliases.headerToolTip = "Comma separated. Built-in aliases from config are kept."
         table.addTableColumn(aliases)
+
+        let hotkey = NSTableColumn(identifier: Column.hotkey)
+        hotkey.title = "Hotkey"
+        hotkey.width = 110
+        hotkey.minWidth = 100
+        hotkey.headerToolTip = "Global shortcut that runs the item without opening the launcher."
+        table.addTableColumn(hotkey)
     }
 
     private func addColumn(_ id: NSUserInterfaceItemIdentifier, title: String, width: CGFloat) {
@@ -212,6 +227,48 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
         table.reloadData(forRowIndexes: [row], columnIndexes: [name, kind])
     }
 
+    private func reloadHotkeyColumn() {
+        let column = table.column(withIdentifier: Column.hotkey)
+        guard column >= 0, !visibleItems.isEmpty else { return }
+        table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<visibleItems.count), columnIndexes: IndexSet(integer: column))
+    }
+
+    private func showHotkey(_ title: String, in recorder: HotkeyRecorder, conflict: String?) {
+        guard conflict != nil else {
+            recorder.title = title
+            return
+        }
+        recorder.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: NSColor.systemRed,
+            .font: recorder.font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        ])
+    }
+
+    private func setHotkey(_ hotkey: Hotkey?, for itemID: String) {
+        let stored = settings.override(for: itemID)?.hotkey
+        let serialized = hotkey?.serialized
+        if serialized != stored {
+            var override = settings.override(for: itemID) ?? ItemOverride(id: itemID)
+            override.hotkey = serialized
+            settings.setOverride(override)
+            onChange?(settings)
+        }
+        let column = table.column(withIdentifier: Column.hotkey)
+        guard column >= 0, let row = visibleItems.firstIndex(where: { $0.id == itemID }) else { return }
+        table.reloadData(forRowIndexes: [row], columnIndexes: [column])
+    }
+
+    @objc private func clearHotkey(_ sender: NSButton) {
+        let row = table.row(for: sender)
+        guard row >= 0, row < visibleItems.count else { return }
+        setHotkey(nil, for: visibleItems[row].id)
+    }
+
+    private func hotkeyTitle(for item: LauncherItem, override: ItemOverride?) -> String {
+        guard let raw = override?.hotkey else { return defaultHotkeys[item.id]?.description ?? "Record" }
+        return (try? Hotkey.parse(raw))?.description ?? raw
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int {
         visibleItems.count
     }
@@ -235,6 +292,28 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
             NSLayoutConstraint.activate([
                 button.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
                 button.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+        case Column.hotkey:
+            let recorder = HotkeyRecorder()
+            recorder.bezelStyle = .rounded
+            recorder.controlSize = .small
+            recorder.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            recorder.toolTip = "Click, then type a shortcut. Esc cancels."
+            recorder.translatesAutoresizingMaskIntoConstraints = false
+            let clear = NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Remove hotkey")!, target: self, action: #selector(clearHotkey(_:)))
+            clear.isBordered = false
+            clear.contentTintColor = .secondaryLabelColor
+            clear.toolTip = "Remove hotkey"
+            clear.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(recorder)
+            cell.addSubview(clear)
+            NSLayoutConstraint.activate([
+                recorder.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                recorder.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                recorder.widthAnchor.constraint(greaterThanOrEqualToConstant: 72),
+                clear.leadingAnchor.constraint(equalToSystemSpacingAfter: recorder.trailingAnchor, multiplier: 0.5),
+                clear.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
+                clear.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         default:
             let field = NSTextField(labelWithString: "")
@@ -294,6 +373,20 @@ final class ItemsPaneController: NSViewController, NSTableViewDataSource, NSTabl
             cell.textField?.textColor = .secondaryLabelColor
         case Column.aliases:
             cell.textField?.stringValue = (override?.aliases ?? []).joined(separator: ", ")
+        case Column.hotkey:
+            guard let recorder = cell.subviews.first as? HotkeyRecorder, let clear = cell.subviews.last as? NSButton else { return }
+            let title = hotkeyTitle(for: item, override: override)
+            let conflict = hotkeyConflicts[item.id]
+            showHotkey(title, in: recorder, conflict: conflict)
+            recorder.toolTip = conflict ?? (override?.hotkey == nil && defaultHotkeys[item.id] != nil
+                ? "Set in config.toml. Click to record a replacement; Esc cancels."
+                : "Click, then type a shortcut. Esc cancels.")
+            recorder.onRecord = { [weak self] hotkey in self?.setHotkey(hotkey, for: item.id) }
+            recorder.onRecordingChanged = { [weak self, weak recorder] recording in
+                guard let self, let recorder else { return }
+                if recording { recorder.title = "Type shortcut…" } else { showHotkey(title, in: recorder, conflict: conflict) }
+            }
+            clear.isHidden = override?.hotkey == nil
         default:
             break
         }

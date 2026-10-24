@@ -7,6 +7,7 @@ final class HotKeyManager {
     enum Slot: Hashable {
         case launcher
         case plugin(String)
+        case item(String)
     }
 
     enum RegistrationError: Error, CustomStringConvertible {
@@ -62,6 +63,10 @@ final class HotKeyManager {
 
     var pluginIDs: [String] {
         registrations.keys.compactMap { if case .plugin(let id) = $0 { id } else { nil } }
+    }
+
+    var itemIDs: [String] {
+        registrations.keys.compactMap { if case .item(let id) = $0 { id } else { nil } }
     }
 
     func apply(_ hotkey: Hotkey) throws {
