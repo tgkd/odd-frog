@@ -27,6 +27,36 @@ struct QueryHistoryTests {
         #expect(!history.queries.contains("q0"))
     }
 
+    @Test func trailingWhitespaceDoesNotMakeADuplicate() {
+        var history = QueryHistory()
+        history.record("mail")
+        history.record("notes")
+        history.record("mail ")
+        #expect(history.queries == ["mail ", "notes"])
+        history.record("mail")
+        #expect(history.queries == ["mail", "notes"])
+    }
+
+    @Test func leadingWhitespaceStillDiffers() {
+        var history = QueryHistory()
+        history.record("mail")
+        history.record(" mail")
+        #expect(history.queries == [" mail", "mail"])
+    }
+
+    @Test func olderStopsAtTheOldestEntry() {
+        #expect(QueryHistory.older(than: nil, total: 3) == 0)
+        #expect(QueryHistory.older(than: 0, total: 3) == 1)
+        #expect(QueryHistory.older(than: 2, total: 3) == nil)
+        #expect(QueryHistory.older(than: nil, total: 0) == nil)
+    }
+
+    @Test func newerLeavesHistoryPastTheNewestEntry() {
+        #expect(QueryHistory.newer(than: 2) == 1)
+        #expect(QueryHistory.newer(than: 1) == 0)
+        #expect(QueryHistory.newer(than: 0) == nil)
+    }
+
     @Test func windowStaysInsideTheList() {
         #expect(QueryHistory.window(around: 0, count: 5, total: 2) == 0..<2)
         #expect(QueryHistory.window(around: 0, count: 5, total: 20) == 0..<5)
