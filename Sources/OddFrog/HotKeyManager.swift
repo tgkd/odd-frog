@@ -56,6 +56,10 @@ final class HotKeyManager {
         registrations[slot]?.hotkey
     }
 
+    func slot(holding hotkey: Hotkey) -> Slot? {
+        registrations.first { $0.value.hotkey == hotkey }?.key
+    }
+
     var pluginIDs: [String] {
         registrations.keys.compactMap { if case .plugin(let id) = $0 { id } else { nil } }
     }

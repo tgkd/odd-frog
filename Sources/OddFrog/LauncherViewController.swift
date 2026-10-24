@@ -156,7 +156,12 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         if isViewLoaded { tableView.reloadData() }
     }
 
-    func prepareForShow(query: String = "") {
+    func prepareForShow() {
+        searchField.stringValue = ""
+        refresh()
+    }
+
+    func setQuery(_ query: String) {
         searchField.stringValue = query
         refresh()
     }

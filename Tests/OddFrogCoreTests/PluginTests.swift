@@ -271,6 +271,31 @@ struct PluginTests {
         let parsed = try Settings.parse(Settings(plugins: moved).serialized())
         #expect(parsed.plugins.first?.hotkey == "ctrl+alt+c")
     }
+    @Test func hotkeyResolutionGivesEachHotkeyToOnePackageAndNamesConflicts() throws {
+        let root = try temp()
+        defer { try? FileManager.default.removeItem(at: root) }
+        func package(_ id: String, _ hotkey: String?) throws -> PluginPackage {
+            let line = hotkey.map { "\nhotkey = '\($0)'" } ?? ""
+            return PluginPackage(manifest: try manifest(id: id, extra: "activation = 'exclusive'\nkeyword = '\(id)'" + line), directory: root, bundled: true)
+        }
+        let clip = try package("clip", "cmd+shift+v")
+        let notes = try package("notes", "cmd+shift+v")
+        let cal = try package("cal", "ctrl+alt+c")
+        let plain = try package("plain", nil)
+        let launcher = try Hotkey.parse("alt+space")
+        let all = PluginHotkeys.resolve(packages: [clip, notes, cal, plain], settings: [], reserved: launcher)
+        #expect(all.assigned == ["clip": try Hotkey.parse("cmd+shift+v"), "cal": try Hotkey.parse("ctrl+alt+c")])
+        #expect(all.conflicts == ["notes": "Hotkey ⇧⌘V is also used by clip."])
+        let stealing = [PluginSetting(id: "cal", enabled: true, source: cal.source, hotkey: "alt+space")]
+        let reserved = PluginHotkeys.resolve(packages: [clip, notes, cal], settings: stealing, reserved: launcher)
+        #expect(reserved.assigned["cal"] == nil)
+        #expect(reserved.conflicts["cal"] == "Hotkey ⌥Space is used by the launcher.")
+        let disabled = [PluginSetting(id: "clip", enabled: false, source: clip.source)]
+        #expect(PluginHotkeys.resolve(packages: [clip, notes], settings: disabled).assigned == ["notes": try Hotkey.parse("cmd+shift+v")])
+        #expect(PluginHotkeys.resolve(packages: [clip, notes], settings: [], failures: ["clip"]).assigned.keys.contains("notes"))
+        let broken = [PluginSetting(id: "clip", enabled: true, source: clip.source, hotkey: "v")]
+        #expect(PluginHotkeys.resolve(packages: [clip], settings: broken) == PluginHotkeys.Resolution())
+    }
     @Test @MainActor func triggerConflictsUseOverrides() async throws {
         let root = try temp()
         defer { try? FileManager.default.removeItem(at: root) }
