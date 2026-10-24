@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = Notifier()
     private let hotkeys = HotKeyManager()
     private lazy var frecency = FrecencyStore(url: FrecencyStore.defaultURL)
+    private lazy var queryHistory = QueryHistoryStore(url: QueryHistoryStore.defaultURL)
     private let status = StatusMenu()
     private lazy var controller = LauncherViewController(icons: icons)
     lazy var panel = LauncherPanel(contentViewController: controller)
@@ -78,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         Task { await refreshWeights() }
+        Task { await refreshQueryHistory() }
 
     }
 
@@ -236,6 +238,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             executor.run(item, argument: argument, secondary: secondary)
         }
         controller.onDismiss = { [weak self] in self?.hidePanel() }
+        controller.onRecordQuery = { [weak self] query in
+            Task { [weak self] in
+                guard let self else { return }
+                await queryHistory.record(query)
+                await refreshQueryHistory()
+            }
+        }
+        controller.onEnterPlugin = { [weak self] item in self?.executor.recordPlugin(item.result) }
         controller.onReveal = { [weak self] item in
             guard let self else { return }
             hidePanel()
@@ -642,12 +652,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastWeightsRefresh = Date()
     }
 
+    private func refreshQueryHistory() async {
+        controller.history = await queryHistory.snapshot().queries
+    }
+
     private func refreshWeightsIfStale() {
         if let lastWeightsRefresh, Date().timeIntervalSince(lastWeightsRefresh) < 600 { return }
         Task { await refreshWeights() }
     }
 
     private func rebuildItems() {
+        controller.pluginEntries = plugins.pluginEntries
         allItems = plugins.catalogItems
         let items = settings.apply(to: allItems)
         if items != controller.items {
@@ -719,12 +734,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func togglePlugin(_ id: String) {
         guard let package = plugins.packages.first(where: { $0.manifest.id == id }),
               let trigger = try? package.trigger(in: settings.plugins) else { return }
-        let query = trigger.launchQuery
-        if panel.isVisible, controller.searchField.stringValue == query {
+        if panel.isVisible, controller.activeTrigger?.package.manifest.id == id {
             hidePanel()
             return
         }
-        showPanel(query: query)
+        showPanel(query: trigger.launchQuery)
     }
 
     private func showPanel(query: String = "") {
