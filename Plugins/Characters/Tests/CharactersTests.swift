@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import CharactersPluginCore
+@testable import CharactersPluginCore
 import OddFrogPluginAPI
 
 struct CharactersTests {
@@ -55,6 +55,23 @@ struct CharactersTests {
 
     @Test func symbolsLeaveEmojiToTheEmojiCatalog() {
         #expect(!symbols.entries.contains { $0.glyph == "😀" || $0.glyph == "✅" })
+    }
+
+    @Test func everyFeaturedCharacterIsInItsCatalog() {
+        #expect(emoji.featured.count == CharacterCatalog.emojiFeatured.count)
+        #expect(symbols.featured.count == CharacterCatalog.symbolFeatured.count)
+    }
+
+    @Test func anExactAliasOutranksNamesThatOnlyStartWithTheWord() {
+        #expect(symbols.search("alt").first?.glyph == "⌥")
+        #expect(symbols.search("euro").first?.glyph == "€")
+    }
+
+    @Test func glyphIconCarriesTheCharacterForTheLauncher() throws {
+        let item = try #require(CharactersProvider.respond(to: request("rocket"), kind: .emoji, catalog: emoji).first)
+        #expect(item.glyph == "🚀")
+        #expect(PluginItem(id: "x", title: "x", icon: "text:🚀").glyph == nil)
+        #expect(PluginItem(id: "x", title: "x").glyph == nil)
     }
 
     @Test func emptyQueryListsFeaturedEntries() {

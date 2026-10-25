@@ -1,8 +1,7 @@
 import Foundation
 
 extension CharacterCatalog {
-    /// Punctuation, currency, math, arrows, technical and geometric symbols, and Greek letters.
-    /// Emoji-presentation characters live in the emoji catalog.
+    // Emoji-presentation characters live in the emoji catalog.
     public static func symbols() -> CharacterCatalog {
         var entries: [CharacterEntry] = []
         for range in ranges {

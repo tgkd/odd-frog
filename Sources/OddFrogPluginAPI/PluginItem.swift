@@ -58,3 +58,16 @@ public struct PluginItem: Codable, Sendable, Hashable {
         self.completion = completion; self.primary = primary; self.secondary = secondary; self.history = history
     }
 }
+
+public extension PluginItem {
+    static let glyphIconPrefix = "glyph:"
+
+    /// `icon` value that makes the launcher draw `character` large in the icon slot.
+    static func glyphIcon(_ character: String) -> String { glyphIconPrefix + character }
+
+    /// The character when `icon` was made with `glyphIcon(_:)`.
+    var glyph: String? {
+        guard let icon, icon.hasPrefix(Self.glyphIconPrefix) else { return nil }
+        return String(icon.dropFirst(Self.glyphIconPrefix.count))
+    }
+}

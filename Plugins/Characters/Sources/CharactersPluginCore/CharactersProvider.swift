@@ -20,7 +20,7 @@ public enum CharactersProvider {
 
     private static func row(_ entry: CharacterEntry, kind: CharacterKind) -> PluginItem {
         PluginItem(id: entry.code, title: entry.name, subtitle: entry.code,
-                   kind: label(kind), icon: "glyph:\(entry.glyph)",
+                   kind: label(kind), icon: PluginItem.glyphIcon(entry.glyph),
                    primary: PluginAction(.paste, entry.glyph),
                    secondary: PluginAction(.copy, entry.glyph))
     }

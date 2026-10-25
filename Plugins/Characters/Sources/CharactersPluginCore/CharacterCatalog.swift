@@ -7,11 +7,12 @@ public enum CharacterKind: String, Sendable {
 public struct CharacterEntry: Sendable, Hashable {
     public let glyph: String
     public let name: String
+    let key: String
     let nameWords: [String]
+    let namePhrase: String
     let keywordWords: [String]
     let keywordPhrase: String
 
-    /// Code points as `U+1F600`, several joined by spaces for flags. Variation selectors stay out.
     public var code: String {
         glyph.unicodeScalars.filter { $0.value != 0xFE0F }
             .map { String(format: "U+%04X", $0.value) }.joined(separator: " ")
@@ -24,21 +25,20 @@ public struct CharacterCatalog: Sendable {
 
     init(entries: [CharacterEntry], featured: String) {
         self.entries = entries
-        let byGlyph = Dictionary(entries.map { (Self.normalized($0.glyph), $0) }, uniquingKeysWith: { first, _ in first })
-        self.featured = featured.map { byGlyph[Self.normalized(String($0))] }.compactMap { $0 }
+        let byKey = Dictionary(entries.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        self.featured = featured.compactMap { byKey[Self.normalized(String($0))] }
     }
 
-    /// Entries whose every query word matches a name word or keyword, best match first.
     public func search(_ query: String) -> [CharacterEntry] {
-        let glyph = Self.normalized(query.trimmingCharacters(in: .whitespacesAndNewlines))
+        let glyphKey = Self.normalized(query.trimmingCharacters(in: .whitespacesAndNewlines))
         let tokens = Self.words(Self.fold(query))
-        let phrase = tokens.joined(separator: " ")
-        guard !phrase.isEmpty || entries.contains(where: { Self.normalized($0.glyph) == glyph }) else {
+        guard !tokens.isEmpty || !glyphKey.isEmpty else {
             return []
         }
+        let phrase = tokens.joined(separator: " ")
         var scored: [(score: Int, index: Int)] = []
         for (index, entry) in entries.enumerated() {
-            if Self.normalized(entry.glyph) == glyph {
+            if entry.key == glyphKey {
                 scored.append((1000, index))
                 continue
             }
@@ -51,7 +51,7 @@ public struct CharacterCatalog: Sendable {
                 total += score
             }
             if total > 0 {
-                if entry.nameWords.joined(separator: " ").hasPrefix(phrase) {
+                if entry.namePhrase.hasPrefix(phrase) {
                     total += 10
                 }
                 // An alias such as "right arrow" should beat longer names that merely contain both words.
@@ -69,6 +69,7 @@ public struct CharacterCatalog: Sendable {
         return scored.map { entries[$0.index] }
     }
 
+    // Aliases are hand-picked for the word people type, so an exact alias beats a name that only starts with it.
     private static func score(_ token: String, in entry: CharacterEntry) -> Int? {
         var best: Int?
         func consider(_ words: [String], exact: Int, prefix: Int, inner: Int) {
@@ -87,14 +88,16 @@ public struct CharacterCatalog: Sendable {
             }
         }
         consider(entry.nameWords, exact: 30, prefix: 20, inner: 5)
-        consider(entry.keywordWords, exact: 25, prefix: 15, inner: 4)
+        consider(entry.keywordWords, exact: 35, prefix: 15, inner: 4)
         return best
     }
 
     static func entry(glyph: String, name: String, keywords: String = "") -> CharacterEntry {
+        let nameWords = words(fold(name))
         let keywordWords = words(fold(keywords))
-        return CharacterEntry(glyph: glyph, name: name, nameWords: words(fold(name)), keywordWords: keywordWords,
-                              keywordPhrase: keywordWords.joined(separator: " "))
+        return CharacterEntry(glyph: glyph, name: name, key: normalized(glyph),
+                              nameWords: nameWords, namePhrase: nameWords.joined(separator: " "),
+                              keywordWords: keywordWords, keywordPhrase: keywordWords.joined(separator: " "))
     }
 
     static func displayName(_ raw: String) -> String {
@@ -110,6 +113,7 @@ public struct CharacterCatalog: Sendable {
         text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
     }
 
+    // Emoji presentation selector must not make "❤" and "❤️" different characters.
     static func normalized(_ glyph: String) -> String {
         String(String.UnicodeScalarView(glyph.unicodeScalars.filter { $0.value != 0xFE0F }))
     }

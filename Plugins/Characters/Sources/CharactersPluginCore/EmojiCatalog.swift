@@ -1,8 +1,7 @@
 import Foundation
 
 extension CharacterCatalog {
-    /// Single-scalar emoji named by Unicode, plus a flag for every ISO region.
-    /// Skin tones and ZWJ sequences are not listed.
+    // Skin tones and ZWJ sequences are not listed.
     public static func emoji(locale: Locale = .current) -> CharacterCatalog {
         var entries: [CharacterEntry] = []
         for range in [0x203C...0x3299, 0x1F000...0x1FAFF] as [ClosedRange<UInt32>] {
@@ -16,11 +15,11 @@ extension CharacterCatalog {
                     continue
                 }
                 let glyph = String(scalar) + (properties.isEmojiPresentation ? "" : "\u{FE0F}")
-                entries.append(entry(glyph: glyph, name: displayName(name), keywords: aliases[String(scalar)] ?? ""))
+                entries.append(entry(glyph: glyph, name: displayName(name), keywords: emojiAliases[String(scalar)] ?? ""))
             }
         }
         entries += flags(locale: locale)
-        return CharacterCatalog(entries: entries, featured: featured)
+        return CharacterCatalog(entries: entries, featured: emojiFeatured)
     }
 
     static func flags(locale: Locale) -> [CharacterEntry] {
@@ -40,10 +39,10 @@ extension CharacterCatalog {
         }
     }
 
-    static let featured = "😀😂🙂😊😍😎🤔😉😢😭😡🥳🤯🙏👍👎👏👋👌🤝💪👀❤💔🔥✨⭐🎉💯✅❌⚠🚀💡🐛🎯📌🔒🔑📝☕🐸🤷"
+    static let emojiFeatured = "😀😂🙂😊😍😎🤔😉😢😭😡🥳🤯🙏👍👎👏👋👌🤝💪👀❤💔🔥✨⭐🎉💯✅❌⚠🚀💡🐛🎯📌🔒🔑📝☕🐸🤷"
 
     // Unicode names read like "white smiling face" or "heavy black heart", so common words go here.
-    static let aliases: [String: String] = Dictionary([
+    static let emojiAliases: [String: String] = Dictionary([
         ("😀", "smile happy улыбка"), ("😂", "lol laugh joy tears смех"), ("🙂", "smile"),
         ("😊", "blush smile happy"), ("😍", "love heart eyes"), ("😎", "cool sunglasses"),
         ("😢", "sad cry грусть"), ("😭", "sob cry плач"), ("😡", "angry mad злой"),
