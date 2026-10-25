@@ -4,8 +4,9 @@ import Testing
 @testable import BundledFeatures
 
 struct UnitConversionTests {
+    private let locale = Locale(identifier: "en_US")
     private func expect(_ text: String, _ value: Double, result: String? = nil, sourceLocation: SourceLocation = #_sourceLocation) {
-        guard let conversion = UnitConversion.evaluate(text) else {
+        guard let conversion = UnitConversion.evaluate(text, locale: locale) else {
             Issue.record("\(text) did not convert", sourceLocation: sourceLocation)
             return
         }
@@ -45,7 +46,7 @@ struct UnitConversionTests {
 
     @Test func rejectsMismatchedAndMalformedInput() {
         for text in ["100 kg in miles", "km in mi", "100 km in mi extra", "1,5 km in mi", "safari", "100", "2 min", "100 xyz in mi"] {
-            #expect(UnitConversion.evaluate(text) == nil, "\(text) should not convert")
+            #expect(UnitConversion.evaluate(text, locale: locale) == nil, "\(text) should not convert")
         }
     }
 }

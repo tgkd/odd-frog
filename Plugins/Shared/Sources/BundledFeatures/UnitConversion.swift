@@ -14,13 +14,16 @@ public struct UnitConversion: Sendable, Hashable {
 
     static let keywords: Set<String> = ["in", "to", "as"]
 
-    static let style = Measurement<Dimension>.FormatStyle(
-        width: .abbreviated,
-        usage: .asProvided,
-        numberFormatStyle: .number.precision(.fractionLength(0...4))
-    )
+    static func style(locale: Locale) -> Measurement<Dimension>.FormatStyle {
+        Measurement<Dimension>.FormatStyle(
+            width: .abbreviated,
+            locale: locale,
+            usage: .asProvided,
+            numberFormatStyle: .number.precision(.fractionLength(0...4)).locale(locale)
+        )
+    }
 
-    public static func evaluate(_ text: String) -> UnitConversion? {
+    public static func evaluate(_ text: String, locale: Locale = .current) -> UnitConversion? {
         let trimmed = text.trimmingCharacters(in: .whitespaces).lowercased()
         guard let scanned = Arithmetic.scanNumber(Substring(trimmed)) else { return nil }
         let literal = String(trimmed[trimmed.startIndex..<scanned.rest.startIndex])
@@ -47,7 +50,7 @@ public struct UnitConversion: Sendable, Hashable {
         return UnitConversion(
             input: "\(literal) \(source.symbol) → \(target.symbol)",
             value: converted.value,
-            result: converted.formatted(style)
+            result: converted.formatted(style(locale: locale))
         )
     }
 }

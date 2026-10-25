@@ -4,6 +4,7 @@ import Testing
 @testable import BundledFeatures
 
 struct QuickActionTests {
+    private let locale = Locale(identifier: "en_US")
     private let template = "https://duckduckgo.com/?q={query}"
 
     @Test func detectURLAcceptsRecognizableURLs() {
@@ -42,7 +43,7 @@ struct QuickActionTests {
     }
 
     @Test func arithmeticQueryBecomesACalculatorAction() {
-        guard let action = QuickAction.calculation(for: "2+2") else {
+        guard let action = QuickAction.calculation(for: "2+2", locale: locale) else {
             Issue.record("expected a calculation action")
             return
         }
@@ -54,11 +55,11 @@ struct QuickActionTests {
     }
 
     @Test func calculatorTitleRoundsToSixPlaces() {
-        #expect(QuickAction.calculation(for: "0.1+0.2")?.title == "0.3")
+        #expect(QuickAction.calculation(for: "0.1+0.2", locale: locale)?.title == "0.3")
     }
 
     @Test func unitQueryBecomesAUnitsAction() {
-        guard let action = QuickAction.calculation(for: "100 km in mi") else {
+        guard let action = QuickAction.calculation(for: "100 km in mi", locale: locale) else {
             Issue.record("expected a calculation action")
             return
         }
@@ -66,7 +67,7 @@ struct QuickActionTests {
         #expect(action.subtitle == "100 km → mi")
         #expect(action.kindLabel == "Units")
         #expect(action.copyText == "62.137119")
-        #expect(QuickAction.calculation(for: "2+2")?.kindLabel == "Calculator")
+        #expect(QuickAction.calculation(for: "2+2", locale: locale)?.kindLabel == "Calculator")
     }
 
     @Test func plainTextAndBareNumbersAreNotCalculations() {
