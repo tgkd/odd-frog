@@ -789,7 +789,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !command.isEmpty {
             controller.searchField.stringValue = command
-            controller.refresh()
+            // Same path as typing, so a trigger such as `clip ` becomes the plugin chip.
+            controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             MainActor.assumeIsolated {

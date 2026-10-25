@@ -1,0 +1,8 @@
+id = "emoji"
+name = "Emoji"
+version = "0.1.0"
+api_version = 2
+keyword = "emoji"
+mode = "persistent"
+activation = "exclusive"
+capabilities = []
