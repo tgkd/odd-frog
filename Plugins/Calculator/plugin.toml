@@ -12,3 +12,10 @@ key = "currency"
 title = "Currency conversion (exchangerate-api.com)"
 type = "boolean"
 default = true
+
+[[settings]]
+key = "default_currency"
+title = "Default currency (`100 eur` converts to it)"
+type = "choice"
+choices = ["USD", "EUR", "GBP", "JPY", "CNY", "CHF", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "RSD", "RUB", "UAH", "BYN", "KZT", "GEL", "AMD", "TRY", "AED", "ILS", "INR", "THB", "VND", "IDR", "KRW", "SGD", "HKD", "MXN", "BRL", "ARS", "ZAR"]
+default = "USD"

@@ -28,7 +28,7 @@ public struct CurrencyConversion: Sendable, Hashable {
         "₩": "KRW",
     ]
 
-    public static func evaluate(_ text: String, rates: CurrencyRates, locale: Locale = .current) -> CurrencyConversion? {
+    public static func evaluate(_ text: String, rates: CurrencyRates, defaultCurrency: String? = nil, locale: Locale = .current) -> CurrencyConversion? {
         var head = Substring(text.trimmingCharacters(in: .whitespaces))
         var symbolCode: String?
         if let first = head.first, let code = symbols[first] {
@@ -47,11 +47,16 @@ public struct CurrencyConversion: Sendable, Hashable {
             normalized = normalized.replacingOccurrences(of: separator, with: " in ")
         }
         let tokens = normalized.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let defaultToken = defaultCurrency?.lowercased()
         let sourceToken: String
         let targetToken: String
+        var targetIsDefault = false
         if let symbolCode {
             sourceToken = symbolCode
-            if tokens.count == 2, keywords.contains(tokens[0]) {
+            if tokens.isEmpty, let defaultToken {
+                targetToken = defaultToken
+                targetIsDefault = true
+            } else if tokens.count == 2, keywords.contains(tokens[0]) {
                 targetToken = tokens[1]
             } else if tokens.count == 1, !keywords.contains(tokens[0]) {
                 targetToken = tokens[0]
@@ -64,10 +69,15 @@ public struct CurrencyConversion: Sendable, Hashable {
         } else if tokens.count == 2, !keywords.contains(tokens[1]) {
             sourceToken = tokens[0]
             targetToken = tokens[1]
+        } else if tokens.count == 1, !keywords.contains(tokens[0]), let defaultToken {
+            sourceToken = tokens[0]
+            targetToken = defaultToken
+            targetIsDefault = true
         } else {
             return nil
         }
         guard let source = code(sourceToken, rates: rates), let target = code(targetToken, rates: rates) else { return nil }
+        guard !targetIsDefault || source != target else { return nil }
         guard let value = rates.convert(scanned.value, from: source, to: target) else { return nil }
         return CurrencyConversion(
             input: "\(literal) \(source) → \(target)",
