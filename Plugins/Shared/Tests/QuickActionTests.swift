@@ -54,6 +54,15 @@ struct QuickActionTests {
         #expect(action.copyText == "4")
     }
 
+    @Test func onlyPlainCalculationsAnswerTheQuery() {
+        #expect(QuickAction.calculation(for: "2+2", locale: locale)?.answersQuery == true)
+        #expect(QuickAction.calculation(for: "5 km in m", locale: locale)?.answersQuery == true)
+        #expect(QuickAction.calculation(for: "2024-03", locale: locale)?.answersQuery == false)
+        #expect(QuickAction.calculation(for: "1920x1080", locale: locale)?.answersQuery == false)
+        #expect(FeatureProvider.quick(.calculation(input: "2+2", value: 4, kind: .arithmetic, locale: locale)).answer == true)
+        #expect(FeatureProvider.quick(.calculation(input: "2024-03", value: 2021, kind: .arithmetic, locale: locale)).answer == nil)
+    }
+
     @Test func calculatorTitleRoundsToSixPlaces() {
         #expect(QuickAction.calculation(for: "0.1+0.2", locale: locale)?.title == "0.3")
     }

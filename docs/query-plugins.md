@@ -56,6 +56,13 @@ lower, raise (up to 10) or turn off the count for a package with `root_results`;
 `root_results` in the package's `[[plugins]]` entry. Packages without the manifest field are never asked
 for root rows. Triggered queries (`f query`) behave as before and always omit `root`.
 
+Root rows suit a name or an address, not a query that something already answered. A live provider
+marks a row with `answer: true` when it answers the typed query outright, like `2 + 2` or `100 eur`.
+While such a row is shown, the host drops all root rows. A row that is only one reading of the query,
+like `2024-03` as a subtraction, stays unmarked, and root rows appear next to it. After the query
+changes, root rows wait up to 150 ms for live providers, so a quick answer replaces them before they
+appear. Unfinished input such as `100 e` has no answer yet, so root rows may show while it is typed.
+
 With nothing typed, the launcher lists each enabled exclusive package with its trigger and hotkey,
 below the recent items, so the user can see what to type. Recents give up slots before an entry
 does. The Plugins pane has a switch for this list, stored as `show_plugins` in the `[launcher]` table
@@ -119,7 +126,7 @@ providers finish and there are no live or catalog matches. Selection follows ite
 All catalog and query items use the same shape. Required: local `id` and `title`. Optional:
 `subtitle`, `kind` label, SF Symbol `symbol`, `icon` (absolute file, package-relative asset,
 `text:` glyph, or `file:<absolute path>` for the Finder icon of any file or folder), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
-`secondary`, and `history`. Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
+`secondary`, `history`, and `answer` (see root rows above). Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
 within a catalog/response. Set `history: true` for reusable catalog items; live results are always
 transient. Missing secondary action uses primary. Missing primary produces an inert status row.
 

@@ -34,6 +34,15 @@ struct ArithmeticTests {
         expect("20%", 0.2)
     }
 
+    @Test func onlyOperatorsNoNameUsesMakeAPlainCalculation() {
+        for text in ["2+2", "5 * 3", "10 - 3", "10 / 2", "20% of 500", "(1)-2", "3×4"] {
+            #expect(Arithmetic.isPlainCalculation(text), "\(text) should be plain")
+        }
+        for text in ["2024-03", "10/2023", "1920x1080", "123-45-67", "1 of 3", "10-3"] {
+            #expect(Arithmetic.evaluate(text) != nil && !Arithmetic.isPlainCalculation(text), "\(text) should be ambiguous")
+        }
+    }
+
     @Test func rejectsNonExpressions() {
         for text in ["42", "(42)", "1,000", "2 +", "cal 2", "1/0", "2 ** 3", "hello", "", "  ", "safari", "1.2.3", "x2"] {
             #expect(Arithmetic.evaluate(text) == nil, "\(text) should not evaluate")

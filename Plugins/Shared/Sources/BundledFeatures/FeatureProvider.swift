@@ -141,6 +141,7 @@ public actor FeatureProvider: ProviderHandler {
         case .openURL(let url), .webSearch(_, let url): action = PluginAction(.openURL, url.absoluteString); symbol = "magnifyingglass"
         case .terminal(let command): action = PluginAction(.terminal, command); symbol = "terminal"
         }
-        return PluginItem(id: quick.id, title: quick.title, subtitle: quick.subtitle, kind: quick.kindLabel, symbol: symbol, primary: action)
+        return PluginItem(id: quick.id, title: quick.title, subtitle: quick.subtitle, kind: quick.kindLabel, symbol: symbol, primary: action,
+                          answer: quick.answersQuery ? true : nil)
     }
 }

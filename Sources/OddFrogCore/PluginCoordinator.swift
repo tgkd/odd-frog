@@ -26,8 +26,10 @@ import OddFrogPluginAPI
     private var live: [String: [PluginResult]] = [:]
     private var queryErrors: [String: String] = [:]
     private var completed = Set<String>()
+    private var answerDeadline = ContinuousClock.now
     private var queryStartedAt = ContinuousClock.now
     private static let loadingDelay: Duration = .milliseconds(300)
+    private static let answerWait: Duration = .milliseconds(150)
     private var contexts: [String: PluginContext] = [:]
     public init(services: HostServiceRegistry) {
         self.services = services
@@ -245,10 +247,14 @@ import OddFrogPluginAPI
                 // The first query after opening the launcher runs at once; later keystrokes are debounced.
                 do { if !same { try await Task.sleep(for: .milliseconds(75)) }; try Task.checkCancellation() } catch { return }
                 guard let self else { return }
+                answerDeadline = .now + Self.answerWait
                 Task { [weak self] in
-                    try? await Task.sleep(for: Self.loadingDelay)
-                    guard let self, token == queryGeneration else { return }
-                    onChange?()
+                    // Redraw when held root rows stop waiting, and again when a slow plugin earns its loading row.
+                    for delay in [Self.answerWait, Self.loadingDelay - Self.answerWait] {
+                        try? await Task.sleep(for: delay)
+                        guard let self, token == queryGeneration else { return }
+                        onChange?()
+                    }
                 }
                 await withTaskGroup(of: Void.self) { group in
                     for package in providers where failures[package.manifest.id] == nil { group.addTask { await self.runQuery(package, query: query, limit: maxResults, token: token, packageToken: packageToken) } }
@@ -268,7 +274,8 @@ import OddFrogPluginAPI
             answer = Self.fitEntries(into: answer, entries: items.filter { pluginEntry(for: $0) != nil }, limit: maxResults)
         }
         // Root rows own their slots: catalog matches would otherwise fill the whole list and push them out.
-        let rootRows = rooted.flatMap { Array((live[$0.package.manifest.id] ?? []).prefix($0.limit)) }
+        let shownRoots = rootRowsAllowed(providers: providers) ? rooted : []
+        let rootRows = shownRoots.flatMap { Array((live[$0.package.manifest.id] ?? []).prefix($0.limit)) }
             .map { RankedItem(item: .plugin($0), lexical: 0, weight: 0, exactAlias: false) }
         if !rootRows.isEmpty { answer = Array(answer.prefix(max(1, maxResults - rootRows.count))) + rootRows }
         if answer.isEmpty, let package = exclusive.first {
@@ -277,6 +284,15 @@ import OddFrogPluginAPI
             else if !completed.contains(package.manifest.id), ContinuousClock.now - queryStartedAt >= Self.loadingDelay { answer = status(package, title: "Loading \(package.manifest.name)…") }
         }
         return Array(answer.prefix(maxResults))
+    }
+    /// Root rows suit a name or an address, not a query a live plugin answered outright. They wait a moment
+    /// for live answers, so a calculation does not push them in and then out.
+    private func rootRowsAllowed(providers: [PluginPackage]) -> Bool {
+        let answering = providers.filter { $0.manifest.activation == .live }
+        if answering.contains(where: { (live[$0.manifest.id] ?? []).contains { $0.item.answer == true } }) { return false }
+        // Rows kept through an invalidation stand in until the refreshed answer arrives, so only a new query waits.
+        let pending = answering.contains { live[$0.manifest.id] == nil && failures[$0.manifest.id] == nil }
+        return !pending || ContinuousClock.now >= answerDeadline
     }
     /// Keeps every plugin entry visible in the empty launcher: recents fill only the slots the entries leave free.
     private static func fitEntries(into recents: [RankedItem], entries: [LauncherItem], limit: Int) -> [RankedItem] {

@@ -89,7 +89,8 @@ struct CurrencyTests {
         let table = try fixture()
         for text in ["100 usd", "$100"] {
             #expect(CurrencyConversion.evaluate(text, rates: table, locale: locale) == nil)
-            #expect(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale) == nil)
+            let same = try #require(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale), "\(text) did not convert")
+            #expect(same.input == "100 USD" && same.result == "100.00 USD")
         }
         for text in ["100 eur", "100€"] {
             let conversion = try #require(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale), "\(text) did not convert")
@@ -116,7 +117,7 @@ struct CurrencyTests {
     @Test func sharedSymbolsMeanTheDefaultCurrency() throws {
         let fixture = try fixture()
         let table = CurrencyRates(base: fixture.base, timestamp: fixture.timestamp, rates: fixture.rates.merging(["CNY": 7.1, "MXN": 18.4]) { $1 })
-        #expect(CurrencyConversion.evaluate("¥100", rates: table, defaultCurrency: "CNY", locale: locale) == nil)
+        #expect(try #require(CurrencyConversion.evaluate("¥100", rates: table, defaultCurrency: "CNY", locale: locale)).input == "100 CNY")
         #expect(try #require(CurrencyConversion.evaluate("¥100 in usd", rates: table, defaultCurrency: "CNY", locale: locale)).input == "100 CNY → USD")
         #expect(try #require(CurrencyConversion.evaluate("¥100", rates: table, defaultCurrency: "USD", locale: locale)).input == "100 JPY → USD")
         #expect(try #require(CurrencyConversion.evaluate("$100 in eur", rates: table, defaultCurrency: "MXN", locale: locale)).input == "100 MXN → EUR")

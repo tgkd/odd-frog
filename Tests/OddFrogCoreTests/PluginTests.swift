@@ -388,6 +388,61 @@ struct PluginTests {
         try await waitUntil { titles("f hello") == ["hello"] }
         #expect(titles("").contains("files"))
     }
+    /// A live provider that answers digit queries with a marked row and `2024-03` with an unmarked one.
+    /// `slow` answers after 600 ms, `kept` keeps answering after `invalidate()`.
+    private var answering: String { """
+    import json,sys,time,threading
+    def run(r):
+      q=r.get('params',{}).get('input',{}).get('query','')
+      if r['method']=='initialize': result={'apiVersion':2}
+      else:
+        if q=='slow': time.sleep(.6)
+        result=[{'id':'sum','title':'= '+q,'answer':q[:1].isdigit() and '-' not in q,'primary':{'kind':'copy','value':'ok'}}] if q[:1].isdigit() else []
+      print(json.dumps({'apiVersion':2,'id':r['id'],'result':result}),flush=True)
+    for line in sys.stdin:
+      r=json.loads(line)
+      if r.get('method')=='shutdown': break
+      threading.Thread(target=run,args=(r,),daemon=True).start()
+    """ }
+    @MainActor private func answeringCoordinator(_ roots: [URL]) throws -> PluginCoordinator {
+        _ = try fixture(roots[0], source: echo)
+        _ = try fixture(roots[1], source: answering)
+        let files = PluginPackage(manifest: try manifest(id: "files", extra: "activation = 'exclusive'\nkeyword = 'f'\nroot_results = 2"),
+                                  directory: roots[0], bundled: true)
+        let calc = PluginPackage(manifest: try manifest(id: "calc"), directory: roots[1], bundled: true)
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        coordinator.reload(discovery: PluginDiscovery(packages: [files, calc]), settings: [])
+        return coordinator
+    }
+    @Test @MainActor func answerRowsSilenceRootRowsAndOtherRowsKeepThem() async throws {
+        let roots = [try temp(), try temp()]
+        defer { roots.forEach { try? FileManager.default.removeItem(at: $0) } }
+        let coordinator = try answeringCoordinator(roots)
+        defer { coordinator.stop() }
+        func titles(_ query: String) -> [String] { coordinator.search(query, items: [], weights: [:], maxResults: 8).map(\.item.title) }
+        try await waitUntil { titles("100 eur") == ["= 100 eur"] }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(titles("100 eur") == ["= 100 eur"])
+        try await waitUntil { titles("2024-03") == ["= 2024-03", "2024-03"] }
+        try await waitUntil { titles("hello") == ["hello"] }
+    }
+    @Test @MainActor func rootRowsWaitBrieflyForLiveAnswersAndSurviveInvalidation() async throws {
+        let roots = [try temp(), try temp()]
+        defer { roots.forEach { try? FileManager.default.removeItem(at: $0) } }
+        let coordinator = try answeringCoordinator(roots)
+        defer { coordinator.stop() }
+        func titles(_ query: String) -> [String] { coordinator.search(query, items: [], weights: [:], maxResults: 8).map(\.item.title) }
+        try await waitUntil { titles("hello") == ["hello"] }
+        // The live provider takes 600 ms on `slow`; the root row must not wait for it.
+        let started = ContinuousClock.now
+        try await waitUntil { titles("slow") == ["slow"] }
+        #expect(ContinuousClock.now - started < .milliseconds(500))
+        try await waitUntil { titles("hello") == ["hello"] }
+        coordinator.invalidate()
+        #expect(titles("hello") == ["hello"])
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(titles("hello") == ["hello"])
+    }
     private func catalogRows(_ count: Int, directory: URL) -> [LauncherItem] {
         (0..<count).map {
             .plugin(PluginResult(pluginID: "cat", item: PluginItem(id: "c\($0)", title: "hello \($0)"), generation: UUID(), catalog: true, directory: directory))
