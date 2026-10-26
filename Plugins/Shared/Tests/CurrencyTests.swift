@@ -85,6 +85,24 @@ struct CurrencyTests {
         }
     }
 
+    @Test func convertsToTheDefaultCurrencyWhenTargetIsMissing() throws {
+        let table = try fixture()
+        for text in ["100 usd", "$100"] {
+            #expect(CurrencyConversion.evaluate(text, rates: table, locale: locale) == nil)
+            #expect(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale) == nil)
+        }
+        for text in ["100 eur", "100€"] {
+            let conversion = try #require(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale), "\(text) did not convert")
+            #expect(conversion.input == "100 EUR → USD")
+            #expect(abs(conversion.value - 116.1341) < 0.001)
+        }
+        let rsd = try #require(CurrencyConversion.evaluate("100 usd", rates: table, defaultCurrency: "rsd", locale: locale))
+        #expect(rsd.input == "100 USD → RSD")
+        #expect(CurrencyConversion.evaluate("100 xyz", rates: table, defaultCurrency: "USD", locale: locale) == nil)
+        #expect(CurrencyConversion.evaluate("100 eur", rates: table, defaultCurrency: "XYZ", locale: locale) == nil)
+        #expect(CurrencyConversion.evaluate("100 km", rates: table, defaultCurrency: "USD", locale: locale) == nil)
+    }
+
     @Test func storeUsesTheCacheUntilItGoesStale() async throws {
         let moment = Date(timeIntervalSince1970: 1788800000)
         let table = try fixture(fetched: moment)

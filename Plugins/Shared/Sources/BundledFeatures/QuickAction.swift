@@ -89,7 +89,7 @@ public enum QuickAction: Sendable, Hashable {
         }
     }
 
-    public static func calculation(for query: String, rates: CurrencyRates? = nil, now: Date = Date(),
+    public static func calculation(for query: String, rates: CurrencyRates? = nil, defaultCurrency: String? = nil, now: Date = Date(),
                                    timeZone: TimeZone = .current, locale: Locale = .current) -> QuickAction? {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
@@ -104,7 +104,7 @@ public enum QuickAction: Sendable, Hashable {
         if let conversion = UnitConversion.evaluate(trimmed, locale: locale) {
             return .calculation(input: conversion.input, value: conversion.value, kind: .measurement(result: conversion.result), locale: locale)
         }
-        if let rates, let exchange = CurrencyConversion.evaluate(trimmed, rates: rates, locale: locale) {
+        if let rates, let exchange = CurrencyConversion.evaluate(trimmed, rates: rates, defaultCurrency: defaultCurrency, locale: locale) {
             return .calculation(input: exchange.input, value: exchange.value, kind: .currency(result: exchange.result, updated: exchange.updated), locale: locale)
         }
         return nil
