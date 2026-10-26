@@ -9,6 +9,7 @@ final class ResultRowView: NSTableCellView {
 
     static let identifier = NSUserInterfaceItemIdentifier("ResultRow")
     static let iconSide: CGFloat = 24
+    static let glyphSide: CGFloat = 32
 
     let iconView = NSImageView()
     let titleLabel = NSTextField(labelWithString: "")
@@ -17,6 +18,8 @@ final class ResultRowView: NSTableCellView {
     let requirementLabel = NSTextField(labelWithString: "")
     let kindLabel = NSTextField(labelWithString: "")
     private let detailStack: NSStackView
+    private let iconWidth: NSLayoutConstraint
+    private let iconHeight: NSLayoutConstraint
     private var appliedFont: ContentFont?
 
     init() {
@@ -57,14 +60,17 @@ final class ResultRowView: NSTableCellView {
         rowStack.orientation = .horizontal
         rowStack.distribution = .fill
 
+        iconWidth = iconView.widthAnchor.constraint(equalToConstant: Self.iconSide)
+        iconHeight = iconView.heightAnchor.constraint(equalToConstant: Self.iconSide)
+
         super.init(frame: .zero)
         identifier = Self.identifier
 
         rowStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(rowStack)
         NSLayoutConstraint.activate([
-            iconView.widthAnchor.constraint(equalToConstant: Self.iconSide),
-            iconView.heightAnchor.constraint(equalToConstant: Self.iconSide),
+            iconWidth,
+            iconHeight,
             rowStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             rowStack.trailingAnchor.constraint(equalTo: trailingAnchor),
             rowStack.topAnchor.constraint(equalTo: topAnchor, constant: rowStack.spacing),
@@ -87,8 +93,10 @@ final class ResultRowView: NSTableCellView {
         }
     }
 
-    func configure(title: String, detail: String?, value: String?, tooltip: String?, kind: String?, requirement: Requirement?, icon: NSImage?) {
+    func configure(title: String, detail: String?, value: String?, tooltip: String?, kind: String?, requirement: Requirement?, icon: NSImage?, iconSide: CGFloat = ResultRowView.iconSide) {
         applyFonts()
+        iconWidth.constant = iconSide
+        iconHeight.constant = iconSide
         titleLabel.stringValue = title
         toolTip = tooltip
         iconView.image = icon

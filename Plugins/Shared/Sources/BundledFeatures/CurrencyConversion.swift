@@ -28,7 +28,7 @@ public struct CurrencyConversion: Sendable, Hashable {
         "₩": "KRW",
     ]
 
-    public static func evaluate(_ text: String, rates: CurrencyRates) -> CurrencyConversion? {
+    public static func evaluate(_ text: String, rates: CurrencyRates, locale: Locale = .current) -> CurrencyConversion? {
         var head = Substring(text.trimmingCharacters(in: .whitespaces))
         var symbolCode: String?
         if let first = head.first, let code = symbols[first] {
@@ -72,7 +72,7 @@ public struct CurrencyConversion: Sendable, Hashable {
         return CurrencyConversion(
             input: "\(literal) \(source) → \(target)",
             value: value,
-            result: "\(value.formatted(.number.precision(.fractionLength(2)))) \(target)",
+            result: "\(value.formatted(.number.precision(.fractionLength(2)).locale(locale))) \(target)",
             updated: rates.timestamp
         )
     }

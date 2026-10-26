@@ -24,6 +24,7 @@ private final class StubProvider: CurrencyRateProvider, @unchecked Sendable {
 }
 
 struct CurrencyTests {
+    private let locale = Locale(identifier: "en_US")
     private func fixture() throws -> CurrencyRates {
         let url = try #require(Bundle.module.url(forResource: "rates", withExtension: "json", subdirectory: "Fixtures"))
         return try ExchangeRateAPIProvider.parse(try Data(contentsOf: url))
@@ -66,13 +67,13 @@ struct CurrencyTests {
     @Test func parsesEveryAcceptedForm() throws {
         let table = try fixture()
         for text in ["100 usd in eur", "100 USD to EUR", "$100 in eur", "100 usd eur", "100 usd -> eur"] {
-            let conversion = try #require(CurrencyConversion.evaluate(text, rates: table), "\(text) did not convert")
+            let conversion = try #require(CurrencyConversion.evaluate(text, rates: table, locale: locale), "\(text) did not convert")
             #expect(abs(conversion.value - 86.1072) < 0.001, "\(text) = \(conversion.value)")
             #expect(conversion.result == "86.11 EUR")
             #expect(conversion.input == "100 USD → EUR")
             #expect(conversion.updated == table.timestamp)
         }
-        let back = try #require(CurrencyConversion.evaluate("100€ to usd", rates: table))
+        let back = try #require(CurrencyConversion.evaluate("100€ to usd", rates: table, locale: locale))
         #expect(abs(back.value - 116.1341) < 0.001)
         #expect(back.input == "100 EUR → USD")
     }
@@ -80,7 +81,7 @@ struct CurrencyTests {
     @Test func rejectsMalformedCurrencyQueries() throws {
         let table = try fixture()
         for text in ["100 usd in xyz", "usd in eur", "100 usd", "100 km in mi", "safari", "100 usd in eur extra"] {
-            #expect(CurrencyConversion.evaluate(text, rates: table) == nil, "\(text) should not convert")
+            #expect(CurrencyConversion.evaluate(text, rates: table, locale: locale) == nil, "\(text) should not convert")
         }
     }
 
@@ -153,7 +154,7 @@ struct CurrencyTests {
 
     @Test func currencyQueryBecomesACurrencyAction() throws {
         let table = try fixture()
-        let action = try #require(QuickAction.calculation(for: "100 usd in eur", rates: table))
+        let action = try #require(QuickAction.calculation(for: "100 usd in eur", rates: table, locale: locale))
         #expect(action.title == "86.11 EUR")
         #expect(action.kindLabel == "Currency")
         #expect(action.subtitle?.hasPrefix("100 USD → EUR · rate updated ") == true)

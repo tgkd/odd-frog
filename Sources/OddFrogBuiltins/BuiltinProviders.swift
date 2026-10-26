@@ -6,6 +6,7 @@ import RemindersPluginCore
 import NotesPluginCore
 import ChatPluginCore
 import ClipboardPluginCore
+import CharactersPluginCore
 import FilesPluginCore
 import OddFrogCore
 import OddFrogPluginAPI
@@ -25,5 +26,7 @@ public enum BuiltinProviders {
         "chat": { ChatHandler() },
         "clipboard": { ClipboardHandler(archive: clipboardArchive, pasteboard: ClipboardPasteboard(name: .general)) },
         "files": { FilesHandler() },
+        "emoji": { CharactersHandler(.emoji) },
+        "symbols": { CharactersHandler(.symbols) },
     ]
 }

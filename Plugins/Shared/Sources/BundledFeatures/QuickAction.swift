@@ -11,7 +11,7 @@ public enum QuickAction: Sendable, Hashable {
     case openURL(URL)
     case webSearch(query: String, url: URL)
     case terminal(String)
-    case calculation(input: String, value: Double, kind: CalculationKind)
+    case calculation(input: String, value: Double, kind: CalculationKind, locale: Locale)
     case temporal(TemporalCalculation)
 
     public var id: String {
@@ -19,7 +19,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL(let url): "quick:url:\(url.absoluteString)"
         case .webSearch(let query, _): "quick:search:\(query)"
         case .terminal(let text): "quick:terminal:\(text)"
-        case .calculation(let input, _, _): "quick:calc:\(input)"
+        case .calculation(let input, _, _, _): "quick:calc:\(input)"
         case .temporal(let calculation): "quick:calc:\(calculation.input)"
         }
     }
@@ -29,7 +29,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL(let url): "Open \(Self.displayHostPath(url))"
         case .webSearch(let query, _): "Search for “\(query)”"
         case .terminal: "Run in Terminal"
-        case .calculation(_, let value, let kind): Self.title(value: value, kind: kind)
+        case .calculation(_, let value, let kind, let locale): Self.title(value: value, kind: kind, locale: locale)
         case .temporal(let calculation): calculation.title
         }
     }
@@ -39,7 +39,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL: nil
         case .webSearch(_, let url): url.host
         case .terminal(let text): text
-        case .calculation(let input, _, let kind): Self.subtitle(input: input, kind: kind)
+        case .calculation(let input, _, let kind, let locale): Self.subtitle(input: input, kind: kind, locale: locale)
         case .temporal(let calculation): calculation.subtitle
         }
     }
@@ -49,7 +49,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL: "URL"
         case .webSearch: "Search"
         case .terminal: "Terminal"
-        case .calculation(_, _, let kind):
+        case .calculation(_, _, let kind, _):
             switch kind {
             case .arithmetic: "Calculator"
             case .measurement: "Units"
@@ -62,30 +62,30 @@ public enum QuickAction: Sendable, Hashable {
     public var copyText: String? {
         switch self {
         case .openURL, .webSearch, .terminal: nil
-        case .calculation(_, let value, let kind): Self.copyText(value: value, kind: kind)
+        case .calculation(_, let value, let kind, let locale): Self.copyText(value: value, kind: kind, locale: locale)
         case .temporal(let calculation): calculation.copyText
         }
     }
 
-    private static func title(value: Double, kind: CalculationKind) -> String {
+    private static func title(value: Double, kind: CalculationKind, locale: Locale) -> String {
         switch kind {
-        case .arithmetic: value.formatted(.number.precision(.fractionLength(0...6)))
+        case .arithmetic: value.formatted(.number.precision(.fractionLength(0...6)).locale(locale))
         case .measurement(let result): result
         case .currency(let result, _): result
         }
     }
 
-    private static func subtitle(input: String, kind: CalculationKind) -> String {
+    private static func subtitle(input: String, kind: CalculationKind, locale: Locale) -> String {
         switch kind {
         case .arithmetic, .measurement: input
-        case .currency(_, let updated): "\(input) · rate updated \(updated.formatted(.relative(presentation: .numeric)))"
+        case .currency(_, let updated): "\(input) · rate updated \(updated.formatted(Date.RelativeFormatStyle(presentation: .numeric, locale: locale)))"
         }
     }
 
-    private static func copyText(value: Double, kind: CalculationKind) -> String {
+    private static func copyText(value: Double, kind: CalculationKind, locale: Locale) -> String {
         switch kind {
-        case .arithmetic, .measurement: value.formatted(.number.grouping(.never).precision(.fractionLength(0...6)))
-        case .currency: value.formatted(.number.grouping(.never).precision(.fractionLength(2)))
+        case .arithmetic, .measurement: value.formatted(.number.grouping(.never).precision(.fractionLength(0...6)).locale(locale))
+        case .currency: value.formatted(.number.grouping(.never).precision(.fractionLength(2)).locale(locale))
         }
     }
 
@@ -99,13 +99,13 @@ public enum QuickAction: Sendable, Hashable {
         case .notTemporal: break
         }
         if let value = Arithmetic.evaluate(trimmed) {
-            return .calculation(input: trimmed, value: value, kind: .arithmetic)
+            return .calculation(input: trimmed, value: value, kind: .arithmetic, locale: locale)
         }
-        if let conversion = UnitConversion.evaluate(trimmed) {
-            return .calculation(input: conversion.input, value: conversion.value, kind: .measurement(result: conversion.result))
+        if let conversion = UnitConversion.evaluate(trimmed, locale: locale) {
+            return .calculation(input: conversion.input, value: conversion.value, kind: .measurement(result: conversion.result), locale: locale)
         }
-        if let rates, let exchange = CurrencyConversion.evaluate(trimmed, rates: rates) {
-            return .calculation(input: exchange.input, value: exchange.value, kind: .currency(result: exchange.result, updated: exchange.updated))
+        if let rates, let exchange = CurrencyConversion.evaluate(trimmed, rates: rates, locale: locale) {
+            return .calculation(input: exchange.input, value: exchange.value, kind: .currency(result: exchange.result, updated: exchange.updated), locale: locale)
         }
         return nil
     }

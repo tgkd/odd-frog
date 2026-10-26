@@ -43,13 +43,13 @@ import FilesPluginCore
     @Test func shippedFeaturesRunInProcessAndEachCanBeDisabled() async throws {
         let root = try PluginTests().temp(); defer { try? FileManager.default.removeItem(at: root) }
         let packages = try installBundled(to: root)
-        #expect(packages.count == 13)
+        #expect(packages.count == 15)
         let config = root.appendingPathComponent("config.toml")
         try Data("[[commands]]\nname='Docs'\nurl='https://example.com'\n".utf8).write(to: config)
         let script = root.appendingPathComponent("sample.sh")
         try Data("#!/bin/sh\n# @raycast.title Sample Script\nprintf sample\n".utf8).write(to: script)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
-        let queries = ["applications": "Safari", "commands": "Docs", "scripts": "Sample Script", "calculator": "2+2", "windows": "maximize", "web": "a web query", "terminal": "> uptime", "calendar": "cal", "reminders": "rem", "notes": "note", "chat": "chat", "clipboard": "clip", "files": "f report"]
+        let queries = ["applications": "Safari", "commands": "Docs", "scripts": "Sample Script", "calculator": "2+2", "windows": "maximize", "web": "a web query", "terminal": "> uptime", "calendar": "cal", "reminders": "rem", "notes": "note", "chat": "chat", "clipboard": "clip", "files": "f report", "emoji": "emoji", "symbols": "sym"]
         for package in packages {
             let coordinator = PluginCoordinator(services: registry())
             coordinator.builtins = BuiltinProviders.factories

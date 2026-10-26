@@ -499,7 +499,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = (tableView.makeView(withIdentifier: ResultRowView.identifier, owner: nil) as? ResultRowView) ?? ResultRowView()
-        configure(cell, row: row, icon: icons.icon(for: results[row].item, size: ResultRowView.iconSide))
+        let side = IconCache.side(for: results[row].item)
+        configure(cell, row: row, icon: icons.icon(for: results[row].item, size: side))
         return cell
     }
 
@@ -511,7 +512,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let result = results[row]
         let item = result.item
         let line = detail(for: result)
-        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, requirement: line?.requirement, icon: icon)
+        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, requirement: line?.requirement, icon: icon, iconSide: IconCache.side(for: item))
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {

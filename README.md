@@ -48,6 +48,14 @@ The bundled `files` plugin (keyword `f`, off by default) searches your folders w
 through `scripts/fetch-fff.sh` (checksum verified, stored in `vendor/`) and copies it into
 `Contents/Frameworks`. Choose the indexed folders in Settings → Plugins → Files.
 
+### Emoji and symbol search (Emoji and Symbols plugins)
+
+The bundled `emoji` (keyword `emoji`) and `symbols` (keyword `sym`) plugins search by name, by common
+words (`thumbs up`, `command`, `right arrow`), and by the character itself. Return pastes the character
+into the previous app, the secondary action copies it. Names come from the Unicode data in the Swift
+standard library, so there is no data file to update. Emoji with skin tones and multi-person sequences
+are not listed. Flags search by region code and by English and local country names.
+
 ### Signing and permissions
 
 `SIGN` defaults to an ad-hoc signature (`-`). Rebuilding changes that identity and can invalidate

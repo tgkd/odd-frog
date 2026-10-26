@@ -807,8 +807,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if !command.isEmpty {
+            // A chip left from the previous query would swallow this one.
+            controller.leavePlugin()
             controller.searchField.stringValue = command
-            controller.refresh()
+            // Same path as typing, so a trigger such as `clip ` becomes the plugin chip.
+            controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             MainActor.assumeIsolated {

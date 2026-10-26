@@ -1,0 +1,8 @@
+id = "symbols"
+name = "Symbols"
+version = "0.1.0"
+api_version = 2
+keyword = "sym"
+mode = "persistent"
+activation = "exclusive"
+capabilities = []
