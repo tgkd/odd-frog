@@ -44,6 +44,15 @@ public enum QuickAction: Sendable, Hashable {
         }
     }
 
+    public var answersQuery: Bool {
+        switch self {
+        case .openURL, .webSearch, .terminal: false
+        case .calculation(let input, _, let kind, _):
+            if case .arithmetic = kind { Arithmetic.isPlainCalculation(input) } else { true }
+        case .temporal: true
+        }
+    }
+
     public var kindLabel: String {
         switch self {
         case .openURL: "URL"

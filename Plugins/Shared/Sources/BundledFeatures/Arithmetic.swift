@@ -9,6 +9,19 @@ public enum Arithmetic {
         return value
     }
 
+    /// `2024-03`, `10/2023` and `1920x1080` evaluate, but they are just as likely a date or a file name.
+    /// Only operators no name uses, or spaced ones, make the text plainly a calculation.
+    public static func isPlainCalculation(_ text: String) -> Bool {
+        let characters = Array(text)
+        for (index, character) in characters.enumerated() {
+            if "+*×÷^%()".contains(character) { return true }
+            guard "-−/".contains(character) else { continue }
+            if index > 0, characters[index - 1].isWhitespace { return true }
+            if index + 1 < characters.count, characters[index + 1].isWhitespace { return true }
+        }
+        return false
+    }
+
     static func scanNumber(_ text: Substring) -> (value: Double, rest: Substring)? {
         var index = text.startIndex
         var sawDigit = false

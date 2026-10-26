@@ -87,10 +87,9 @@ public struct CurrencyConversion: Sendable, Hashable {
             target = fallback
         }
         guard let source = code(sourceToken, rates: rates), let target else { return nil }
-        guard targetToken != nil || source != target else { return nil }
         guard let value = rates.convert(scanned.value, from: source, to: target) else { return nil }
         return CurrencyConversion(
-            input: "\(literal) \(source) → \(target)",
+            input: targetToken == nil && source == target ? "\(literal) \(source)" : "\(literal) \(source) → \(target)",
             value: value,
             result: "\(value.formatted(.number.precision(.fractionLength(2)).locale(locale))) \(target)",
             updated: rates.timestamp
