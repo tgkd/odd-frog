@@ -43,7 +43,7 @@ public actor FeatureProvider: ProviderHandler {
             case .calculator:
                 let cached = context.settings["currency"]?.bool == false ? nil : await rates?.current()
                 let zone = TimeZone(identifier: query.timeZoneIdentifier) ?? .current
-                items = QuickAction.calculation(for: query.query, rates: cached, defaultCurrency: context.settings["default_currency"]?.string ?? "USD", now: query.now, timeZone: zone).map { [Self.quick($0)] } ?? []
+                items = QuickAction.calculation(for: query.query, rates: cached, defaultCurrency: context.settings["default_currency"]?.string, now: query.now, timeZone: zone).map { [Self.quick($0)] } ?? []
             case .web: items = QuickAction.fallbacks(for: query.query, searchTemplate: context.settings["url"]?.string ?? Settings.Search.defaultURL).map(Self.quick)
             case .terminal:
                 items = query.query.isEmpty ? [] : [PluginItem(id: "run", title: "Run in Terminal", subtitle: query.query, kind: "Terminal", symbol: "terminal", primary: PluginAction(.terminal, query.query))]
@@ -73,7 +73,7 @@ public actor FeatureProvider: ProviderHandler {
             watcher.watch([URL(fileURLWithPath: context.configPath).deletingLastPathComponent()]) { Task { await emit?("catalogChanged") } }
         case .calculator:
             guard context.settings["currency"]?.bool != false else { rates = nil; return }
-            let store = CurrencyRateStore(url: URL(fileURLWithPath: context.storagePath).appendingPathComponent("rates.json"), provider: ExchangeRateAPIProvider())
+            let store = rates ?? CurrencyRateStore(url: URL(fileURLWithPath: context.storagePath).appendingPathComponent("rates.json"), provider: ExchangeRateAPIProvider())
             rates = store
             refresh = Task {
                 while !Task.isCancelled {

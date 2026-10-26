@@ -28,17 +28,25 @@ public struct CurrencyConversion: Sendable, Hashable {
         "₩": "KRW",
     ]
 
+    static let sharedSymbols: [Character: Set<String>] = [
+        "$": ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN", "ARS", "CLP", "COP"],
+        "¥": ["JPY", "CNY"],
+    ]
+
+    static let wordLikeCodes: Set<String> = ["all", "bam", "bob", "cop", "cup", "gel", "kid", "mad", "mop", "pen", "sos", "top", "try"]
+
     public static func evaluate(_ text: String, rates: CurrencyRates, defaultCurrency: String? = nil, locale: Locale = .current) -> CurrencyConversion? {
+        let fallback = defaultCurrency.flatMap { code($0, rates: rates) }
         var head = Substring(text.trimmingCharacters(in: .whitespaces))
         var symbolCode: String?
-        if let first = head.first, let code = symbols[first] {
+        if let first = head.first, let code = currency(for: first, fallback: fallback) {
             symbolCode = code
             head = head.dropFirst()
         }
         guard let scanned = Arithmetic.scanNumber(head.drop(while: { $0.isWhitespace })) else { return nil }
         let literal = String(head[head.startIndex..<scanned.rest.startIndex]).trimmingCharacters(in: .whitespaces)
         var tail = scanned.rest
-        if symbolCode == nil, let first = tail.first, let code = symbols[first] {
+        if symbolCode == nil, let first = tail.first, let code = currency(for: first, fallback: fallback) {
             symbolCode = code
             tail = tail.dropFirst()
         }
@@ -47,15 +55,12 @@ public struct CurrencyConversion: Sendable, Hashable {
             normalized = normalized.replacingOccurrences(of: separator, with: " in ")
         }
         let tokens = normalized.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        let defaultToken = defaultCurrency?.lowercased()
         let sourceToken: String
-        let targetToken: String
-        var targetIsDefault = false
+        let targetToken: String?
         if let symbolCode {
             sourceToken = symbolCode
-            if tokens.isEmpty, let defaultToken {
-                targetToken = defaultToken
-                targetIsDefault = true
+            if tokens.isEmpty {
+                targetToken = nil
             } else if tokens.count == 2, keywords.contains(tokens[0]) {
                 targetToken = tokens[1]
             } else if tokens.count == 1, !keywords.contains(tokens[0]) {
@@ -69,15 +74,20 @@ public struct CurrencyConversion: Sendable, Hashable {
         } else if tokens.count == 2, !keywords.contains(tokens[1]) {
             sourceToken = tokens[0]
             targetToken = tokens[1]
-        } else if tokens.count == 1, !keywords.contains(tokens[0]), let defaultToken {
+        } else if tokens.count == 1, !keywords.contains(tokens[0]), !wordLikeCodes.contains(tokens[0]), UnitRegistry.unit(for: tokens[0]) == nil {
             sourceToken = tokens[0]
-            targetToken = defaultToken
-            targetIsDefault = true
+            targetToken = nil
         } else {
             return nil
         }
-        guard let source = code(sourceToken, rates: rates), let target = code(targetToken, rates: rates) else { return nil }
-        guard !targetIsDefault || source != target else { return nil }
+        let target: String?
+        if let targetToken {
+            target = code(targetToken, rates: rates)
+        } else {
+            target = fallback
+        }
+        guard let source = code(sourceToken, rates: rates), let target else { return nil }
+        guard targetToken != nil || source != target else { return nil }
         guard let value = rates.convert(scanned.value, from: source, to: target) else { return nil }
         return CurrencyConversion(
             input: "\(literal) \(source) → \(target)",
@@ -85,6 +95,13 @@ public struct CurrencyConversion: Sendable, Hashable {
             result: "\(value.formatted(.number.precision(.fractionLength(2)).locale(locale))) \(target)",
             updated: rates.timestamp
         )
+    }
+
+    private static func currency(for symbol: Character, fallback: String?) -> String? {
+        if let fallback, sharedSymbols[symbol]?.contains(fallback) == true {
+            return fallback
+        }
+        return symbols[symbol]
     }
 
     private static func code(_ token: String, rates: CurrencyRates) -> String? {

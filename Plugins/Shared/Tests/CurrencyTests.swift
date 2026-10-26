@@ -103,6 +103,27 @@ struct CurrencyTests {
         #expect(CurrencyConversion.evaluate("100 km", rates: table, defaultCurrency: "USD", locale: locale) == nil)
     }
 
+    @Test func wordLikeCodesNeedAnExplicitTarget() throws {
+        let fixture = try fixture()
+        let table = CurrencyRates(base: fixture.base, timestamp: fixture.timestamp, rates: fixture.rates.merging(["TRY": 41.2, "CUP": 24, "ALL": 83.5]) { $1 })
+        for text in ["1 try", "3 cup", "2 all"] {
+            #expect(CurrencyConversion.evaluate(text, rates: table, defaultCurrency: "USD", locale: locale) == nil, "\(text) should not convert")
+        }
+        let explicit = try #require(CurrencyConversion.evaluate("1 try in usd", rates: table, defaultCurrency: "USD", locale: locale))
+        #expect(explicit.input == "1 TRY → USD")
+    }
+
+    @Test func sharedSymbolsMeanTheDefaultCurrency() throws {
+        let fixture = try fixture()
+        let table = CurrencyRates(base: fixture.base, timestamp: fixture.timestamp, rates: fixture.rates.merging(["CNY": 7.1, "MXN": 18.4]) { $1 })
+        #expect(CurrencyConversion.evaluate("¥100", rates: table, defaultCurrency: "CNY", locale: locale) == nil)
+        #expect(try #require(CurrencyConversion.evaluate("¥100 in usd", rates: table, defaultCurrency: "CNY", locale: locale)).input == "100 CNY → USD")
+        #expect(try #require(CurrencyConversion.evaluate("¥100", rates: table, defaultCurrency: "USD", locale: locale)).input == "100 JPY → USD")
+        #expect(try #require(CurrencyConversion.evaluate("$100 in eur", rates: table, defaultCurrency: "MXN", locale: locale)).input == "100 MXN → EUR")
+        #expect(try #require(CurrencyConversion.evaluate("$100", rates: table, defaultCurrency: "EUR", locale: locale)).input == "100 USD → EUR")
+        #expect(try #require(CurrencyConversion.evaluate("€100", rates: table, defaultCurrency: "MXN", locale: locale)).input == "100 EUR → MXN")
+    }
+
     @Test func storeUsesTheCacheUntilItGoesStale() async throws {
         let moment = Date(timeIntervalSince1970: 1788800000)
         let table = try fixture(fetched: moment)
@@ -178,5 +199,14 @@ struct CurrencyTests {
         #expect(action.subtitle?.hasPrefix("100 USD → EUR · rate updated ") == true)
         #expect(action.copyText == "86.11")
         #expect(QuickAction.calculation(for: "100 usd in eur") == nil)
+    }
+
+    @Test func bareAmountBecomesACurrencyActionInTheDefaultCurrency() throws {
+        let table = try fixture()
+        let action = try #require(QuickAction.calculation(for: "100 eur", rates: table, defaultCurrency: "USD", locale: locale))
+        #expect(action.title == "116.13 USD")
+        #expect(action.kindLabel == "Currency")
+        #expect(action.subtitle?.hasPrefix("100 EUR → USD · rate updated ") == true)
+        #expect(QuickAction.calculation(for: "100 eur", rates: table, locale: locale) == nil)
     }
 }
