@@ -8,7 +8,18 @@ struct PluginTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("odd-frog-api2-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true); return root
     }
+    /// /usr/bin/python3 is a Command Line Tools shim. With a cold xcrun cache its first launches take
+    /// seconds, and the parallel tests would all pay for it inside the 2 s request timeout.
+    static let providerTimeout: Duration = .seconds(30)
+    private static let pythonWarmUp: Void = {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = ["-c", "pass"]
+        try? process.run()
+        process.waitUntilExit()
+    }()
     func fixture(_ root: URL, source: String) throws -> URL {
+        Self.pythonWarmUp
         let url = root.appendingPathComponent("provider")
         try ("#!/usr/bin/python3\n" + source + "\n").write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path); return url
@@ -76,12 +87,12 @@ struct PluginTests {
     @Test(arguments: [false, true]) func bothRuntimesExchangeCallbacksAndRecoverableErrors(persistent: Bool) async throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
         let process = PluginProcess(executable: try fixture(root, source: echo), persistent: persistent)
-        let initResult = try await process.request("initialize")
+        let initResult = try await process.request("initialize", timeout: Self.providerTimeout)
         #expect(initResult["apiVersion"] == .number(2))
         for query in ["hello", "error", "again"] {
             let input: JSONValue = .object(["input": .object(["query": .string(query)])])
-            if query == "error" { await #expect(throws: RPCError.self) { try await process.request("query", params: input) } }
-            else { #expect(try await process.request("query", params: input).array?.first?["title"].string == query) }
+            if query == "error" { await #expect(throws: RPCError.self) { try await process.request("query", params: input, timeout: Self.providerTimeout) } }
+            else { #expect(try await process.request("query", params: input, timeout: Self.providerTimeout).array?.first?["title"].string == query) }
         }
         let effects = try await process.request("activate", params: .object(["input": .object(["argument": .string("callback argument")])]), timeout: nil)
         #expect(effects["notification"] == .string("callback argument"))
@@ -98,7 +109,7 @@ struct PluginTests {
         for line in sys.stdin: pass
         """
         let process = PluginProcess(executable: try fixture(root, source: source), persistent: persistent)
-        let value = try await process.request("query") { capability, params in
+        let value = try await process.request("query", timeout: Self.providerTimeout) { capability, params in
             #expect(capability == "fixture.read@1"); return params["value"]
         }
         #expect(value == .string("from plugin")); await process.stop()
@@ -112,12 +123,12 @@ struct PluginTests {
             await #expect(throws: RPCError.self) { try await process.request("query") }; await process.stop()
         }
         let process = PluginProcess(executable: try fixture(root, source: echo), persistent: true)
-        let task = Task { try await process.request("query", params: .object(["input": .object(["query": .string("old")])])) }
+        let task = Task { try await process.request("query", params: .object(["input": .object(["query": .string("old")])]), timeout: Self.providerTimeout) }
         try await Task.sleep(for: .milliseconds(100)); task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(try await process.request("query", params: .object(["input": .object(["query": .string("new")])])).array?.first?["title"] == .string("new"))
+        #expect(try await process.request("query", params: .object(["input": .object(["query": .string("new")])]), timeout: Self.providerTimeout).array?.first?["title"] == .string("new"))
         try await Task.sleep(for: .milliseconds(600))
-        #expect(try await process.request("initialize")["apiVersion"] == .number(2)); await process.stop()
+        #expect(try await process.request("initialize", timeout: Self.providerTimeout)["apiVersion"] == .number(2)); await process.stop()
     }
     @Test func stopKillsDescendantsAfterLeaderExit() async throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
@@ -129,7 +140,7 @@ struct PluginTests {
         os._exit(0)
         """
         let process = PluginProcess(executable: try fixture(root, source: source), persistent: true)
-        await #expect(throws: RPCError.self) { try await process.request("query") }
+        await #expect(throws: RPCError.self) { try await process.request("query", timeout: Self.providerTimeout) }
         let pid = try #require(Int32(String(contentsOf: root.appendingPathComponent("child.pid"), encoding: .utf8)))
         await process.stop()
         try await Task.sleep(for: .milliseconds(100))
