@@ -94,7 +94,7 @@ struct PluginTests {
             if query == "error" { await #expect(throws: RPCError.self) { try await process.request("query", params: input, timeout: Self.providerTimeout) } }
             else { #expect(try await process.request("query", params: input, timeout: Self.providerTimeout).array?.first?["title"].string == query) }
         }
-        let effects = try await process.request("activate", params: .object(["input": .object(["argument": .string("callback argument")])]), timeout: nil)
+        let effects = try await process.request("activate", params: .object(["input": .object(["argument": .string("callback argument")])]), timeout: Self.providerTimeout)
         #expect(effects["notification"] == .string("callback argument"))
         await process.stop()
     }
