@@ -28,7 +28,13 @@ choices = [
 default = "English"
 
 [[settings]]
-key = "deepl_key"
-title = "DeepL API key (optional; Free keys end with :fx)"
+key = "online"
+title = "Also translate with MyMemory (sends the text to mymemory.translated.net)"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "mymemory_email"
+title = "Email for MyMemory (optional; raises the free limit from 5,000 to 50,000 characters a day)"
 type = "string"
 default = ""

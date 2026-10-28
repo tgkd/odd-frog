@@ -9,8 +9,8 @@ public actor TranslateHandler: ProviderHandler {
     }
     private struct OnlineKey: Hashable {
         var text: String
+        var source: String
         var target: String
-        var key: String
     }
     private struct Stored {
         var outcome: TranslationOutcome
@@ -29,8 +29,8 @@ public actor TranslateHandler: ProviderHandler {
     private var onlineResults: [OnlineKey: Stored] = [:]
     private var onlineJob: (key: OnlineKey, task: Task<Void, Never>)?
 
-    public init(offline: any OfflineTranslator = AppleTranslator(), online: any OnlineTranslator = DeepLClient(),
-                offlineWait: Duration = .milliseconds(600), onlineDelay: Duration = .milliseconds(350),
+    public init(offline: any OfflineTranslator = AppleTranslator(), online: any OnlineTranslator = MyMemoryClient(),
+                offlineWait: Duration = .milliseconds(600), onlineDelay: Duration = .milliseconds(500),
                 retryAfter: TimeInterval = 10) {
         self.offline = offline
         self.online = online
@@ -67,15 +67,16 @@ public actor TranslateHandler: ProviderHandler {
         let trimmed = query.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = String(trimmed.prefix(TranslateProvider.limit))
         let languages = TranslateDirection.languages(settings)
-        let key = (settings["deepl_key"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let online = settings["online"]?.bool ?? true
+        let email = (settings["mymemory_email"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            return TranslateProvider.hint(primary: languages.primary, secondary: languages.secondary, deepL: !key.isEmpty)
+            return TranslateProvider.hint(primary: languages.primary, secondary: languages.secondary, online: online)
         }
         let direction = TranslateDirection.resolve(text, primary: languages.primary, secondary: languages.secondary)
         guard direction.source != direction.target else {
             return TranslateProvider.sameLanguages()
         }
-        let onlineState = key.isEmpty ? TranslateProvider.Online.off : onlineOutcome(text, direction: direction, key: key)
+        let onlineState = online ? onlineOutcome(text, direction: direction, email: email) : TranslateProvider.Online.off
         let offlineState = await offlineOutcome(text, direction: direction)
         return TranslateProvider.respond(direction: direction, offline: offlineState, online: onlineState,
                                          truncated: text.count < trimmed.count)
@@ -123,8 +124,8 @@ public actor TranslateHandler: ProviderHandler {
         }
     }
 
-    private func onlineOutcome(_ text: String, direction: TranslateDirection, key: String) -> TranslateProvider.Online {
-        let onlineKey = OnlineKey(text: text, target: direction.target.code, key: key)
+    private func onlineOutcome(_ text: String, direction: TranslateDirection, email: String) -> TranslateProvider.Online {
+        let onlineKey = OnlineKey(text: text, source: direction.source.code, target: direction.target.code)
         if let stored = fresh(onlineResults[onlineKey]) {
             return .done(stored)
         }
@@ -135,7 +136,7 @@ public actor TranslateHandler: ProviderHandler {
                 guard (try? await Task.sleep(for: delay)) != nil else {
                     return
                 }
-                let outcome = await translator.translate(text, to: direction.target, key: key)
+                let outcome = await translator.translate(text, from: direction.source, to: direction.target, email: email)
                 guard !Task.isCancelled else {
                     return
                 }
@@ -168,7 +169,7 @@ public actor TranslateHandler: ProviderHandler {
         if case .text = stored.outcome {
             return stored.outcome
         }
-        // Failures expire so that a downloaded language pack or a fixed key takes effect without a restart.
+        // Failures expire so that a downloaded language pack or a raised MyMemory limit takes effect without a restart.
         return Date().timeIntervalSince(stored.date) < retryAfter ? stored.outcome : nil
     }
 

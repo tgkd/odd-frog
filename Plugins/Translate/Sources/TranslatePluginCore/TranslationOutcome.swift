@@ -12,5 +12,5 @@ public protocol OfflineTranslator: Sendable {
 }
 
 public protocol OnlineTranslator: Sendable {
-    func translate(_ text: String, to target: TranslateLanguage, key: String) async -> TranslationOutcome
+    func translate(_ text: String, from source: TranslateLanguage, to target: TranslateLanguage, email: String) async -> TranslationOutcome
 }

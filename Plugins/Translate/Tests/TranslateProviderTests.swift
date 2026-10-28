@@ -7,13 +7,13 @@ struct TranslateProviderTests {
     private let direction = TranslateDirection(source: .english, target: .russian)
 
     @Test func hintNamesThePairAndEngines() {
-        let local = TranslateProvider.hint(primary: .russian, secondary: .english, deepL: false)
+        let local = TranslateProvider.hint(primary: .russian, secondary: .english, online: false)
         #expect(local.map(\.id) == ["hint"])
         #expect(local[0].title == "Type text to translate")
         #expect(local[0].subtitle == "Russian ⇄ English · Apple Translation")
         #expect(local[0].primary == nil)
-        let both = TranslateProvider.hint(primary: .russian, secondary: .english, deepL: true)
-        #expect(both[0].subtitle == "Russian ⇄ English · Apple Translation and DeepL")
+        let both = TranslateProvider.hint(primary: .russian, secondary: .english, online: true)
+        #expect(both[0].subtitle == "Russian ⇄ English · Apple Translation and MyMemory")
     }
 
     @Test func translationPastesAndCopies() {
@@ -42,27 +42,27 @@ struct TranslateProviderTests {
         #expect(failed.title == "Apple Translation failed" && failed.subtitle == "boom")
     }
 
-    @Test func deepLRowFollowsAppleTranslation() {
+    @Test func myMemoryRowFollowsAppleTranslation() {
         let pending = TranslateProvider.respond(direction: direction, offline: .text("привет"), online: .pending)
-        #expect(pending.map(\.id) == ["apple", "deepl"])
-        #expect(pending[1].title == "Translating with DeepL…" && pending[1].primary == nil)
-        let failed = TranslateProvider.respond(direction: direction, offline: .text("привет"), online: .done(.failed("bad key")))
-        #expect(failed[1].title == "DeepL translation failed" && failed[1].subtitle == "bad key")
+        #expect(pending.map(\.id) == ["apple", "mymemory"])
+        #expect(pending[1].title == "Translating with MyMemory…" && pending[1].primary == nil)
+        let failed = TranslateProvider.respond(direction: direction, offline: .text("привет"), online: .done(.failed("limit")))
+        #expect(failed[1].title == "MyMemory translation failed" && failed[1].subtitle == "limit")
         let both = TranslateProvider.respond(direction: direction, offline: nil, online: .pending)
-        #expect(both.map(\.id) == ["apple", "deepl"])
+        #expect(both.map(\.id) == ["apple", "mymemory"])
     }
 
-    @Test func deepLTranslationLeadsWhenAppleHasNone() {
+    @Test func myMemoryTranslationLeadsWhenAppleHasNone() {
         let rows = TranslateProvider.respond(direction: direction, offline: .notInstalled, online: .done(.text("здравствуй")))
-        #expect(rows.map(\.id) == ["deepl", "apple"])
-        #expect(rows[0].title == "здравствуй" && rows[0].subtitle == "DeepL · English → Russian")
+        #expect(rows.map(\.id) == ["mymemory", "apple"])
+        #expect(rows[0].title == "здравствуй" && rows[0].subtitle == "MyMemory · English → Russian")
         #expect(rows[0].primary == PluginAction(.paste, "здравствуй"))
     }
 
     @Test func equalTranslationsMergeIntoOneRow() {
         let rows = TranslateProvider.respond(direction: direction, offline: .text("привет"), online: .done(.text("привет")))
         #expect(rows.map(\.id) == ["apple"])
-        #expect(rows[0].subtitle == "Apple and DeepL · English → Russian")
+        #expect(rows[0].subtitle == "Apple and MyMemory · English → Russian")
     }
 
     @Test func sameLanguagesAskForDifferentOnes() {

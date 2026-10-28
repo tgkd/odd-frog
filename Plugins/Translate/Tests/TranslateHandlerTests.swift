@@ -24,7 +24,7 @@ private actor FakeOnline: OnlineTranslator {
     init(_ outcomes: [TranslationOutcome]) {
         self.outcomes = outcomes
     }
-    func translate(_ text: String, to target: TranslateLanguage, key: String) async -> TranslationOutcome {
+    func translate(_ text: String, from source: TranslateLanguage, to target: TranslateLanguage, email: String) async -> TranslationOutcome {
         texts.append(text)
         return outcomes.count > 1 ? outcomes.removeFirst() : outcomes[0]
     }
@@ -50,10 +50,10 @@ struct TranslateHandlerTests {
         return (handler, recorder)
     }
 
-    private func rows(_ handler: TranslateHandler, _ text: String, key: String = "") async throws -> [PluginItem] {
+    private func rows(_ handler: TranslateHandler, _ text: String, online: Bool = false) async throws -> [PluginItem] {
         let params = JSONValue.object([
             "input": try .encode(PluginQuery(query: text, fullQuery: "tr \(text)")),
-            "context": try .encode(PluginContext(settings: ["deepl_key": .string(key)])),
+            "context": try .encode(PluginContext(settings: ["online": .bool(online)])),
         ])
         return try await handler.handle("query", params: params, operation: operation).decode([PluginItem].self)
     }
@@ -88,47 +88,47 @@ struct TranslateHandlerTests {
         #expect(try await rows(handler, "hello").map(\.title) == ["привет"])
     }
 
-    @Test func deepLRowAppearsOnlyWithAKey() async throws {
+    @Test func myMemoryRowFollowsTheSetting() async throws {
         let online = FakeOnline([.text("здравствуй")])
         let (handler, recorder) = await handler(offline: FakeOffline(.text("привет")), online: online)
         #expect(try await rows(handler, "hello").map(\.id) == ["apple"])
-        #expect(try await rows(handler, "hello", key: "k:fx").map(\.title) == ["привет", "Translating with DeepL…"])
+        #expect(try await rows(handler, "hello", online: true).map(\.title) == ["привет", "Translating with MyMemory…"])
         try await wait { await recorder.events.contains("queryInvalidated") }
-        #expect(try await rows(handler, "hello", key: "k:fx").map(\.title) == ["привет", "здравствуй"])
+        #expect(try await rows(handler, "hello", online: true).map(\.title) == ["привет", "здравствуй"])
         #expect(await online.texts == ["hello"])
     }
 
-    @Test func onlyTheLastOfFastQueriesReachesDeepL() async throws {
+    @Test func onlyTheLastOfFastQueriesReachesMyMemory() async throws {
         let online = FakeOnline([.text("x")])
         let (handler, recorder) = await handler(offline: FakeOffline(.text("y")), online: online)
-        _ = try await rows(handler, "h", key: "k")
-        _ = try await rows(handler, "he", key: "k")
-        _ = try await rows(handler, "hello", key: "k")
+        _ = try await rows(handler, "h", online: true)
+        _ = try await rows(handler, "he", online: true)
+        _ = try await rows(handler, "hello", online: true)
         try await wait { await recorder.events.contains("queryInvalidated") }
         try await Task.sleep(for: .milliseconds(80))
         #expect(await online.texts == ["hello"])
     }
 
     @Test func failuresAreRetriedAfterTheyExpire() async throws {
-        let online = FakeOnline([.failed("DeepL is busy. Try again in a moment."), .text("здравствуй")])
+        let online = FakeOnline([.failed("MyMemory answered with HTTP 503."), .text("здравствуй")])
         let (handler, recorder) = await handler(offline: FakeOffline(.text("привет")), online: online, retryAfter: 0.1)
-        _ = try await rows(handler, "hello", key: "k")
+        _ = try await rows(handler, "hello", online: true)
         try await wait { await recorder.events.count == 1 }
-        #expect(try await rows(handler, "hello", key: "k").last?.title == "DeepL translation failed")
+        #expect(try await rows(handler, "hello", online: true).last?.title == "MyMemory translation failed")
         try await Task.sleep(for: .milliseconds(150))
-        #expect(try await rows(handler, "hello", key: "k").last?.title == "Translating with DeepL…")
+        #expect(try await rows(handler, "hello", online: true).last?.title == "Translating with MyMemory…")
         try await wait { await recorder.events.count == 2 }
-        #expect(try await rows(handler, "hello", key: "k").last?.title == "здравствуй")
+        #expect(try await rows(handler, "hello", online: true).last?.title == "здравствуй")
     }
 
     @Test func emptyTranslationBecomesAFailure() async throws {
         let (handler, recorder) = await handler(offline: FakeOffline(.text(" ")), online: FakeOnline([.text("")]))
-        let first = try await rows(handler, "?", key: "k")
+        let first = try await rows(handler, "?", online: true)
         #expect(first.first?.title == "Apple Translation failed")
         #expect(first.first?.subtitle == "The translation came back empty.")
         try await wait { await recorder.events.contains("queryInvalidated") }
-        #expect(try await rows(handler, "?", key: "k").allSatisfy { !$0.title.isEmpty })
-        #expect(try await rows(handler, "?", key: "k").last?.title == "DeepL translation failed")
+        #expect(try await rows(handler, "?", online: true).allSatisfy { !$0.title.isEmpty })
+        #expect(try await rows(handler, "?", online: true).last?.title == "MyMemory translation failed")
     }
 
     @Test func staleOfflineAnswersDoNotInvalidate() async throws {

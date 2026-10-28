@@ -1,11 +1,11 @@
-# Task: Add a bundled Translate plugin: Apple Translation offline, DeepL Free online
+# Task: Add a bundled Translate plugin: Apple Translation offline, MyMemory online
 
 ## Goal
 A new bundled plugin `translate` (keyword `tr`, on by default) translates the typed text between
 two languages the user picks. Text in "your language" goes into the other one; anything else goes
 into your language. Apple Translation answers offline when its language packs are installed. When a
-DeepL API key is set, a second row with DeepL's translation appears under it. Return pastes the
-translation into the app that was active, ⌘Return copies it.
+online lookup is on (the default), a second row with MyMemory's translation appears under it. MyMemory
+needs no account or key. Return pastes the translation into the app that was active, ⌘Return copies it.
 
 ## Files
 - Plugins/Translate/plugin.toml                                              (create)
@@ -13,11 +13,11 @@ translation into the app that was active, ⌘Return copies it.
 - Plugins/Translate/Sources/TranslatePluginCore/TranslateDirection.swift     (create)
 - Plugins/Translate/Sources/TranslatePluginCore/TranslationOutcome.swift     (create)
 - Plugins/Translate/Sources/TranslatePluginCore/AppleTranslator.swift        (create)
-- Plugins/Translate/Sources/TranslatePluginCore/DeepLClient.swift            (create)
+- Plugins/Translate/Sources/TranslatePluginCore/MyMemoryClient.swift         (create)
 - Plugins/Translate/Sources/TranslatePluginCore/TranslateProvider.swift      (create)
 - Plugins/Translate/Sources/TranslatePluginCore/TranslateHandler.swift       (create)
 - Plugins/Translate/Tests/TranslateDirectionTests.swift                      (create)
-- Plugins/Translate/Tests/DeepLClientTests.swift                             (create)
+- Plugins/Translate/Tests/MyMemoryClientTests.swift                          (create)
 - Plugins/Translate/Tests/TranslateProviderTests.swift                       (create)
 - Plugins/Translate/Tests/TranslateHandlerTests.swift                        (create)
 - Package.swift                                                              (modify)
@@ -46,14 +46,20 @@ translation into the app that was active, ⌘Return copies it.
   `preferredStrategy` needs macOS 26.4 and is not used.
 - **Language detection** uses `NLLanguageRecognizer` (NaturalLanguage, offline). It is unreliable for
   one or two words, so the two chosen languages get priority (Plan 3).
-- **DeepL API.** `POST /v2/translate` on `https://api-free.deepl.com` for Free keys (they end with
-  `:fx`) and `https://api.deepl.com` otherwise. Header `Authorization: DeepL-Auth-Key <key>`, JSON body
-  `{"text": ["…"], "target_lang": "RU"}`, no `source_lang` (DeepL detects it). Answer
-  `{"translations": [{"detected_source_language": "EN", "text": "…"}]}`. Status 403 is a bad key,
-  456 a used-up quota, 429 too many requests. English and Portuguese targets need a variant
-  (`EN-US`, `PT-BR`); Chinese uses `ZH-HANS`.
-- The key is a plain `string` setting, stored in the config file like Chat's `api_key`. There is no
-  secret setting type, and adding one is out of scope.
+- **MyMemory API** (checked with live requests). `POST https://api.mymemory.translated.net/get` with a
+  form body `q`, `langpair=en|ru` and optional `de=<email>`. GET works too, but puts the text into the URL
+  and fails with HTTP 414 on long text. There is no `auto` source, so the plugin sends the detected one.
+  Plain two-letter codes work for all 19 languages (`zh` answers as `zh-CN`, `nb` works).
+  - Errors come with HTTP 200: `responseStatus` (a number or a string such as `"403"`) is not 200, and
+    the error text replaces `responseData.translatedText`. `matches` is then `""`, not an array.
+  - `q` is limited to 500 characters (`QUERY LENGTH LIMIT EXCEEDED`).
+  - Free limit: 5 000 characters a day, 50 000 with `de`. A used-up limit sets `quotaFinished: true`
+    or `responseStatus: 429`.
+  - `responseData` is the best of `matches`, which mix a public translation memory with machine
+    translation (`"created-by": "MT!"`). A fuzzy memory hit can win with a translation of a different
+    sentence (`it's raining, isn't it?` → `Что-то дождь усилился`), and a memory entry can be the source
+    copied verbatim (`Guten Morgen` → `Guten Morgen`). Machine translation is the reliable choice.
+- Text sent online leaves the Mac, so the online lookup is a setting that says where the text goes.
 - Two tests hard-code the bundled plugin count (`== 15`), and `BundledPackageTests` force-unwraps
   `queries[id]!` for every bundled package.
 
@@ -62,14 +68,16 @@ translation into the app that was active, ⌘Return copies it.
    `keyword = "tr"`, `mode = "persistent"`, `activation = "exclusive"`, `capabilities = []`. Settings:
    - `primary_language`: title `Your language`, `choice` over the names in Plan 2, default `Russian`.
    - `secondary_language`: title `Translate your language into`, `choice`, default `English`.
-   - `deepl_key`: title `DeepL API key (optional; Free keys end with :fx)`, `string`, default `""`.
+   - `online`: title `Also translate with MyMemory (sends the text to mymemory.translated.net)`, `boolean`,
+     default `true`.
+   - `mymemory_email`: title `Email for MyMemory (optional; raises the free limit from 5,000 to 50,000
+     characters a day)`, `string`, default `""`.
 
-2. **`TranslateLanguage`** (public struct, `Sendable, Hashable`): `name`, `code` (Apple/BCP-47 base
-   code), `deepLTarget`. `static let all` lists the languages both engines support: Arabic `ar` AR,
-   Chinese `zh` ZH-HANS, Danish `da` DA, Dutch `nl` NL, English `en` EN-US, French `fr` FR, German `de`
-   DE, Indonesian `id` ID, Italian `it` IT, Japanese `ja` JA, Korean `ko` KO, Norwegian `nb` NB, Polish
-   `pl` PL, Portuguese `pt` PT-BR, Russian `ru` RU, Spanish `es` ES, Swedish `sv` SV, Turkish `tr` TR,
-   Ukrainian `uk` UK. `named(_:)` looks up by name, `matching(code:)` by base language code
+2. **`TranslateLanguage`** (public struct, `Sendable, Hashable`): `name`, `code` (two-letter code used by
+   Apple and MyMemory). `static let all` lists: Arabic `ar`, Chinese `zh`, Danish `da`, Dutch `nl`,
+   English `en`, French `fr`, German `de`, Indonesian `id`, Italian `it`, Japanese `ja`, Korean `ko`,
+   Norwegian `nb`, Polish `pl`, Portuguese `pt`, Russian `ru`, Spanish `es`, Swedish `sv`, Turkish `tr`,
+   Ukrainian `uk`. `named(_:)` looks up by name, `matching(code:)` by base language code
    (`Locale.Language(identifier:).languageCode`, so `zh-Hans` → Chinese).
 
 3. **`TranslateDirection`** (public struct: `source`, `target`) with
@@ -85,7 +93,7 @@ translation into the app that was active, ⌘Return copies it.
 
 4. **`TranslationOutcome`** (public enum, `Sendable, Equatable`): `text(String)`, `notInstalled`,
    `unsupported`, `failed(String)`. Protocols `OfflineTranslator` (`translate(_:from:to:) async ->
-   TranslationOutcome`) and `OnlineTranslator` (`translate(_:to:key:) async -> TranslationOutcome`),
+   TranslationOutcome`) and `OnlineTranslator` (`translate(_:from:to:email:) async -> TranslationOutcome`),
    both `Sendable`.
 
 5. **`AppleTranslator`** (public struct, `OfflineTranslator`). Creates a `TranslationSession` per call:
@@ -93,17 +101,22 @@ translation into the app that was active, ⌘Return copies it.
    `supported` → `notInstalled`, `unsupported` → `unsupported`. A thrown `notInstalled` →
    `notInstalled`. Any other error → `failed(localizedDescription)`.
 
-6. **`DeepLClient`** (public struct, `OnlineTranslator`) over an injected `URLSession`:
-   - `static func endpoint(for key:) -> URL`, `static func urlRequest(_ text:, target:, key:) throws ->
-     URLRequest` (8 s timeout), `static func outcome(status: Int, data: Data) -> TranslationOutcome`.
-   - Messages: 403 `DeepL rejected the API key. Check it in Translate settings.`, 456
-     `The DeepL quota for this month is used up.`, 429 `DeepL is busy. Try again in a moment.`, other
-     non-2xx `DeepL answered with HTTP <status>.`, unreadable body `DeepL sent an answer Odd Frog can't
-     read.`, network error `Can't reach DeepL: <localizedDescription>`.
+6. **`MyMemoryClient`** (public struct, `OnlineTranslator`) over an injected `URLSession`:
+   - `static let limit = 500`. Longer text → `failed("MyMemory translates up to 500 characters.")`
+     without a request.
+   - `static func urlRequest(_ text:, from:, to:, email:) -> URLRequest`: POST, form-encoded body (`+`, `&`,
+     `=` and `|` percent-encoded), `de` only when the email is not empty, 8 s timeout.
+   - `static func outcome(status: Int, data: Data, text: String) -> TranslationOutcome`. The translation
+     is the machine match if there is one; otherwise the first match of at least 0.95 that differs from
+     the source text (ignoring case); otherwise `responseData.translatedText`.
+   - Messages: used-up limit `MyMemory's free limit for today is used up. An email in Translate settings
+     raises it.`, other `responseStatus` → `MyMemory: <responseDetails in sentence case>`, non-2xx HTTP
+     `MyMemory answered with HTTP <status>.`, unreadable body `MyMemory sent an answer Odd Frog can't
+     read.`, network error `Can't reach MyMemory: <localizedDescription>`.
 
 7. **`TranslateProvider`** builds rows (`kind: "Translate"`).
-   - `hint(primary:secondary:deepL:)` → one row `hint`: `Type text to translate`, subtitle
-     `Russian ⇄ English · Apple Translation` plus ` and DeepL` when a key is set, symbol
+   - `hint(primary:secondary:online:)` → one row `hint`: `Type text to translate`, subtitle
+     `Russian ⇄ English · Apple Translation` plus ` and MyMemory` when online lookup is on, symbol
      `character.bubble`, no actions.
    - `sameLanguages()` → one row `same`: `Pick two different languages in Translate settings.`
    - `respond(direction:offline:online:truncated:)`. `offline` is `TranslationOutcome?` (nil = still
@@ -117,14 +130,14 @@ translation into the app that was active, ⌘Return copies it.
      primary `.openURL` to `x-apple.systempreferences:com.apple.Localization-Settings.extension`;
      `unsupported` → `Apple can't translate English → Russian`; `failed` → `Apple Translation failed`
      with the message as subtitle, symbol `exclamationmark.triangle`.
-   - DeepL row `deepl`, only when online is not `off`, same shapes with `DeepL · English → Russian`,
-     `Translating with DeepL…` while pending, `DeepL translation failed` on failure.
-   - When both are `text` and equal, one row `apple` with subtitle `Apple and DeepL · English → Russian`.
-   - When Apple has no translation and DeepL has one, the DeepL row comes first, so Return pastes it.
+   - MyMemory row `mymemory`, only when online is not `off`, same shapes with `MyMemory · English → Russian`,
+     `Translating with MyMemory…` while pending, `MyMemory translation failed` on failure.
+   - When both are `text` and equal, one row `apple` with subtitle `Apple and MyMemory · English → Russian`.
+   - When Apple has no translation and MyMemory has one, the MyMemory row comes first, so Return pastes it.
 
 8. **`TranslateHandler`** (public actor, `ProviderHandler`):
-   `init(offline: any OfflineTranslator = AppleTranslator(), online: any OnlineTranslator = DeepLClient(),
-   offlineWait: Duration = .milliseconds(600), onlineDelay: Duration = .milliseconds(350))`.
+   `init(offline: any OfflineTranslator = AppleTranslator(), online: any OnlineTranslator = MyMemoryClient(),
+   offlineWait: Duration = .milliseconds(600), onlineDelay: Duration = .milliseconds(500))`.
    - `start(emit:)` stores `emit`. `initialize` → `{"apiVersion": 2}`, `settings` → `{}`.
    - `query`: trim the text, cap it at `TranslateProvider.limit` (2 000) characters, resolve the
      direction from settings. Empty text → `hint`, equal languages → `sameLanguages`.
@@ -134,11 +147,12 @@ translation into the app that was active, ⌘Return copies it.
      translates and stores the result. `query` waits for the job at most `offlineWait`. If the job ends
      after `query` stopped waiting and its text is still the latest one asked for, it emits
      `queryInvalidated`.
-   - Online (key not empty): results cache keyed by text + target + key. On a miss, cancel the previous
-     online job and start a new one that sleeps `onlineDelay` (typing pauses), translates, stores, and
-     emits `queryInvalidated`. `query` never waits for it and shows the pending row.
+   - Online (setting `online`, on when missing): results cache keyed by text + source + target. On a
+     miss, cancel the previous online job and start a new one that sleeps `onlineDelay`, translates,
+     stores, and emits `queryInvalidated`. `query` never waits for it and shows the pending row. The
+     delay is a typing pause: every request spends the 5 000-character daily limit.
    - Only `text` results stay cached. Other outcomes are reused for 10 s and then retried, so installing
-     a language pack or fixing the key takes effect without a restart. Each cache is cleared when it
+     a language pack or adding an email takes effect without a restart. Each cache is cleared when it
      passes 256 entries.
 
 9. **Wiring.** `Package.swift`: `TranslatePluginCore` target (deps `OddFrogPluginAPI`), add it to
@@ -149,13 +163,14 @@ translation into the app that was active, ⌘Return copies it.
 10. **Tests** (fake translators, no network, no Apple Translation):
     - Direction: `привет` → Russian→English, `hello` → English→Russian, a German sentence → German→Russian,
       settings fallback.
-    - DeepL: Free vs Pro endpoint, headers and JSON body, `EN-US` target, parsing, 403/456/429/500 and
-      garbage body messages.
-    - Provider: hint row (with and without DeepL), all Apple outcomes, pending DeepL row, merge of equal
+    - MyMemory: POST form body with escaped `+`/`&`, `de` only with an email, machine match preferred
+      over a fuzzy memory hit, verbatim copy skipped, error `responseStatus` as a string, used-up limit,
+      HTTP 500, garbage body, text over 500 characters.
+    - Provider: hint row (with and without MyMemory), all Apple outcomes, pending MyMemory row, merge of equal
       results, same-language row.
     - Handler: offline answer inside `offlineWait`; slow offline answer arrives through
-      `queryInvalidated`; no DeepL row without a key; DeepL pending row, then `queryInvalidated`, then the
-      cached result; only the last of several fast queries reaches DeepL; a failure is retried after
+      `queryInvalidated`; no MyMemory row when online lookup is off; MyMemory pending row, then `queryInvalidated`, then the
+      cached result; only the last of several fast queries reaches MyMemory; a failure is retried after
       expiry (inject a short retry interval).
 
 ## Constraints
@@ -163,7 +178,7 @@ translation into the app that was active, ⌘Return copies it.
 - Match surrounding code: one type per file, `RPCError`, `JSONValue`, braced early returns.
 - No comments in new code unless the reason is not obvious from the code.
 - No changes to the coordinator, host app, or other plugins.
-- Tests never call DeepL or Apple Translation.
+- Tests never call MyMemory or Apple Translation.
 
 ## Acceptance
 - `swift build` passes with no warnings beyond the pre-existing one in `UnitRegistry.swift`.
@@ -176,9 +191,8 @@ Build and launch with `make run`.
    Translation Languages in System Settings. If the URL lands elsewhere, find the right anchor.
 3. After downloading both packs, `tr hello` shows Apple's translation. Return pastes it, ⌘Return copies.
 4. `tr привет` translates into English; `tr Guten Morgen` into Russian.
-5. Put a DeepL Free key into Settings › Plugins › Translate. `tr good morning` shows a DeepL row
-   under Apple's, or one merged row when they agree.
-6. A broken key shows `DeepL rejected the API key…`. Fixing it works within 10 s.
+5. `tr good morning` shows a MyMemory row under Apple's, or one merged row when they agree.
+6. Turning off `Also translate with MyMemory` removes the row.
 
 ## Out of scope
 - Downloading language packs from the launcher (needs a SwiftUI `.translationTask` host view).
