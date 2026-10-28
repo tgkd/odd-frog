@@ -7,41 +7,38 @@ public enum TranslateProvider {
         case pending
         case done(TranslationOutcome)
     }
+    public static let limit = 2_000
     static let languageSettingsURL = "x-apple.systempreferences:com.apple.Localization-Settings.extension"
 
-    public static func respond(to request: PluginQuery, direction: TranslateDirection,
-                               offline: TranslationOutcome?, online: Online) -> [PluginItem] {
-        let pair = "\(direction.source.name) → \(direction.target.name)"
-        guard !request.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            let engines = online == .off ? "Apple Translation" : "Apple Translation and DeepL"
-            return [PluginItem(id: "hint", title: "Type text to translate",
-                               subtitle: "\(direction.target.name) ⇄ \(direction.source.name) · \(engines)",
-                               kind: "Translate", symbol: "character.bubble")]
-        }
-        guard direction.source != direction.target else {
-            return [PluginItem(id: "same", title: "Pick two different languages in Translate settings.",
-                               kind: "Translate", symbol: "exclamationmark.triangle")]
-        }
+    public static func hint(primary: TranslateLanguage, secondary: TranslateLanguage, deepL: Bool) -> [PluginItem] {
+        let engines = deepL ? "Apple Translation and DeepL" : "Apple Translation"
+        return [PluginItem(id: "hint", title: "Type text to translate",
+                           subtitle: "\(primary.name) ⇄ \(secondary.name) · \(engines)",
+                           kind: "Translate", symbol: "character.bubble")]
+    }
+
+    public static func sameLanguages() -> [PluginItem] {
+        [PluginItem(id: "same", title: "Pick two different languages in Translate settings.",
+                    kind: "Translate", symbol: "exclamationmark.triangle")]
+    }
+
+    public static func respond(direction: TranslateDirection, offline: TranslationOutcome?, online: Online,
+                               truncated: Bool = false) -> [PluginItem] {
+        let pair = "\(direction.source.name) → \(direction.target.name)" + (truncated ? " · first \(limit) characters" : "")
         if case .text(let apple) = offline, case .done(.text(let deepL)) = online, apple == deepL {
             return [translation(apple, id: "apple", subtitle: "Apple and DeepL · \(pair)")]
         }
-        var rows = [appleRow(offline, direction: direction, pair: pair)]
-        switch online {
-        case .off:
-            break
-        case .pending:
-            rows.append(PluginItem(id: "deepl", title: "Translating with DeepL…", subtitle: "DeepL · \(pair)",
-                                   kind: "Translate", symbol: "hourglass"))
-        case .done(.text(let text)):
-            rows.append(translation(text, id: "deepl", subtitle: "DeepL · \(pair)"))
-        case .done(.failed(let message)):
-            rows.append(PluginItem(id: "deepl", title: "DeepL translation failed", subtitle: message,
-                                   kind: "Translate", symbol: "exclamationmark.triangle"))
-        case .done:
-            rows.append(PluginItem(id: "deepl", title: "DeepL can't translate \(pair)",
-                                   kind: "Translate", symbol: "exclamationmark.triangle"))
+        let apple = appleRow(offline, direction: direction, pair: pair)
+        guard let deepL = deepLRow(online, pair: pair) else {
+            return [apple]
         }
-        return rows
+        if case .text = offline {
+            return [apple, deepL]
+        }
+        if case .done(.text) = online {
+            return [deepL, apple]
+        }
+        return [apple, deepL]
     }
 
     private static func appleRow(_ outcome: TranslationOutcome?, direction: TranslateDirection, pair: String) -> PluginItem {
@@ -62,6 +59,24 @@ public enum TranslateProvider {
         case .failed(let message):
             return PluginItem(id: "apple", title: "Apple Translation failed", subtitle: message, kind: "Translate",
                               symbol: "exclamationmark.triangle")
+        }
+    }
+
+    private static func deepLRow(_ online: Online, pair: String) -> PluginItem? {
+        switch online {
+        case .off:
+            return nil
+        case .pending:
+            return PluginItem(id: "deepl", title: "Translating with DeepL…", subtitle: "DeepL · \(pair)",
+                              kind: "Translate", symbol: "hourglass")
+        case .done(.text(let text)):
+            return translation(text, id: "deepl", subtitle: "DeepL · \(pair)")
+        case .done(.failed(let message)):
+            return PluginItem(id: "deepl", title: "DeepL translation failed", subtitle: message,
+                              kind: "Translate", symbol: "exclamationmark.triangle")
+        case .done:
+            return PluginItem(id: "deepl", title: "DeepL can't translate \(pair)",
+                              kind: "Translate", symbol: "exclamationmark.triangle")
         }
     }
 

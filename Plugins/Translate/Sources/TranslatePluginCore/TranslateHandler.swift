@@ -24,6 +24,7 @@ public actor TranslateHandler: ProviderHandler {
     private var emit: (@Sendable (String) async -> Void)?
     private var offlineResults: [OfflineKey: Stored] = [:]
     private var offlineJobs: [OfflineKey: Task<Void, Never>] = [:]
+    private var latestOffline: OfflineKey?
     private var waiters: [OfflineKey: [UUID: CheckedContinuation<TranslationOutcome?, Never>]] = [:]
     private var onlineResults: [OnlineKey: Stored] = [:]
     private var onlineJob: (key: OnlineKey, task: Task<Void, Never>)?
@@ -63,24 +64,26 @@ public actor TranslateHandler: ProviderHandler {
     }
 
     private func respond(to query: PluginQuery, settings: [String: JSONValue]) async -> [PluginItem] {
-        let text = String(query.query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2_000))
+        let trimmed = query.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = String(trimmed.prefix(TranslateProvider.limit))
         let languages = TranslateDirection.languages(settings)
         let key = (settings["deepl_key"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            let direction = TranslateDirection(source: languages.secondary, target: languages.primary)
-            return TranslateProvider.respond(to: query, direction: direction, offline: nil, online: key.isEmpty ? .off : .pending)
+            return TranslateProvider.hint(primary: languages.primary, secondary: languages.secondary, deepL: !key.isEmpty)
         }
         let direction = TranslateDirection.resolve(text, primary: languages.primary, secondary: languages.secondary)
         guard direction.source != direction.target else {
-            return TranslateProvider.respond(to: query, direction: direction, offline: nil, online: .off)
+            return TranslateProvider.sameLanguages()
         }
         let onlineState = key.isEmpty ? TranslateProvider.Online.off : onlineOutcome(text, direction: direction, key: key)
         let offlineState = await offlineOutcome(text, direction: direction)
-        return TranslateProvider.respond(to: query, direction: direction, offline: offlineState, online: onlineState)
+        return TranslateProvider.respond(direction: direction, offline: offlineState, online: onlineState,
+                                         truncated: text.count < trimmed.count)
     }
 
     private func offlineOutcome(_ text: String, direction: TranslateDirection) async -> TranslationOutcome? {
         let key = OfflineKey(text: text, source: direction.source.code, target: direction.target.code)
+        latestOffline = key
         if let stored = fresh(offlineResults[key]) {
             return stored
         }
@@ -108,13 +111,14 @@ public actor TranslateHandler: ProviderHandler {
     }
 
     private func finishOffline(_ key: OfflineKey, outcome: TranslationOutcome) async {
+        let outcome = Self.checked(outcome)
         offlineJobs[key] = nil
         store(&offlineResults, key, outcome)
         let pending = waiters.removeValue(forKey: key) ?? [:]
         for continuation in pending.values {
             continuation.resume(returning: outcome)
         }
-        if pending.isEmpty {
+        if pending.isEmpty && key == latestOffline {
             await emit?("queryInvalidated")
         }
     }
@@ -146,8 +150,15 @@ public actor TranslateHandler: ProviderHandler {
         if onlineJob?.key == key {
             onlineJob = nil
         }
-        store(&onlineResults, key, outcome)
+        store(&onlineResults, key, Self.checked(outcome))
         await emit?("queryInvalidated")
+    }
+
+    private static func checked(_ outcome: TranslationOutcome) -> TranslationOutcome {
+        guard case .text(let text) = outcome, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return outcome
+        }
+        return .failed("The translation came back empty.")
     }
 
     private func fresh(_ stored: Stored?) -> TranslationOutcome? {

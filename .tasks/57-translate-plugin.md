@@ -76,10 +76,11 @@ translation into the app that was active, ⌘Return copies it.
    `static func resolve(_ text: String, primary:, secondary:) -> TranslateDirection`:
    - Ask `NLLanguageRecognizer` for up to 5 hypotheses, limited by `languageConstraints` to
      `TranslateLanguage.all`.
-   - If `primary` or `secondary` has probability ≥ 0.15, the more likely of the two is the source.
-     Otherwise the top hypothesis that maps to a known language is. No hypothesis → `secondary`.
+   - While the top hypothesis is below 0.6 (detection is unsure), `primary` or `secondary` with
+     probability ≥ 0.15 wins, the more likely of the two. Otherwise the top hypothesis is the source.
+     No hypothesis → `secondary`.
    - Target is `secondary` when the source is `primary`, otherwise `primary`.
-   - `static func settings(_ values: [String: JSONValue]) -> (primary, secondary)` reads both choices,
+   - `static func languages(_ values: [String: JSONValue]) -> (primary, secondary)` reads both choices,
      falling back to Russian and English.
 
 4. **`TranslationOutcome`** (public enum, `Sendable, Equatable`): `text(String)`, `notInstalled`,
@@ -100,12 +101,14 @@ translation into the app that was active, ⌘Return copies it.
      non-2xx `DeepL answered with HTTP <status>.`, unreadable body `DeepL sent an answer Odd Frog can't
      read.`, network error `Can't reach DeepL: <localizedDescription>`.
 
-7. **`TranslateProvider.respond(to:direction:offline:online:)`** builds rows (`kind: "Translate"`).
-   `offline` is `TranslationOutcome?` (nil = still translating). `online` is `TranslationOutcome?`
-   wrapped in an enum `Online { off, pending, done(TranslationOutcome) }`.
-   - Empty query → one row `hint`: `Type text to translate`, subtitle `Russian ⇄ English · Apple
-     Translation` plus ` and DeepL` when online is not `off`, symbol `character.bubble`, no actions.
-   - Same source and target → one row `same`: `Pick two different languages in Translate settings.`
+7. **`TranslateProvider`** builds rows (`kind: "Translate"`).
+   - `hint(primary:secondary:deepL:)` → one row `hint`: `Type text to translate`, subtitle
+     `Russian ⇄ English · Apple Translation` plus ` and DeepL` when a key is set, symbol
+     `character.bubble`, no actions.
+   - `sameLanguages()` → one row `same`: `Pick two different languages in Translate settings.`
+   - `respond(direction:offline:online:truncated:)`. `offline` is `TranslationOutcome?` (nil = still
+     translating); `online` is `Online { off, pending, done(TranslationOutcome) }`. With `truncated`,
+     every subtitle ends with ` · first 2000 characters`.
    - Apple row `apple`, subtitle `Apple · English → Russian`:
      `text` → title is the translation, symbol `translate`, primary `.paste`, secondary `.copy`;
      nil → `Translating…`, symbol `hourglass`, no actions;
@@ -117,15 +120,20 @@ translation into the app that was active, ⌘Return copies it.
    - DeepL row `deepl`, only when online is not `off`, same shapes with `DeepL · English → Russian`,
      `Translating with DeepL…` while pending, `DeepL translation failed` on failure.
    - When both are `text` and equal, one row `apple` with subtitle `Apple and DeepL · English → Russian`.
+   - When Apple has no translation and DeepL has one, the DeepL row comes first, so Return pastes it.
 
 8. **`TranslateHandler`** (public actor, `ProviderHandler`):
    `init(offline: any OfflineTranslator = AppleTranslator(), online: any OnlineTranslator = DeepLClient(),
    offlineWait: Duration = .milliseconds(600), onlineDelay: Duration = .milliseconds(350))`.
    - `start(emit:)` stores `emit`. `initialize` → `{"apiVersion": 2}`, `settings` → `{}`.
-   - `query`: trim the text, cap it at 2 000 characters, resolve the direction from settings.
+   - `query`: trim the text, cap it at `TranslateProvider.limit` (2 000) characters, resolve the
+     direction from settings. Empty text → `hint`, equal languages → `sameLanguages`.
+   - A translation that is empty after trimming becomes `failed("The translation came back empty.")`:
+     a row with an empty title would make the coordinator disable the plugin.
    - Offline: results cache keyed by text + source + target. On a miss, start one job per key that
      translates and stores the result. `query` waits for the job at most `offlineWait`. If the job ends
-     after `query` stopped waiting, it emits `queryInvalidated`.
+     after `query` stopped waiting and its text is still the latest one asked for, it emits
+     `queryInvalidated`.
    - Online (key not empty): results cache keyed by text + target + key. On a miss, cancel the previous
      online job and start a new one that sleeps `onlineDelay` (typing pauses), translates, stores, and
      emits `queryInvalidated`. `query` never waits for it and shows the pending row.

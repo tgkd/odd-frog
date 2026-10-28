@@ -121,6 +121,26 @@ struct TranslateHandlerTests {
         #expect(try await rows(handler, "hello", key: "k").last?.title == "здравствуй")
     }
 
+    @Test func emptyTranslationBecomesAFailure() async throws {
+        let (handler, recorder) = await handler(offline: FakeOffline(.text(" ")), online: FakeOnline([.text("")]))
+        let first = try await rows(handler, "?", key: "k")
+        #expect(first.first?.title == "Apple Translation failed")
+        #expect(first.first?.subtitle == "The translation came back empty.")
+        try await wait { await recorder.events.contains("queryInvalidated") }
+        #expect(try await rows(handler, "?", key: "k").allSatisfy { !$0.title.isEmpty })
+        #expect(try await rows(handler, "?", key: "k").last?.title == "DeepL translation failed")
+    }
+
+    @Test func staleOfflineAnswersDoNotInvalidate() async throws {
+        let (handler, recorder) = await handler(offline: FakeOffline(.text("привет"), delay: .milliseconds(100)),
+                                                offlineWait: .milliseconds(10))
+        _ = try await rows(handler, "hel")
+        _ = try await rows(handler, "hello")
+        try await wait { await recorder.events.count == 1 }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(await recorder.events == ["queryInvalidated"])
+    }
+
     @Test func emptyQueryShowsTheHintWithoutTranslating() async throws {
         let offline = FakeOffline(.text("unused"))
         let (handler, _) = await handler(offline: offline)

@@ -17,6 +17,12 @@ struct TranslateDirectionTests {
             == TranslateDirection(source: german, target: .russian))
     }
 
+    @Test func clearThirdLanguageIsNotMistakenForThePair() throws {
+        let ukrainian = try #require(TranslateLanguage.named("Ukrainian"))
+        #expect(TranslateDirection.resolve("Привіт, як справи? Що ти робиш сьогодні ввечері?", primary: .russian, secondary: .english)
+            == TranslateDirection(source: ukrainian, target: .russian))
+    }
+
     @Test func chineseVariantsMapToChinese() {
         #expect(TranslateLanguage.matching(code: "zh-Hans")?.name == "Chinese")
         #expect(TranslateLanguage.matching(code: "nb")?.name == "Norwegian")

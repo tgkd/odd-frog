@@ -29,10 +29,13 @@ public struct TranslateDirection: Sendable, Hashable {
                 TranslateLanguage.matching(code: language.rawValue).map { ($0, probability) }
             }
             .sorted { $0.1 > $1.1 }
-        // One or two words often look like a third language, so the chosen pair wins whenever it is plausible.
-        if let preferred = hypotheses.first(where: { ($0.0 == primary || $0.0 == secondary) && $0.1 >= 0.15 }) {
+        guard let top = hypotheses.first else {
+            return secondary
+        }
+        // One or two words often look like a third language, so the chosen pair wins while detection is unsure.
+        if top.1 < 0.6, let preferred = hypotheses.first(where: { ($0.0 == primary || $0.0 == secondary) && $0.1 >= 0.15 }) {
             return preferred.0
         }
-        return hypotheses.first?.0 ?? secondary
+        return top.0
     }
 }
