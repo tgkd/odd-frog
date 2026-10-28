@@ -56,6 +56,14 @@ into the previous app, the secondary action copies it. Names come from the Unico
 standard library, so there is no data file to update. Emoji with skin tones and multi-person sequences
 are not listed. Flags search by region code and by English and local country names.
 
+### Keyboard layout
+
+Settings › General › Input source picks a keyboard layout for the launcher, such as ABC. Odd Frog
+switches to it when the launcher opens and back to the previous layout when it closes. If you switch
+layouts by hand while the launcher is open, Odd Frog keeps your choice. The setting is
+`[launcher] input_source = "com.apple.keylayout.ABC"` in `settings.toml`; the list shows only the
+layouts enabled in System Settings › Keyboard › Text Input.
+
 ### Notifications
 
 Odd Frog posts macOS notifications under its own name: the output of `silent` scripts when they

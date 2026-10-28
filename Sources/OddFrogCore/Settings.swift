@@ -138,18 +138,26 @@ public struct Settings: Codable, Sendable, Equatable {
     public struct Launcher: Codable, Sendable, Equatable {
         /// Lists the enabled exclusive plugins in the empty launcher so the user can see what to type.
         public var showPlugins: Bool
+        /// Keyboard input source the launcher selects while it is open, such as `com.apple.keylayout.ABC`.
+        public var inputSource: String?
 
-        public init(showPlugins: Bool = true) {
+        public init(showPlugins: Bool = true, inputSource: String? = nil) {
             self.showPlugins = showPlugins
+            let trimmed = inputSource?.trimmingCharacters(in: .whitespaces) ?? ""
+            self.inputSource = trimmed.isEmpty ? nil : trimmed
         }
 
         enum CodingKeys: String, CodingKey {
             case showPlugins = "show_plugins"
+            case inputSource = "input_source"
         }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            showPlugins = try container.decodeIfPresent(Bool.self, forKey: .showPlugins) ?? true
+            self.init(
+                showPlugins: try container.decodeIfPresent(Bool.self, forKey: .showPlugins) ?? true,
+                inputSource: try container.decodeIfPresent(String.self, forKey: .inputSource)
+            )
         }
     }
 

@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let icons = IconCache()
     private let notifier = Notifier()
     private let hotkeys = HotKeyManager()
+    private let inputSource = InputSourceSwitch()
     private lazy var frecency = FrecencyStore(url: FrecencyStore.defaultURL)
     private lazy var queryHistory = QueryHistoryStore(url: QueryHistoryStore.defaultURL)
     private let status = StatusMenu()
@@ -290,6 +291,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updated.notifications.enabled = on
             applySettings(updated, persist: true)
         }
+        settingsWindow.onInputSource = { [weak self] id in
+            guard let self else { return }
+            var updated = settings
+            updated.launcher.inputSource = id
+            applySettings(updated, persist: true)
+        }
     }
 
     private func wirePlugins() {
@@ -554,6 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        inputSource.restore()
         plugins.stop()
         packageWatcher.stop()
         pluginTimer?.invalidate()
@@ -787,6 +795,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Plugins answer only while the panel is visible, so a prefilled trigger is set once it is.
         if !query.isEmpty { controller.setQuery(query) }
         let focused = controller.focusField()
+        inputSource.select(settings.launcher.inputSource)
         Log.write("panel shown key=\(panel.isKeyWindow) focus=\(focused) results=\(controller.results.count)")
         refreshWeightsIfStale()
     }
@@ -795,6 +804,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         plugins.cancel()
         controller.clearTransientResults()
         panel.dismiss()
+        inputSource.restore()
     }
 
     private func snapshotPanel() {
