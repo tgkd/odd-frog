@@ -1,0 +1,40 @@
+id = "translate"
+name = "Translate"
+version = "0.1.0"
+api_version = 2
+keyword = "tr"
+mode = "persistent"
+activation = "exclusive"
+capabilities = []
+
+[[settings]]
+key = "primary_language"
+title = "Your language"
+type = "choice"
+choices = [
+    "Arabic", "Chinese", "Danish", "Dutch", "English", "French", "German", "Indonesian", "Italian", "Japanese",
+    "Korean", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swedish", "Turkish", "Ukrainian",
+]
+default = "Russian"
+
+[[settings]]
+key = "secondary_language"
+title = "Translate your language into"
+type = "choice"
+choices = [
+    "Arabic", "Chinese", "Danish", "Dutch", "English", "French", "German", "Indonesian", "Italian", "Japanese",
+    "Korean", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swedish", "Turkish", "Ukrainian",
+]
+default = "English"
+
+[[settings]]
+key = "online"
+title = "Also translate with MyMemory (sends the text to mymemory.translated.net)"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "mymemory_email"
+title = "Email for MyMemory (optional; raises the free limit from 5,000 to 50,000 characters a day)"
+type = "string"
+default = ""

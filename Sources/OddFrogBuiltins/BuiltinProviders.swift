@@ -8,6 +8,7 @@ import ChatPluginCore
 import ClipboardPluginCore
 import CharactersPluginCore
 import FilesPluginCore
+import TranslatePluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
@@ -28,5 +29,6 @@ public enum BuiltinProviders {
         "files": { FilesHandler() },
         "emoji": { CharactersHandler(.emoji) },
         "symbols": { CharactersHandler(.symbols) },
+        "translate": { TranslateHandler() },
     ]
 }

@@ -39,7 +39,7 @@ struct MigrationTests {
         try cache.write(to: support.appendingPathComponent("rates.json"))
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let packages = PluginDiscovery.scan(bundled: repository.appendingPathComponent("Plugins"), user: root.appendingPathComponent("none")).packages
-        #expect(packages.count == 15)
+        #expect(packages.count == 16)
         try V2Migration.migrate(configRoot: config, supportRoot: support, packages: packages)
         let v2 = config.appendingPathComponent("v2")
         let result = try ConfigLoader.load(from: v2.appendingPathComponent("config.toml")).config

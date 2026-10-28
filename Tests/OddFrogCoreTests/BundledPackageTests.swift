@@ -43,13 +43,13 @@ import FilesPluginCore
     @Test func shippedFeaturesRunInProcessAndEachCanBeDisabled() async throws {
         let root = try PluginTests().temp(); defer { try? FileManager.default.removeItem(at: root) }
         let packages = try installBundled(to: root)
-        #expect(packages.count == 15)
+        #expect(packages.count == 16)
         let config = root.appendingPathComponent("config.toml")
         try Data("[[commands]]\nname='Docs'\nurl='https://example.com'\n".utf8).write(to: config)
         let script = root.appendingPathComponent("sample.sh")
         try Data("#!/bin/sh\n# @raycast.title Sample Script\nprintf sample\n".utf8).write(to: script)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
-        let queries = ["applications": "Safari", "commands": "Docs", "scripts": "Sample Script", "calculator": "2+2", "windows": "maximize", "web": "a web query", "terminal": "> uptime", "calendar": "cal", "reminders": "rem", "notes": "note", "chat": "chat", "clipboard": "clip", "files": "f report", "emoji": "emoji", "symbols": "sym"]
+        let queries = ["applications": "Safari", "commands": "Docs", "scripts": "Sample Script", "calculator": "2+2", "windows": "maximize", "web": "a web query", "terminal": "> uptime", "calendar": "cal", "reminders": "rem", "notes": "note", "chat": "chat", "clipboard": "clip", "files": "f report", "emoji": "emoji", "symbols": "sym", "translate": "tr"]
         for package in packages {
             let coordinator = PluginCoordinator(services: registry())
             coordinator.builtins = BuiltinProviders.factories
@@ -76,6 +76,9 @@ import FilesPluginCore
                 if package.manifest.id == "files" {
                     return rows.first?.item.result.item.id == "unavailable" || !coordinator.failures.isEmpty
                 }
+                if package.manifest.id == "translate" {
+                    return rows.first?.item.result.item.id == "hint" || !coordinator.failures.isEmpty
+                }
                 return rows.contains { $0.item.result.item.primary != nil } || !coordinator.failures.isEmpty
             }
             #expect(coordinator.failures.isEmpty, "\(package.manifest.id): \(coordinator.failures)")
@@ -84,6 +87,7 @@ import FilesPluginCore
             if package.manifest.id == "terminal" { #expect(rows.first?.item.result.item.primary?.value == "uptime") }
             if package.manifest.id == "clipboard" { #expect(rows.first?.item.title == "Clipboard history is empty") }
             if package.manifest.id == "files" { #expect(rows.first?.item.title == "File search is unavailable") }
+            if package.manifest.id == "translate" { #expect(rows.first?.item.title == "Type text to translate") }
             coordinator.reload(discovery: discovery, settings: [PluginSetting(id: package.manifest.id, enabled: false, source: package.source)], storage: root, config: config)
             #expect(coordinator.catalogItems.isEmpty)
             #expect(coordinator.search(query, items: [], weights: [:], maxResults: 8).isEmpty)
