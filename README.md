@@ -56,11 +56,25 @@ into the previous app, the secondary action copies it. Names come from the Unico
 standard library, so there is no data file to update. Emoji with skin tones and multi-person sequences
 are not listed. Flags search by region code and by English and local country names.
 
+### Notifications
+
+Odd Frog posts macOS notifications under its own name: the output of `silent` scripts when they
+finish, plugin messages, and failures. Turn them off in Settings › General › Notifications
+(`[notifications] enabled = false` in `settings.toml`); failures still appear in the menu bar and the log.
+
+A script that keeps working after it exits, such as a download it backgrounds, can post later through
+the `odd-frog://notify` URL. `body` is required, `title` defaults to "Odd Frog", both percent-encoded:
+
+```
+open -g "odd-frog://notify?title=Download%20complete&body=clip.mp4"
+/usr/bin/jq -rn --arg t "$title" --arg b "$body" '"odd-frog://notify?title=\($t|@uri)&body=\($b|@uri)"'
+```
+
 ### Signing and permissions
 
 `SIGN` defaults to an ad-hoc signature (`-`). Rebuilding changes that identity and can invalidate
-macOS Accessibility, Calendar, and Reminders access, even if System Settings still shows them
-enabled. For a stable identity, create a self-signed code-signing certificate in Keychain Access →
+macOS Accessibility, Calendar, Reminders, and notification access, even if System Settings still
+shows them enabled. For a stable identity, create a self-signed code-signing certificate in Keychain Access →
 Certificate Assistant → Create a Certificate… (certificate type "Code Signing", name e.g.
 `OddFrog Dev`), then pass it to any target: `make run SIGN="OddFrog Dev"` or
 `SIGN="OddFrog Dev" scripts/release.sh`. If access stops working after an ad-hoc rebuild, remove

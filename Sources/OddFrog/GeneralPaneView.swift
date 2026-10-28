@@ -29,6 +29,15 @@ struct GeneralPaneView: View {
                     Button("Open Login Items…") { model.openLoginItems() }
                 }
 
+                Toggle(isOn: Binding(get: { model.notificationsOn }, set: { model.setNotifications($0) })) {
+                    Text("Notifications")
+                    notificationsHelper
+                }
+
+                if model.notificationsOn && model.notificationsDenied {
+                    Button("Open Notification Settings…") { model.openNotificationSettings() }
+                }
+
                 LabeledContent {
                     Button("Reset") { model.resetPlacement() }
                         .disabled(!model.hasCustomPlacement)
@@ -69,6 +78,16 @@ struct GeneralPaneView: View {
             default:
                 EmptyView()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var notificationsHelper: some View {
+        if model.notificationsOn && model.notificationsDenied {
+            Text("macOS blocks Odd Frog notifications. Allow them in System Settings › Notifications.")
+                .foregroundStyle(.orange)
+        } else {
+            Text("Script output, plugin messages and failures. Scripts can also post with odd-frog://notify?title=…&body=….")
         }
     }
 

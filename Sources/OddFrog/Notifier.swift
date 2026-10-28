@@ -5,9 +5,10 @@ import UserNotifications
 final class Notifier {
     private let enabled = Bundle.main.bundleIdentifier != nil
     private var requested = false
+    var isOn = true
 
     func requestAuthorizationIfNeeded() {
-        guard enabled, !requested else { return }
+        guard enabled, isOn, !requested else { return }
         requested = true
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, error in
             if let error { Log.write("notification authorization failed: \(error)") }
@@ -16,7 +17,7 @@ final class Notifier {
 
     func post(title: String, body: String, log: Bool = true) {
         if log { Log.write("notify: \(title) — \(body)") }
-        guard enabled else { return }
+        guard enabled, isOn else { return }
         let deliver: @Sendable () -> Void = {
             let content = UNMutableNotificationContent()
             content.title = title
@@ -32,6 +33,11 @@ final class Notifier {
             requested = true
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in deliver() }
         }
+    }
+
+    static func isDenied() async -> Bool {
+        guard Bundle.main.bundleIdentifier != nil else { return false }
+        return await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
     }
 
     func failure(_ message: String) {

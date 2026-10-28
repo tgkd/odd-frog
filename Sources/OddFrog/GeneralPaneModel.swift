@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OddFrogCore
+import AppKit
 import ServiceManagement
 
 @Observable
@@ -13,9 +14,12 @@ final class GeneralPaneModel {
     private(set) var loginStatus = LoginItem.status
     private(set) var loginError: String?
     private(set) var hasCustomPlacement = LauncherPlacement.saved != nil
+    private(set) var notificationsOn = true
+    private(set) var notificationsDenied = false
 
     @ObservationIgnored private var lastRecorded: Hotkey?
     @ObservationIgnored var onHotkey: ((Hotkey) -> Void)?
+    @ObservationIgnored var onNotifications: ((Bool) -> Void)?
 
     var recorderTitle: String {
         isRecording ? "Type shortcut…" : (rejected ?? hotkey)?.description ?? ""
@@ -73,6 +77,31 @@ final class GeneralPaneModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             MainActor.assumeIsolated { self?.refreshLogin() }
         }
+    }
+
+    func showNotifications(_ on: Bool) {
+        notificationsOn = on
+    }
+
+    func setNotifications(_ on: Bool) {
+        notificationsOn = on
+        onNotifications?(on)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            MainActor.assumeIsolated { self?.refreshNotificationAccess() }
+        }
+    }
+
+    func refreshNotificationAccess() {
+        Task { [weak self] in
+            let denied = await Notifier.isDenied()
+            self?.notificationsDenied = denied
+        }
+    }
+
+    func openNotificationSettings() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func openLoginItems() {

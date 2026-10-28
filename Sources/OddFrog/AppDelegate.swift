@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         didSet {
             executor.terminal = TerminalChoice(values: settings.plugins.first { $0.id == TerminalChoice.pluginID }?.values)
             plugins.showsEntriesWhenEmpty = settings.launcher.showPlugins
+            notifier.isOn = settings.notifications.enabled
+            if settings.notifications.enabled && !oldValue.notifications.enabled {
+                notifier.requestAuthorizationIfNeeded()
+            }
             if settings.appearance != oldValue.appearance {
                 applyAppearance()
             }
@@ -60,10 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         TerminalLauncher.cleanupStaleFiles()
         installMainMenu()
-        notifier.requestAuthorizationIfNeeded()
         guard migrateIfNeeded() else { return }
         loadInitialConfig()
         loadInitialSettings()
+        notifier.requestAuthorizationIfNeeded()
         wirePanel()
         wirePlugins()
         wireStatusMenu()
@@ -280,6 +284,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return try applyLink(original: original, draft: draft)
         }
         settingsWindow.onHotkey = { [weak self] hotkey in self?.setHotkey(hotkey) }
+        settingsWindow.onNotifications = { [weak self] on in
+            guard let self else { return }
+            var updated = settings
+            updated.notifications.enabled = on
+            applySettings(updated, persist: true)
+        }
     }
 
     private func wirePlugins() {
@@ -524,6 +534,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             status.onCancelAction = { [weak self] in self?.plugins.cancelActions() }
         } else { executor.runHost(action, result: result, argument: argument) }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            guard let request = NotifyURL(url) else {
+                Log.write("ignored URL: \(url.absoluteString.prefix(200))")
+                continue
+            }
+            notifier.post(title: request.title ?? "Odd Frog", body: request.body)
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

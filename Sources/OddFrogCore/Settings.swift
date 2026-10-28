@@ -91,6 +91,23 @@ public struct Settings: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Notifications: Codable, Sendable, Equatable {
+        public var enabled: Bool
+
+        public init(enabled: Bool = true) {
+            self.enabled = enabled
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case enabled
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        }
+    }
+
     public struct Window: Codable, Sendable, Equatable {
         public var enabled: Bool
         public var cascadeStep: Double
@@ -189,9 +206,10 @@ public struct Settings: Codable, Sendable, Equatable {
     public var window: Window
     public var appearance: Appearance
     public var launcher: Launcher
+    public var notifications: Notifications
     public var plugins: [PluginSetting]
 
-    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = [], appearance: Appearance = Appearance(), launcher: Launcher = Launcher()) {
+    public init(scripts: Scripts = Scripts(), items: [ItemOverride] = [], search: Search = Search(), currency: Currency = Currency(), window: Window = Window(), plugins: [PluginSetting] = [], appearance: Appearance = Appearance(), launcher: Launcher = Launcher(), notifications: Notifications = Notifications()) {
         self.scripts = scripts
         self.items = items
         self.search = search
@@ -200,6 +218,7 @@ public struct Settings: Codable, Sendable, Equatable {
         self.plugins = plugins
         self.appearance = appearance
         self.launcher = launcher
+        self.notifications = notifications
     }
 
     enum CodingKeys: String, CodingKey {
@@ -210,6 +229,7 @@ public struct Settings: Codable, Sendable, Equatable {
         case window
         case appearance
         case launcher
+        case notifications
         case plugins
     }
 
@@ -222,6 +242,7 @@ public struct Settings: Codable, Sendable, Equatable {
         window = try container.decodeIfPresent(Window.self, forKey: .window) ?? Window()
         appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance) ?? Appearance()
         launcher = try container.decodeIfPresent(Launcher.self, forKey: .launcher) ?? Launcher()
+        notifications = try container.decodeIfPresent(Notifications.self, forKey: .notifications) ?? Notifications()
         plugins = try container.decodeIfPresent([PluginSetting].self, forKey: .plugins) ?? []
     }
 
