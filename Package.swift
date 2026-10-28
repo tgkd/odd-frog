@@ -19,7 +19,8 @@ let package = Package(
         .target(name: "ClipboardPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Clipboard/Sources/ClipboardPluginCore"),
         .target(name: "CharactersPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Characters/Sources/CharactersPluginCore"),
         .target(name: "FilesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Files/Sources/FilesPluginCore"),
-        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "CharactersPluginCore", "FilesPluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
+        .target(name: "TranslatePluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Translate/Sources/TranslatePluginCore"),
+        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "CharactersPluginCore", "FilesPluginCore", "TranslatePluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
             dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
@@ -41,5 +42,6 @@ let package = Package(
         .testTarget(name: "FilesPluginTests", dependencies: ["FilesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Files/Tests"),
         .testTarget(name: "CharactersPluginTests", dependencies: ["CharactersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Characters/Tests"),
         .testTarget(name: "ClipboardPluginTests", dependencies: ["ClipboardPluginCore", "OddFrogPluginAPI"], path: "Plugins/Clipboard/Tests"),
+        .testTarget(name: "TranslatePluginTests", dependencies: ["TranslatePluginCore", "OddFrogPluginAPI"], path: "Plugins/Translate/Tests"),
     ]
 )

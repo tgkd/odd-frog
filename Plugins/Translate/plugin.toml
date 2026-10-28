@@ -1,0 +1,34 @@
+id = "translate"
+name = "Translate"
+version = "0.1.0"
+api_version = 2
+keyword = "tr"
+mode = "persistent"
+activation = "exclusive"
+capabilities = []
+
+[[settings]]
+key = "primary_language"
+title = "Your language"
+type = "choice"
+choices = [
+    "Arabic", "Chinese", "Danish", "Dutch", "English", "French", "German", "Indonesian", "Italian", "Japanese",
+    "Korean", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swedish", "Turkish", "Ukrainian",
+]
+default = "Russian"
+
+[[settings]]
+key = "secondary_language"
+title = "Translate your language into"
+type = "choice"
+choices = [
+    "Arabic", "Chinese", "Danish", "Dutch", "English", "French", "German", "Indonesian", "Italian", "Japanese",
+    "Korean", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swedish", "Turkish", "Ukrainian",
+]
+default = "English"
+
+[[settings]]
+key = "deepl_key"
+title = "DeepL API key (optional; Free keys end with :fx)"
+type = "string"
+default = ""
