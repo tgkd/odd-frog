@@ -38,6 +38,19 @@ struct GeneralPaneView: View {
                     Button("Open Notification Settings…") { model.openNotificationSettings() }
                 }
 
+                Picker(selection: Binding(get: { model.inputSource }, set: { model.setInputSource($0) })) {
+                    Text("Don't switch").tag(String?.none)
+                    ForEach(model.inputSources) { choice in
+                        Text(choice.name).tag(Optional(choice.id))
+                    }
+                    if let id = model.inputSource, !model.inputSources.contains(where: { $0.id == id }) {
+                        Text("\(id) (not enabled)").tag(Optional(id))
+                    }
+                } label: {
+                    Text("Input source")
+                    Text("Switches to this keyboard layout while the launcher is open and back when it closes.")
+                }
+
                 LabeledContent {
                     Button("Reset") { model.resetPlacement() }
                         .disabled(!model.hasCustomPlacement)

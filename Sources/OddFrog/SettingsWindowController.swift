@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController {
     var onApplyLink: ((CommandItem?, LinkDraft?) throws -> [CommandItem])?
     var onHotkey: ((Hotkey) -> Void)?
     var onNotifications: ((Bool) -> Void)?
+    var onInputSource: ((String?) -> Void)?
     var links: [CommandItem] = []
     /// Item hotkeys declared in config, shown in the Items pane until an override replaces them.
     var defaultHotkeys: [String: Hotkey] {
@@ -55,6 +56,7 @@ final class SettingsWindowController: NSWindowController {
         general.refreshPlacement()
         general.showNotifications(settings.notifications.enabled)
         general.refreshNotificationAccess()
+        general.showInputSource(settings.launcher.inputSource)
         let revealing = itemsPane.show(items: items, revealing: id)
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
@@ -96,6 +98,7 @@ final class SettingsWindowController: NSWindowController {
         sidebar.onSelect = { [weak self] pane in self?.showPane(pane) }
         general.onHotkey = { [weak self] hotkey in self?.onHotkey?(hotkey) }
         general.onNotifications = { [weak self] on in self?.onNotifications?(on) }
+        general.onInputSource = { [weak self] id in self?.onInputSource?(id) }
         itemsPane.onChange = { [weak self] in self?.onChange?($0) }
         appearancePane.onChange = { [weak self] appearance in self?.onAppearance?(appearance) }
 

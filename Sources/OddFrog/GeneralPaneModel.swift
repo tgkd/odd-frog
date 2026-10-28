@@ -16,10 +16,13 @@ final class GeneralPaneModel {
     private(set) var hasCustomPlacement = LauncherPlacement.saved != nil
     private(set) var notificationsOn = true
     private(set) var notificationsDenied = false
+    private(set) var inputSource: String?
+    private(set) var inputSources: [InputSource.Choice] = []
 
     @ObservationIgnored private var lastRecorded: Hotkey?
     @ObservationIgnored var onHotkey: ((Hotkey) -> Void)?
     @ObservationIgnored var onNotifications: ((Bool) -> Void)?
+    @ObservationIgnored var onInputSource: ((String?) -> Void)?
 
     var recorderTitle: String {
         isRecording ? "Type shortcut…" : (rejected ?? hotkey)?.description ?? ""
@@ -96,6 +99,16 @@ final class GeneralPaneModel {
             let denied = await Notifier.isDenied()
             self?.notificationsDenied = denied
         }
+    }
+
+    func showInputSource(_ id: String?) {
+        inputSource = id
+        inputSources = InputSource.choices
+    }
+
+    func setInputSource(_ id: String?) {
+        inputSource = id
+        onInputSource?(id)
     }
 
     func openNotificationSettings() {
