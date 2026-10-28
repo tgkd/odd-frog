@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import OddFrogCore
 import SwiftUI
 
@@ -32,6 +33,7 @@ final class SettingsWindowController: NSWindowController {
     private let itemsPane: ItemsPaneController
 
     private var currentPane = SettingsPane.general
+    private var inputSourcesObserver: (any NSObjectProtocol)?
 
     init(icons: IconCache) {
         itemsPane = ItemsPaneController(icons: icons)
@@ -99,6 +101,11 @@ final class SettingsWindowController: NSWindowController {
         general.onHotkey = { [weak self] hotkey in self?.onHotkey?(hotkey) }
         general.onNotifications = { [weak self] on in self?.onNotifications?(on) }
         general.onInputSource = { [weak self] id in self?.onInputSource?(id) }
+        inputSourcesObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String), object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.general.refreshInputSources() }
+        }
         itemsPane.onChange = { [weak self] in self?.onChange?($0) }
         appearancePane.onChange = { [weak self] appearance in self?.onAppearance?(appearance) }
 

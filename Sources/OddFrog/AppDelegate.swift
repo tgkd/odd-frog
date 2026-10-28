@@ -561,6 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        inputSource.restore()
         plugins.stop()
         packageWatcher.stop()
         pluginTimer?.invalidate()

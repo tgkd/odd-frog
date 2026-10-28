@@ -103,6 +103,10 @@ final class GeneralPaneModel {
 
     func showInputSource(_ id: String?) {
         inputSource = id
+        refreshInputSources()
+    }
+
+    func refreshInputSources() {
         inputSources = InputSource.choices
     }
 

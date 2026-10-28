@@ -1,6 +1,5 @@
 import Carbon
 
-/// Keyboard input sources enabled in System Settings › Keyboard › Text Input.
 @MainActor
 enum InputSource {
     struct Choice: Identifiable, Hashable {
@@ -39,15 +38,24 @@ enum InputSource {
     }
 }
 
-/// Selects the launcher's input source while it is open and gives the previous one back on close.
 @MainActor
 final class InputSourceSwitch {
     private var pending: (previous: String, selected: String)?
+    private var reportedMissing: String?
 
     func select(_ id: String?) {
-        guard pending == nil, let id, let current = InputSource.currentID, current != id,
-              InputSource.select(id) else { return }
-        pending = (current, id)
+        guard pending == nil, let id, let current = InputSource.currentID, current != id else { return }
+        guard InputSource.select(id) else {
+            if reportedMissing != id {
+                Log.write("input source \(id) is not enabled in System Settings › Keyboard, launcher keeps \(current)")
+                reportedMissing = id
+            }
+            return
+        }
+        reportedMissing = nil
+        // An input method reports its active mode, not the ID it was selected by.
+        let selected = InputSource.currentID.flatMap { $0 == current ? nil : $0 } ?? id
+        pending = (current, selected)
     }
 
     func restore() {
