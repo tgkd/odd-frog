@@ -20,7 +20,8 @@ let package = Package(
         .target(name: "CharactersPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Characters/Sources/CharactersPluginCore"),
         .target(name: "FilesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Files/Sources/FilesPluginCore"),
         .target(name: "TranslatePluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Translate/Sources/TranslatePluginCore"),
-        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "CharactersPluginCore", "FilesPluginCore", "TranslatePluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
+        .target(name: "DicePluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Dice/Sources/DicePluginCore"),
+        .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "CharactersPluginCore", "FilesPluginCore", "TranslatePluginCore", "DicePluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
             dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
@@ -43,5 +44,6 @@ let package = Package(
         .testTarget(name: "CharactersPluginTests", dependencies: ["CharactersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Characters/Tests"),
         .testTarget(name: "ClipboardPluginTests", dependencies: ["ClipboardPluginCore", "OddFrogPluginAPI"], path: "Plugins/Clipboard/Tests"),
         .testTarget(name: "TranslatePluginTests", dependencies: ["TranslatePluginCore", "OddFrogPluginAPI"], path: "Plugins/Translate/Tests"),
+        .testTarget(name: "DicePluginTests", dependencies: ["DicePluginCore", "OddFrogPluginAPI"], path: "Plugins/Dice/Tests"),
     ]
 )

@@ -56,6 +56,15 @@ into the previous app, the secondary action copies it. Names come from the Unico
 standard library, so there is no data file to update. Emoji with skin tones and multi-person sequences
 are not listed. Flags search by region code and by English and local country names.
 
+### Dice (Dice plugin)
+
+Type dice notation straight into the launcher, like the calculator: `d20`, `6d4+6`, `5d20+20`, `d%`.
+The row shows the total and every die, Return copies the total, the secondary action copies the whole
+roll. Advantage is `2d20kh1` or `max(d20, d20)`, disadvantage is `2d20kl1` or `min(d20, d20)`.
+`4d6kh3` keeps the best three of four, dropped dice are struck through. `+ - * /` and parentheses work,
+division rounds down, and `к` works in place of `d` (`2к6`). One expression rolls at most 100 dice
+with up to 1000 sides each.
+
 ### Keyboard layout
 
 Settings › General › Input source picks a keyboard layout for the launcher, such as ABC. Odd Frog

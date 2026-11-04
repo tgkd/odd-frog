@@ -9,6 +9,7 @@ import ClipboardPluginCore
 import CharactersPluginCore
 import FilesPluginCore
 import TranslatePluginCore
+import DicePluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
@@ -30,5 +31,6 @@ public enum BuiltinProviders {
         "emoji": { CharactersHandler(.emoji) },
         "symbols": { CharactersHandler(.symbols) },
         "translate": { TranslateHandler() },
+        "dice": { DiceHandler() },
     ]
 }
