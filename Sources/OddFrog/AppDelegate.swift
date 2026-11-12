@@ -554,6 +554,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if NSApp.currentEvent?.type == .keyDown, let window = NSApp.keyWindow {
+            window.performClose(nil)
+            return .terminateCancel
+        }
         if documents.prepareToTerminate({ ok in NSApp.reply(toApplicationShouldTerminate: ok) }) {
             return .terminateLater
         }
