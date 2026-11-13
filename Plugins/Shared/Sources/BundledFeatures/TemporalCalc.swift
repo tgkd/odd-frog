@@ -22,6 +22,8 @@ public struct TemporalCalculation: Sendable, Hashable {
         case civilDate(CivilDate)
         case civilDayDifference(Int)
         case elapsed(TimeInterval)
+        case weekRange(CivilDate, CivilDate)
+        case weekNumber(Int, Int)
     }
 
     public let input: String
@@ -33,7 +35,7 @@ public struct TemporalCalculation: Sendable, Hashable {
     public var kindLabel: String {
         switch value {
         case .instant, .elapsed: "Time"
-        case .civilDate, .civilDayDifference: "Date"
+        case .civilDate, .civilDayDifference, .weekRange, .weekNumber: "Date"
         }
     }
 }
@@ -47,7 +49,9 @@ public enum TemporalCalc {
 
     public static func recognize(_ text: String, now: Date, timeZone: TimeZone, locale: Locale) -> Recognition {
         let input = text.trimmingCharacters(in: .whitespaces)
-        let characters = Array(input.lowercased())
+        if let phrase = recognizePhrase(input, now: now, timeZone: timeZone, locale: locale) { return phrase }
+        let normalized = input.lowercased().hasPrefix("time in ") ? "now in " + input.dropFirst(8) : input
+        let characters = Array(normalized.lowercased())
         let fallback: Recognition = containsISODate(characters) ? .rejected : .notTemporal
         guard let lexemes = tokenize(characters) else { return fallback }
         var parser = Parser(lexemes: lexemes)
@@ -243,6 +247,7 @@ public enum TemporalCalc {
         let shifts: [Shift]
         let subtrahend: Anchor?
         let conversion: ResolvedZone?
+        let trailingShifts: [Shift]
 
         var isExplicit: Bool {
             anchor.zone != nil || !shifts.isEmpty || subtrahend != nil || conversion != nil
@@ -289,7 +294,7 @@ public enum TemporalCalc {
             var subtrahend: Anchor?
             while subtrahend == nil, let token = current, token == .plus || token == .minus {
                 index += 1
-                if let parts = try duration() {
+                if let parts = try duration(allowsBareHours: anchor.clock != nil || anchor.day == .now && anchor.zone != nil) {
                     shifts.append(Shift(sign: token == .plus ? 1 : -1, parts: parts))
                 } else if token == .minus {
                     subtrahend = try requireAnchor()
@@ -303,8 +308,14 @@ public enum TemporalCalc {
                 guard let zone = try zone(allowsBareOffset: false) else { throw Failure.invalid }
                 conversion = zone
             }
+            var trailingShifts: [Shift] = []
+            while conversion != nil, subtrahend == nil, let token = current, token == .plus || token == .minus {
+                index += 1
+                guard let parts = try duration(allowsBareHours: anchor.clock != nil || anchor.day == .now) else { throw Failure.invalid }
+                trailingShifts.append(Shift(sign: token == .plus ? 1 : -1, parts: parts))
+            }
             guard index == lexemes.count else { throw Failure.invalid }
-            return Expression(anchor: anchor, shifts: shifts, subtrahend: subtrahend, conversion: conversion)
+            return Expression(anchor: anchor, shifts: shifts, subtrahend: subtrahend, conversion: conversion, trailingShifts: trailingShifts)
         }
 
         private mutating func requireAnchor() throws -> Anchor {
@@ -421,12 +432,18 @@ public enum TemporalCalc {
             return hour % 12 + (meridiem ? 12 : 0)
         }
 
-        private mutating func duration() throws -> [(unit: Unit, amount: Double)]? {
+        private mutating func duration(allowsBareHours: Bool) throws -> [(unit: Unit, amount: Double)]? {
             var parts: [(unit: Unit, amount: Double)] = []
             while case .number(let text)? = current, case .word(let word)? = lexeme(at: 1)?.token, let unit = Unit(word) {
                 guard let amount = Double(text), amount <= 1_000_000 else { throw Failure.invalid }
                 parts.append((unit, amount))
                 index += 2
+            }
+            let endsAmount = lexeme(at: 1).map { [.plus, .minus, .arrow, .word("in"), .word("to"), .word("as")].contains($0.token) } ?? true
+            if parts.isEmpty, allowsBareHours, endsAmount, case .number(let text)? = current,
+               let amount = Double(text), amount <= 1_000_000 {
+                index += 1
+                parts.append((.elapsed(seconds: 3600), amount))
             }
             return parts.isEmpty ? nil : parts
         }
@@ -509,6 +526,11 @@ public enum TemporalCalc {
             var moment = try resolve(expression.anchor)
             for shift in expression.shifts {
                 moment = try apply(shift, to: moment, in: calendar)
+            }
+            if let output = expression.conversion, case .instant = moment {
+                for shift in expression.trailingShifts {
+                    moment = try apply(shift, to: moment, in: Self.gregorian(output.timeZone))
+                }
             }
             if let subtrahend = expression.subtrahend {
                 guard expression.conversion == nil else { throw Failure.invalid }

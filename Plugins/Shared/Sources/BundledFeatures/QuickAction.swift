@@ -13,6 +13,7 @@ public enum QuickAction: Sendable, Hashable {
     case terminal(String)
     case calculation(input: String, value: Double, kind: CalculationKind, locale: Locale)
     case temporal(TemporalCalculation)
+    case formatted(FormattedCalculation)
 
     public var id: String {
         switch self {
@@ -20,6 +21,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(let query, _): "quick:search:\(query)"
         case .terminal(let text): "quick:terminal:\(text)"
         case .calculation(let input, _, _, _): "quick:calc:\(input)"
+        case .formatted(let calculation): "quick:calc:\(calculation.input)"
         case .temporal(let calculation): "quick:calc:\(calculation.input)"
         }
     }
@@ -30,6 +32,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(let query, _): "Search for “\(query)”"
         case .terminal: "Run in Terminal"
         case .calculation(_, let value, let kind, let locale): Self.title(value: value, kind: kind, locale: locale)
+        case .formatted(let calculation): calculation.title
         case .temporal(let calculation): calculation.title
         }
     }
@@ -40,6 +43,7 @@ public enum QuickAction: Sendable, Hashable {
         case .webSearch(_, let url): url.host
         case .terminal(let text): text
         case .calculation(let input, _, let kind, let locale): Self.subtitle(input: input, kind: kind, locale: locale)
+        case .formatted(let calculation): calculation.input
         case .temporal(let calculation): calculation.subtitle
         }
     }
@@ -49,7 +53,7 @@ public enum QuickAction: Sendable, Hashable {
         case .openURL, .webSearch, .terminal: false
         case .calculation(let input, _, let kind, _):
             if case .arithmetic = kind { Arithmetic.isPlainCalculation(input) } else { true }
-        case .temporal: true
+        case .temporal, .formatted: true
         }
     }
 
@@ -64,6 +68,7 @@ public enum QuickAction: Sendable, Hashable {
             case .measurement: "Units"
             case .currency: "Currency"
             }
+        case .formatted(let calculation): calculation.kindLabel
         case .temporal(let calculation): calculation.kindLabel
         }
     }
@@ -72,13 +77,14 @@ public enum QuickAction: Sendable, Hashable {
         switch self {
         case .openURL, .webSearch, .terminal: nil
         case .calculation(_, let value, let kind, let locale): Self.copyText(value: value, kind: kind, locale: locale)
+        case .formatted(let calculation): calculation.copyText
         case .temporal(let calculation): calculation.copyText
         }
     }
 
     private static func title(value: Double, kind: CalculationKind, locale: Locale) -> String {
         switch kind {
-        case .arithmetic: value.formatted(.number.precision(.fractionLength(0...6)).locale(locale))
+        case .arithmetic: CalculatorFormat.number(value, locale: locale)
         case .measurement(let result): result
         case .currency(let result, _): result
         }
@@ -93,22 +99,31 @@ public enum QuickAction: Sendable, Hashable {
 
     private static func copyText(value: Double, kind: CalculationKind, locale: Locale) -> String {
         switch kind {
-        case .arithmetic, .measurement: value.formatted(.number.grouping(.never).precision(.fractionLength(0...6)).locale(locale))
-        case .currency: value.formatted(.number.grouping(.never).precision(.fractionLength(2)).locale(locale))
+        case .arithmetic, .measurement: CalculatorFormat.number(value, locale: locale, copy: true)
+        case .currency: CalculatorFormat.currency(value, locale: locale, copy: true)
         }
     }
 
     public static func calculation(for query: String, rates: CurrencyRates? = nil, defaultCurrency: String? = nil, now: Date = Date(),
                                    timeZone: TimeZone = .current, locale: Locale = .current) -> QuickAction? {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.isEmpty, trimmed.count <= 4096 else { return nil }
         switch TemporalCalc.recognize(trimmed, now: now, timeZone: timeZone, locale: locale) {
         case .value(let calculation): return .temporal(calculation)
         case .rejected: return nil
         case .notTemporal: break
         }
-        if let value = Arithmetic.evaluate(trimmed) {
-            return .calculation(input: trimmed, value: value, kind: .arithmetic, locale: locale)
+        if let result = NumberRepresentation.evaluate(trimmed, locale: locale) {
+            return .formatted(result)
+        }
+        if let result = DomainCalculation.evaluate(trimmed, defaultCurrency: defaultCurrency, locale: locale) {
+            return .formatted(result)
+        }
+        if let value = Arithmetic.evaluateValue(trimmed, defaultCurrency: defaultCurrency) {
+            if let scalar = value.scalar {
+                return .calculation(input: trimmed, value: scalar, kind: .arithmetic, locale: locale)
+            }
+            return .formatted(value.formatted(input: trimmed, locale: locale))
         }
         if let conversion = UnitConversion.evaluate(trimmed, locale: locale) {
             return .calculation(input: conversion.input, value: conversion.value, kind: .measurement(result: conversion.result), locale: locale)

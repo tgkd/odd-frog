@@ -75,7 +75,7 @@ struct QuickActionTests {
         #expect(action.title == "62.1371 mi")
         #expect(action.subtitle == "100 km → mi")
         #expect(action.kindLabel == "Units")
-        #expect(action.copyText == "62.137119")
+        #expect(abs((Double(action.copyText ?? "") ?? 0) - 62.1371192237334) < 1e-12)
         #expect(QuickAction.calculation(for: "2+2", locale: locale)?.kindLabel == "Calculator")
     }
 
