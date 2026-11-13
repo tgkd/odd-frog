@@ -38,13 +38,18 @@ public struct CurrencyConversion: Sendable, Hashable {
     public static func evaluate(_ text: String, rates: CurrencyRates, defaultCurrency: String? = nil, locale: Locale = .current) -> CurrencyConversion? {
         let fallback = defaultCurrency.flatMap { code($0, rates: rates) }
         var head = Substring(text.trimmingCharacters(in: .whitespaces))
+        var leadingSign = ""
+        if let first = head.first, "+-−".contains(first), let next = head.dropFirst().first, symbols[next] != nil {
+            leadingSign = first == "−" ? "-" : String(first)
+            head = head.dropFirst()
+        }
         var symbolCode: String?
         if let first = head.first, let code = currency(for: first, fallback: fallback) {
             symbolCode = code
             head = head.dropFirst()
         }
-        guard let scanned = Arithmetic.scanNumber(head.drop(while: { $0.isWhitespace })) else { return nil }
-        let literal = String(head[head.startIndex..<scanned.rest.startIndex]).trimmingCharacters(in: .whitespaces)
+        guard let scanned = Arithmetic.scanNumber(head.drop(while: { $0.isWhitespace }), signed: leadingSign.isEmpty) else { return nil }
+        let literal = leadingSign + String(head[head.startIndex..<scanned.rest.startIndex]).trimmingCharacters(in: .whitespaces)
         var tail = scanned.rest
         if symbolCode == nil, let first = tail.first, let code = currency(for: first, fallback: fallback) {
             symbolCode = code
@@ -87,16 +92,16 @@ public struct CurrencyConversion: Sendable, Hashable {
             target = fallback
         }
         guard let source = code(sourceToken, rates: rates), let target else { return nil }
-        guard let value = rates.convert(scanned.value, from: source, to: target) else { return nil }
+        guard let value = rates.convert(scanned.value * (leadingSign == "-" ? -1 : 1), from: source, to: target) else { return nil }
         return CurrencyConversion(
             input: targetToken == nil && source == target ? "\(literal) \(source)" : "\(literal) \(source) → \(target)",
             value: value,
-            result: "\(value.formatted(.number.precision(.fractionLength(2)).locale(locale))) \(target)",
+            result: "\(CalculatorFormat.currency(value, locale: locale)) \(target)",
             updated: rates.timestamp
         )
     }
 
-    private static func currency(for symbol: Character, fallback: String?) -> String? {
+    static func currency(for symbol: Character, fallback: String?) -> String? {
         if let fallback, sharedSymbols[symbol]?.contains(fallback) == true {
             return fallback
         }

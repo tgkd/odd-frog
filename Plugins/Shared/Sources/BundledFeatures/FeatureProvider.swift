@@ -136,7 +136,7 @@ public actor FeatureProvider: ProviderHandler {
     public static func quick(_ quick: QuickAction) -> PluginItem {
         let action: PluginAction, symbol: String
         switch quick {
-        case .calculation: action = PluginAction(.copy, quick.copyText ?? ""); symbol = "plus.forwardslash.minus"
+        case .calculation, .formatted: action = PluginAction(.copy, quick.copyText ?? ""); symbol = "plus.forwardslash.minus"
         case .temporal: action = PluginAction(.copy, quick.copyText ?? ""); symbol = "clock"
         case .openURL(let url), .webSearch(_, let url): action = PluginAction(.openURL, url.absoluteString); symbol = "magnifyingglass"
         case .terminal(let command): action = PluginAction(.terminal, command); symbol = "terminal"
