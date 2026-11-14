@@ -129,6 +129,9 @@ All catalog and query items use the same shape. Required: local `id` and `title`
 `secondary`, `history`, and `answer` (see root rows above). Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
 within a catalog/response. Set `history: true` for reusable catalog items; live results are always
 transient. Missing secondary action uses primary. Missing primary produces an inert status row.
+Set `multiline: true` when the full text matters, like a translation or an error message: the title
+and subtitle then wrap over several lines (capped) instead of truncating. Leave it off for list
+rows such as files or clipboard entries, so the list stays easy to scan.
 
 An action has `kind`, `value`, and optional `payload`, `argv`, `cwd`, `output`:
 

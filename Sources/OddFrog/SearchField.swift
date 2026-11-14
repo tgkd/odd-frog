@@ -16,6 +16,7 @@ final class SearchField: NSTextField {
         usesSingleLineMode = false
         cell?.wraps = false
         cell?.isScrollable = true
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
     required init?(coder: NSCoder) { nil }

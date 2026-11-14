@@ -10,6 +10,8 @@ final class ResultRowView: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("ResultRow")
     static let iconSide: CGFloat = 24
     static let glyphSide: CGFloat = 32
+    static let multilineTitleLines = 8
+    static let multilineDetailLines = 3
 
     let iconView = NSImageView()
     let titleLabel = NSTextField(labelWithString: "")
@@ -18,9 +20,12 @@ final class ResultRowView: NSTableCellView {
     let requirementLabel = NSTextField(labelWithString: "")
     let kindLabel = NSTextField(labelWithString: "")
     private let detailStack: NSStackView
+    private let titleFill: NSLayoutConstraint
     private let iconWidth: NSLayoutConstraint
     private let iconHeight: NSLayoutConstraint
     private var appliedFont: ContentFont?
+    private var multiline = false
+    private lazy var measuringWidth = widthAnchor.constraint(equalToConstant: 0)
 
     init() {
         iconView.imageScaling = .scaleProportionallyDown
@@ -55,6 +60,7 @@ final class ResultRowView: NSTableCellView {
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = 0
+        titleFill = titleLabel.widthAnchor.constraint(equalTo: textStack.widthAnchor)
 
         let rowStack = NSStackView(views: [iconView, textStack, kindLabel])
         rowStack.orientation = .horizontal
@@ -93,8 +99,9 @@ final class ResultRowView: NSTableCellView {
         }
     }
 
-    func configure(title: String, detail: String?, value: String?, tooltip: String?, kind: String?, requirement: Requirement?, icon: NSImage?, iconSide: CGFloat = ResultRowView.iconSide) {
+    func configure(title: String, detail: String?, value: String?, tooltip: String?, kind: String?, requirement: Requirement?, icon: NSImage?, iconSide: CGFloat = ResultRowView.iconSide, multiline: Bool = false) {
         applyFonts()
+        applyLineMode(multiline)
         iconWidth.constant = iconSide
         iconHeight.constant = iconSide
         titleLabel.stringValue = title
@@ -111,5 +118,43 @@ final class ResultRowView: NSTableCellView {
             requirementLabel.isHidden = true
         }
         kindLabel.stringValue = kind ?? ""
+    }
+
+    func fittingHeight(width: CGFloat) -> CGFloat {
+        guard multiline else { return fittingSize.height }
+        measuringWidth.constant = width
+        measuringWidth.isActive = true
+        defer { measuringWidth.isActive = false }
+        setFrameSize(NSSize(width: width, height: fittingSize.height))
+        layoutSubtreeIfNeeded()
+        return fittingSize.height
+    }
+
+    override func layout() {
+        super.layout()
+        guard multiline else { return }
+        let width = titleLabel.frame.width
+        guard titleLabel.preferredMaxLayoutWidth != width || subtitleLabel.preferredMaxLayoutWidth != width else { return }
+        titleLabel.preferredMaxLayoutWidth = width
+        subtitleLabel.preferredMaxLayoutWidth = width
+        super.layout()
+    }
+
+    private func applyLineMode(_ multiline: Bool) {
+        guard multiline != self.multiline else { return }
+        self.multiline = multiline
+        titleFill.isActive = multiline
+        titleLabel.maximumNumberOfLines = multiline ? Self.multilineTitleLines : 1
+        titleLabel.lineBreakMode = multiline ? .byWordWrapping : .byTruncatingTail
+        titleLabel.cell?.wraps = multiline
+        titleLabel.cell?.truncatesLastVisibleLine = true
+        subtitleLabel.maximumNumberOfLines = multiline ? Self.multilineDetailLines : 1
+        subtitleLabel.usesSingleLineMode = !multiline
+        subtitleLabel.lineBreakMode = multiline ? .byWordWrapping : .byTruncatingMiddle
+        subtitleLabel.cell?.wraps = multiline
+        if !multiline {
+            titleLabel.preferredMaxLayoutWidth = 0
+            subtitleLabel.preferredMaxLayoutWidth = 0
+        }
     }
 }

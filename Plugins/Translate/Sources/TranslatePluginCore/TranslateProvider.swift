@@ -52,13 +52,13 @@ public enum TranslateProvider {
             return PluginItem(id: "apple", title: "Download \(direction.source.name) and \(direction.target.name) for offline translation",
                               subtitle: "Press Return to open Translation Languages in System Settings.",
                               kind: "Translate", symbol: "arrow.down.circle",
-                              primary: PluginAction(.openURL, languageSettingsURL))
+                              primary: PluginAction(.openURL, languageSettingsURL), multiline: true)
         case .unsupported:
             return PluginItem(id: "apple", title: "Apple can't translate \(pair)", kind: "Translate",
                               symbol: "exclamationmark.triangle")
         case .failed(let message):
             return PluginItem(id: "apple", title: "Apple Translation failed", subtitle: message, kind: "Translate",
-                              symbol: "exclamationmark.triangle")
+                              symbol: "exclamationmark.triangle", multiline: true)
         }
     }
 
@@ -73,7 +73,7 @@ public enum TranslateProvider {
             return translation(text, id: "mymemory", subtitle: "MyMemory · \(pair)")
         case .done(.failed(let message)):
             return PluginItem(id: "mymemory", title: "MyMemory translation failed", subtitle: message,
-                              kind: "Translate", symbol: "exclamationmark.triangle")
+                              kind: "Translate", symbol: "exclamationmark.triangle", multiline: true)
         case .done:
             return PluginItem(id: "mymemory", title: "MyMemory can't translate \(pair)",
                               kind: "Translate", symbol: "exclamationmark.triangle")
@@ -82,6 +82,6 @@ public enum TranslateProvider {
 
     private static func translation(_ text: String, id: String, subtitle: String) -> PluginItem {
         PluginItem(id: id, title: text, subtitle: subtitle, kind: "Translate", symbol: "translate",
-                   primary: PluginAction(.paste, text), secondary: PluginAction(.copy, text))
+                   primary: PluginAction(.paste, text), secondary: PluginAction(.copy, text), multiline: true)
     }
 }

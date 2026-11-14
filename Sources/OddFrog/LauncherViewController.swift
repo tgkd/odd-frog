@@ -18,6 +18,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
     private let emptyBand = NSView()
     private let emptyLabel = NSTextField(labelWithString: "")
     private let prototype = ResultRowView()
+    private var cellWidth = LauncherPanel.width
     private var scrollHeight: NSLayoutConstraint!
     private var emptyHeight: NSLayoutConstraint!
     private var tableInset: CGFloat = 10
@@ -164,6 +165,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
             glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
             glass.topAnchor.constraint(equalTo: clip.topAnchor),
             glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+            clip.widthAnchor.constraint(equalToConstant: LauncherPanel.width),
         ])
         view = clip
     }
@@ -321,6 +323,11 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
         let rows = results.count
+        if rows > 0, let width = tableView.view(atColumn: 0, row: 0, makeIfNecessary: false)?.frame.width, width != cellWidth {
+            cellWidth = width
+            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows))
+            tableView.layoutSubtreeIfNeeded()
+        }
         let visible = min(rows, Self.visibleRowCap)
         let previousInset = tableInset
         if rows > 0 { tableInset = tableView.rect(ofRow: 0).minY }
@@ -512,7 +519,8 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
         let result = results[row]
         let item = result.item
         let line = detail(for: result)
-        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, requirement: line?.requirement, icon: icon, iconSide: IconCache.side(for: item))
+        let multiline = if case .plugin(let live) = item { live.item.multiline == true } else { false }
+        cell.configure(title: item.title, detail: line?.detail, value: line?.value, tooltip: line?.tooltip, kind: item.kindLabel, requirement: line?.requirement, icon: icon, iconSide: IconCache.side(for: item), multiline: multiline)
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -525,7 +533,7 @@ final class LauncherViewController: NSViewController, NSTextFieldDelegate, NSTab
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         configure(prototype, row: row, icon: nil)
-        return prototype.fittingSize.height
+        return prototype.fittingHeight(width: cellWidth)
     }
 
     private struct DetailLine {

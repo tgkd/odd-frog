@@ -52,14 +52,16 @@ public struct PluginItem: Codable, Sendable, Hashable {
     /// The row answers the typed query outright (a calculation, a conversion), so the host drops
     /// other plugins' `root_results` rows next to it.
     public var answer: Bool?
+    public var multiline: Bool?
     public init(id: String, title: String, subtitle: String? = nil, kind: String? = nil,
                 symbol: String? = nil, icon: String? = nil, aliases: [String]? = nil,
                 argument: PluginArgument? = nil, completion: String? = nil,
-                primary: PluginAction? = nil, secondary: PluginAction? = nil, history: Bool? = nil, answer: Bool? = nil) {
+                primary: PluginAction? = nil, secondary: PluginAction? = nil, history: Bool? = nil, answer: Bool? = nil,
+                multiline: Bool? = nil) {
         self.id = id; self.title = title; self.subtitle = subtitle; self.kind = kind
         self.symbol = symbol; self.icon = icon; self.aliases = aliases; self.argument = argument
         self.completion = completion; self.primary = primary; self.secondary = secondary; self.history = history
-        self.answer = answer
+        self.answer = answer; self.multiline = multiline
     }
 }
 
