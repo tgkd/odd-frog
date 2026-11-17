@@ -61,13 +61,20 @@ actor RemindersService {
         return title.isEmpty ? "Untitled reminder" : title
     }
 
-    func create(title: String) throws -> String {
+    func create(_ draft: ReminderDraft) throws -> String {
         try Task.checkCancellation()
         try requireAccess()
         guard let list = store.defaultCalendarForNewReminders() else { throw RemindersServiceError.noDefaultList }
         let reminder = EKReminder(eventStore: store)
-        reminder.title = title
+        reminder.title = draft.trimmedTitle
         reminder.calendar = list
+        if let due = draft.due {
+            let units: Set<Calendar.Component> = draft.allDay
+                ? [.calendar, .timeZone, .year, .month, .day]
+                : [.calendar, .timeZone, .year, .month, .day, .hour, .minute]
+            reminder.dueDateComponents = Calendar.current.dateComponents(units, from: due)
+            if !draft.allDay { reminder.addAlarm(EKAlarm(absoluteDate: due)) }
+        }
         try store.save(reminder, commit: true)
         cached = nil
         return list.title

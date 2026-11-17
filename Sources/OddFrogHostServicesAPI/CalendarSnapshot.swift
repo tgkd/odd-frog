@@ -51,3 +51,27 @@ public struct CalendarSnapshot: Codable, Sendable, Equatable {
         self.events = events
     }
 }
+
+public struct CalendarEventDraft: Codable, Sendable, Equatable {
+    public var title: String
+    public var start: Date
+    public var end: Date
+    public var allDay: Bool
+    public var location: String
+
+    public init(title: String, start: Date, end: Date, allDay: Bool = false, location: String = "") {
+        self.title = title
+        self.start = start
+        self.end = end
+        self.allDay = allDay
+        self.location = location
+    }
+
+    public func isValid(relativeTo now: Date) -> Bool {
+        let duration = end.timeIntervalSince(start)
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (1...500).contains(trimmed.count) && location.count <= 500
+            && duration.isFinite && duration > 0 && duration <= 31 * 86400
+            && start >= now.addingTimeInterval(-366 * 86400) && start <= now.addingTimeInterval(5 * 366 * 86400)
+    }
+}

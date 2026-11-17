@@ -12,7 +12,7 @@ private actor FakeBackend: ChatBackend {
         self.chunks = chunks
         self.failure = failure
     }
-    func stream(_ request: ChatRequest) async throws -> AsyncThrowingStream<String, any Error> {
+    func stream(_ request: ChatRequest, tools: ChatToolContext?) async throws -> AsyncThrowingStream<String, any Error> {
         lastRequest = request
         calls += 1
         if let failure {
@@ -118,7 +118,7 @@ struct ChatHandlerTests {
         #expect(request.model == "llama3.2")
         #expect(request.systemPrompt == "Be brief.")
         #expect(request.apiKey == "")
-        #expect(request.baseURL.absoluteString == "http://localhost:11434/v1")
+        #expect(request.baseURL?.absoluteString == "http://localhost:11434/v1")
         #expect(request.messages.map(\.text) == ["hi"])
         let stored = try ConversationStore(directory: root).list()
         #expect(stored.map(\.id) == [id])

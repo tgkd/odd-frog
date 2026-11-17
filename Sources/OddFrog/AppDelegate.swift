@@ -3,6 +3,7 @@ import OddFrogCore
 import OddFrogBuiltins
 import OddFrogPluginAPI
 import OddFrogHostServicesAPI
+import NotesPluginCore
 import EventKit
 
 @MainActor
@@ -886,6 +887,59 @@ extension AppDelegate {
         }
     }
 
+    private func registerNotesServices(_ registry: HostServiceRegistry) {
+        let store = NoteStore(directory: StoragePaths.support.appendingPathComponent("plugins/notes", isDirectory: true))
+        registry.register("notes.read@1") { params, _ in
+            let query = try params.decode(NotesQuery.self)
+            guard query.isValid() else { throw RPCError("params", "Invalid notes query.") }
+            let filter = query.query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matches = try store.list().filter { filter.isEmpty || $0.text.localizedStandardContains(filter) }
+            return try .encode(NotesSnapshot(
+                notes: matches.prefix(query.limit).map { NoteRecord(id: $0.id, text: $0.text, modified: $0.modified) },
+                truncated: matches.count > query.limit))
+        }
+        registry.register("notes.create@1", activationRequired: true) { params, _ in
+            guard let text = params["text"].string, NoteText.isValid(text) else {
+                throw RPCError("params", "A note needs text, up to \(NoteText.maximumLength) characters.")
+            }
+            let note = try store.write(id: store.newID(), text: text)
+            return try .encode(PluginEffects(notification: "Note added: \(Note.title(of: note.text))", refreshQuery: true))
+        }
+        registry.register("notes.append@1", activationRequired: true) { params, _ in
+            let append = try params.decode(NoteAppend.self)
+            let existing = try store.read(id: append.id)
+            let separator = existing.text.hasSuffix("\n") || existing.text.isEmpty ? "" : "\n"
+            let combined = existing.text + separator + append.text
+            guard NoteText.isValid(append.text), combined.count <= NoteText.maximumLength else {
+                throw RPCError("params", "The note would exceed \(NoteText.maximumLength) characters.")
+            }
+            let note = try store.write(id: append.id, text: combined)
+            return try .encode(PluginEffects(notification: "Note updated: \(Note.title(of: note.text))", refreshQuery: true))
+        }
+    }
+
+    private func registerAppleNotesServices(_ registry: HostServiceRegistry) {
+        let notes = AppleNotesService()
+        registry.register("applenotes.read@1", activationRequired: true) { params, _ in
+            let query = try params.decode(NotesQuery.self)
+            guard query.isValid() else { throw RPCError("params", "Invalid notes query.") }
+            return try .encode(try await notes.read(query))
+        }
+        registry.register("applenotes.create@1", activationRequired: true) { params, _ in
+            guard let text = params["text"].string, NoteText.isValid(text) else {
+                throw RPCError("params", "A note needs text, up to \(NoteText.maximumLength) characters.")
+            }
+            let title = try await notes.create(text: text)
+            return try .encode(PluginEffects(notification: "Apple Note added: \(title)"))
+        }
+        registry.register("applenotes.append@1", activationRequired: true) { params, _ in
+            let append = try params.decode(NoteAppend.self)
+            guard NoteText.isValid(append.text) else { throw RPCError("params", "Nothing to add.") }
+            let title = try await notes.append(append)
+            return try .encode(PluginEffects(notification: "Apple Note updated: \(title)"))
+        }
+    }
+
     private func registerHostServices(_ registry: HostServiceRegistry) {
         let calendar = calendarService, reminders = remindersService
         registry.register("calendar.read@1") { [weak registry] params, context in
@@ -895,6 +949,11 @@ extension AppDelegate {
         registry.register("calendar.access@1", activationRequired: true) { _, _ in
             _ = try await calendar.requestAccess()
             return try .encode(PluginEffects(refreshQuery: true))
+        }
+        registry.register("calendar.create@1", activationRequired: true) { params, _ in
+            let draft = try params.decode(CalendarEventDraft.self)
+            let name = try await calendar.create(draft)
+            return try .encode(PluginEffects(notification: "Added to \(name): \(draft.title)", refreshQuery: true))
         }
         registry.register("reminders.read@1") { [weak registry] params, context in
             registry?.subscribe(context, to: "reminders.changes@1")
@@ -910,12 +969,14 @@ extension AppDelegate {
             return try .encode(PluginEffects(notification: "Completed: \(title)", refreshQuery: true))
         }
         registry.register("reminders.create@1", activationRequired: true) { params, _ in
-            guard let title = params["title"].string?.trimmingCharacters(in: .whitespacesAndNewlines), (1...500).contains(title.count) else {
+            guard let draft = try? params.decode(ReminderDraft.self), draft.isValid() else {
                 throw RPCError("params", "Reminder title must contain 1–500 characters.")
             }
-            let list = try await reminders.create(title: title)
-            return try .encode(PluginEffects(notification: "Added to \(list): \(title)", refreshQuery: true))
+            let list = try await reminders.create(draft)
+            return try .encode(PluginEffects(notification: "Added to \(list): \(draft.trimmedTitle)", refreshQuery: true))
         }
+        registerNotesServices(registry)
+        registerAppleNotesServices(registry)
         registry.register("windows.perform@1", activationRequired: true) { [weak self] params, context in
             guard let self, let id = params["action"].string,
                   let action = WindowAction.serviceAction(id) else { throw RPCError("params", "Unknown window operation.") }

@@ -3,9 +3,12 @@ import OddFrogPluginAPI
 
 public actor ChatHandler: ProviderHandler {
     private let backend: any ChatBackend
+    private let onDevice: any ChatBackend
     private var drafts = Set<String>()
-    public init(backend: any ChatBackend = OpenAICompatibleBackend()) {
+    public init(backend: any ChatBackend = OpenAICompatibleBackend(),
+                onDevice: any ChatBackend = FoundationModelsBackend()) {
         self.backend = backend
+        self.onDevice = onDevice
     }
     public func handle(_ method: String, params: JSONValue, operation: ProviderOperation) async throws -> JSONValue {
         switch method {
@@ -63,22 +66,19 @@ public actor ChatHandler: ProviderHandler {
             ? Conversation(id: id, title: "New chat", created: now, modified: now, messages: [])
             : try store.read(id: id)
         let settings = try params["context"].decode(PluginContext.self).settings
-        guard let baseURL = URL(string: (settings["base_url"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)),
-              baseURL.scheme?.isEmpty == false, baseURL.host?.isEmpty == false else {
-            throw RPCError("chat", "Set a valid API base URL in Chat settings.")
-        }
-        let model = (settings["model"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else {
-            throw RPCError("chat", "Set a model name in Chat settings.")
-        }
-        conversation.messages.append(PluginMessage(id: store.newID(), role: .user, text: text))
-        let request = ChatRequest(baseURL: baseURL,
-                                  apiKey: (settings["api_key"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                                  model: model, systemPrompt: settings["system_prompt"]?.string ?? "",
-                                  messages: conversation.messages)
+        let service = ChatService.selected(in: settings)
+        let pending = conversation.messages + [PluginMessage(id: store.newID(), role: .user, text: text)]
+        let request = try service.request(settings: settings, messages: pending)
+        conversation.messages = pending
+        let backend = service.isOnDevice ? onDevice : self.backend
         let replyID = store.newID()
         var reply = ""
-        for try await chunk in try await backend.stream(request) {
+        let tools = service.isOnDevice && settings["tools"]?.bool != false
+            ? ChatToolContext(notes: settings["notes_source"]?.string.flatMap(ChatNotesSource.init(rawValue:)) ?? .oddFrog) {
+                capability, params in try await operation.service(capability, params: params)
+            }
+            : nil
+        for try await chunk in try await backend.stream(request, tools: tools) {
             try Task.checkCancellation()
             reply += chunk
             try await operation.emit("messageDelta", params: .encode(

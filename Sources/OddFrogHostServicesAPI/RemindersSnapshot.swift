@@ -48,3 +48,32 @@ public struct RemindersSnapshot: Codable, Sendable, Equatable {
         self.defaultListName = defaultListName
     }
 }
+
+public struct ReminderDraft: Codable, Sendable, Equatable {
+    public var title: String
+    public var due: Date?
+    public var allDay: Bool
+
+    public init(title: String, due: Date? = nil, allDay: Bool = false) {
+        self.title = title
+        self.due = due
+        self.allDay = allDay
+    }
+
+    enum CodingKeys: String, CodingKey { case title, due, allDay }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        due = try container.decodeIfPresent(Date.self, forKey: .due)
+        allDay = try container.decodeIfPresent(Bool.self, forKey: .allDay) ?? false
+    }
+
+    public var trimmedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public func isValid() -> Bool {
+        (1...500).contains(trimmedTitle.count)
+    }
+}
