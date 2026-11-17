@@ -11,7 +11,13 @@ public struct PluginSettingDefinition: Codable, Sendable, Equatable {
     public var choices: [String]?
     public var minimum: Double?
     public var maximum: Double?
-    enum CodingKeys: String, CodingKey { case key, title, type, choices, minimum, maximum; case defaultValue = "default" }
+    public var subtitle: String?
+    public var visibleWhen: [String: [String]]?
+    enum CodingKeys: String, CodingKey {
+        case key, title, type, choices, minimum, maximum, subtitle
+        case defaultValue = "default"
+        case visibleWhen = "visible_when"
+    }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         key = try c.decode(String.self, forKey: .key); title = try c.decode(String.self, forKey: .title)
@@ -19,6 +25,13 @@ public struct PluginSettingDefinition: Codable, Sendable, Equatable {
         choices = try c.decodeIfPresent([String].self, forKey: .choices)
         minimum = try (try? c.decode(Int.self, forKey: .minimum)).map(Double.init) ?? (try c.decodeIfPresent(Double.self, forKey: .minimum))
         maximum = try (try? c.decode(Int.self, forKey: .maximum)).map(Double.init) ?? (try c.decodeIfPresent(Double.self, forKey: .maximum))
+        subtitle = try c.decodeIfPresent(String.self, forKey: .subtitle)
+        visibleWhen = try c.decodeIfPresent([String: [String]].self, forKey: .visibleWhen)
+    }
+    public func isVisible(with values: (String) -> JSONValue?) -> Bool {
+        (visibleWhen ?? [:]).allSatisfy { key, accepted in
+            values(key)?.string.map(accepted.contains) ?? false
+        }
     }
     public func validate(_ value: JSONValue) throws {
         let valid: Bool
@@ -108,6 +121,13 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         for setting in value.settings {
             guard !setting.key.isEmpty, !setting.title.isEmpty else { throw PluginError.message("Empty setting key or title.") }
             try setting.validate(setting.defaultValue)
+            for (key, accepted) in setting.visibleWhen ?? [:] {
+                guard let controller = value.settings.first(where: { $0.key == key }), controller.key != setting.key,
+                      controller.type == .choice, !accepted.isEmpty,
+                      accepted.allSatisfy({ controller.choices?.contains($0) == true }) else {
+                    throw PluginError.message("Setting '\(setting.key)' has visible_when on '\(key)', which must be another choice setting with those choices.")
+                }
+            }
         }
         return value
     }

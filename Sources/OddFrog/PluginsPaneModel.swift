@@ -36,6 +36,12 @@ final class PluginsPaneModel {
         package.setting(in: settings)?.values?[definition.key] ?? definition.defaultValue
     }
 
+    func isVisible(_ definition: PluginSettingDefinition, in package: PluginPackage) -> Bool {
+        definition.isVisible { key in
+            package.manifest.settings.first { $0.key == key }.map { value(of: $0, in: package) }
+        }
+    }
+
     func resolvedTrigger(of package: PluginPackage) -> String {
         (try? package.trigger(in: settings))?.text ?? package.manifest.trigger?.text ?? ""
     }
