@@ -51,4 +51,36 @@ actor CalendarService {
     }
 }
 
-private enum CalendarServiceError: Error { case invalidRange }
+extension CalendarService {
+    func create(_ draft: CalendarEventDraft) throws -> String {
+        try Task.checkCancellation()
+        guard draft.isValid(relativeTo: Date()) else { throw CalendarServiceError.invalidEvent }
+        let status = EKEventStore.authorizationStatus(for: .event)
+        guard status == .fullAccess || status == .writeOnly else { throw CalendarServiceError.noAccess }
+        guard let calendar = store.defaultCalendarForNewEvents else { throw CalendarServiceError.noDefaultCalendar }
+        let event = EKEvent(eventStore: store)
+        event.title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        event.startDate = draft.start
+        event.endDate = draft.end
+        event.isAllDay = draft.allDay
+        let location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !location.isEmpty { event.location = location }
+        event.calendar = calendar
+        try store.save(event, span: .thisEvent, commit: true)
+        cached = nil
+        return calendar.title
+    }
+}
+
+private enum CalendarServiceError: LocalizedError {
+    case invalidRange, invalidEvent, noAccess, noDefaultCalendar
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidRange: "Invalid calendar range."
+        case .invalidEvent: "The event needs a title, an end after its start, and a duration up to 31 days."
+        case .noAccess: "Calendar access is not granted."
+        case .noDefaultCalendar: "No default calendar for new events."
+        }
+    }
+}

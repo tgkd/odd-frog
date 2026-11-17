@@ -5,28 +5,65 @@ api_version = 2
 keyword = "chat"
 mode = "persistent"
 activation = "exclusive"
-capabilities = []
+capabilities = [
+    "calendar.read@1", "calendar.access@1", "calendar.create@1",
+    "reminders.read@1", "reminders.access@1", "reminders.create@1", "reminders.complete@1",
+    "notes.read@1", "notes.create@1", "notes.append@1",
+    "applenotes.read@1", "applenotes.create@1", "applenotes.append@1",
+]
+
+[[settings]]
+key = "service"
+title = "Provider"
+subtitle = "Apple FM runs on this Mac. LM Studio and Ollama need their app running."
+type = "choice"
+choices = ["Apple FM", "LM Studio", "Ollama", "Custom"]
+default = "Apple FM"
+
+[[settings]]
+key = "tools"
+title = "Use Calendar, Reminders and Notes"
+subtitle = "Apple FM can read your events, reminders and notes, add new ones and complete reminders. It never deletes."
+type = "boolean"
+default = true
+visible_when = { service = ["Apple FM"] }
+
+[[settings]]
+key = "notes_source"
+title = "Notes"
+subtitle = "Apple Notes asks once for permission to control Notes. Locked notes stay private."
+type = "choice"
+choices = ["Odd Frog", "Apple Notes"]
+default = "Odd Frog"
+visible_when = { service = ["Apple FM"] }
 
 [[settings]]
 key = "base_url"
 title = "API base URL"
+subtitle = "Any server with an OpenAI-compatible API."
+visible_when = { service = ["Custom"] }
 type = "string"
 default = "http://localhost:11434/v1"
 
 [[settings]]
 key = "api_key"
-title = "API key (leave empty for local servers)"
+title = "API key"
+subtitle = "Leave empty for local servers."
+visible_when = { service = ["Custom"] }
 type = "string"
 default = ""
 
 [[settings]]
 key = "model"
 title = "Model"
+subtitle = "The model name as the server lists it."
+visible_when = { service = ["LM Studio", "Ollama", "Custom"] }
 type = "string"
 default = "llama3.2"
 
 [[settings]]
 key = "system_prompt"
 title = "System prompt"
+subtitle = "Instructions sent before every chat."
 type = "string"
 default = ""

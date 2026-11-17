@@ -73,6 +73,51 @@ struct PluginTests {
         let old = try PluginManifest.parse("id='old'\nname='Old'\nversion='1'\napi_version=1\nexecutable='old'\nkeyword='old'")
         #expect(old.apiVersion == 1)
     }
+    @Test func visibleWhenShowsSettingsOnlyForMatchingChoices() throws {
+        let m = try manifest(extra: """
+        [[settings]]
+        key = "service"
+        title = "Service"
+        type = "choice"
+        choices = ["A", "B", "C"]
+        default = "A"
+
+        [[settings]]
+        key = "url"
+        title = "URL"
+        subtitle = "Only for B and C."
+        type = "string"
+        default = ""
+        visible_when = { service = ["B", "C"] }
+        """)
+        let url = try #require(m.settings.last)
+        #expect(url.subtitle == "Only for B and C.")
+        #expect(!url.isVisible { _ in .string("A") })
+        #expect(url.isVisible { _ in .string("C") })
+        #expect(!url.isVisible { _ in nil })
+        #expect(try #require(m.settings.first).isVisible { _ in nil })
+        let invalid = [#"visible_when = { service = ["D"] }"#, #"visible_when = { missing = ["A"] }"#,
+                       #"visible_when = { url = ["x"] }"#, #"visible_when = { service = [] }"#]
+        for condition in invalid {
+            #expect(throws: (any Error).self) {
+                try manifest(extra: """
+                [[settings]]
+                key = "service"
+                title = "Service"
+                type = "choice"
+                choices = ["A", "B"]
+                default = "A"
+
+                [[settings]]
+                key = "url"
+                title = "URL"
+                type = "string"
+                default = ""
+                \(condition)
+                """)
+            }
+        }
+    }
     @Test func enablementIsBoundToActualSource() throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
         let m = try manifest()

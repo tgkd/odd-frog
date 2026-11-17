@@ -15,7 +15,7 @@ let package = Package(
         .target(name: "CalendarPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Calendar/Sources/CalendarPluginCore"),
         .target(name: "RemindersPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Reminders/Sources/RemindersPluginCore"),
         .target(name: "NotesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Notes/Sources/NotesPluginCore"),
-        .target(name: "ChatPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Chat/Sources/ChatPluginCore"),
+        .target(name: "ChatPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Chat/Sources/ChatPluginCore"),
         .target(name: "ClipboardPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Clipboard/Sources/ClipboardPluginCore"),
         .target(name: "CharactersPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Characters/Sources/CharactersPluginCore"),
         .target(name: "FilesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Files/Sources/FilesPluginCore"),
@@ -28,7 +28,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "OddFrog",
-            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "OddFrogBuiltins"]
+            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "OddFrogBuiltins", "NotesPluginCore"]
         ),
         .testTarget(name: "BundledFeatureTests", dependencies: ["BundledFeatures", "OddFrogCore"], path: "Plugins/Shared/Tests", resources: [.copy("Fixtures")]),
         .testTarget(
@@ -39,7 +39,7 @@ let package = Package(
         .testTarget(name: "CalendarPluginTests", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Tests"),
         .testTarget(name: "RemindersPluginTests", dependencies: ["RemindersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Reminders/Tests"),
         .testTarget(name: "NotesPluginTests", dependencies: ["NotesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Notes/Tests"),
-        .testTarget(name: "ChatPluginTests", dependencies: ["ChatPluginCore", "OddFrogPluginAPI"], path: "Plugins/Chat/Tests"),
+        .testTarget(name: "ChatPluginTests", dependencies: ["ChatPluginCore", "OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Chat/Tests"),
         .testTarget(name: "FilesPluginTests", dependencies: ["FilesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Files/Tests"),
         .testTarget(name: "CharactersPluginTests", dependencies: ["CharactersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Characters/Tests"),
         .testTarget(name: "ClipboardPluginTests", dependencies: ["ClipboardPluginCore", "OddFrogPluginAPI"], path: "Plugins/Clipboard/Tests"),

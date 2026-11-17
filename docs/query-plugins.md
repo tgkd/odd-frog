@@ -73,6 +73,11 @@ Settings definitions have `key`, `title`, `type`, and `default`. Types are `bool
 nonempty paths). The host validates defaults and edits. Invalid external edits retain the last
 valid settings. Providers receive all validated defaults and overrides in their context.
 
+Optional `subtitle` adds a second line under the title in the Plugins pane. Optional
+`visible_when = { <choice key> = ["Choice", ...] }` shows the row only while another `choice`
+setting has one of the listed values; the listed values must be among that setting's `choices`.
+A hidden setting keeps its value and still reaches the provider.
+
 ## Wire format
 
 UTF-8 newline-delimited JSON on stdin/stdout. One JSON object per line, including a final newline.

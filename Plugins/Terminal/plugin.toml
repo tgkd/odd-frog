@@ -15,6 +15,8 @@ default = "Terminal"
 
 [[settings]]
 key = "custom_command"
-title = "Custom command ({cwd}, {shell} and {command} are filled in)"
+title = "Custom command"
+subtitle = "{cwd}, {shell} and {command} are filled in."
+visible_when = { app = ["Custom"] }
 type = "string"
 default = ""

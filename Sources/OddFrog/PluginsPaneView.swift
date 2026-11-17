@@ -116,7 +116,7 @@ struct PluginsPaneView: View {
             }
         }
 
-        ForEach(manifest.settings, id: \.key) { definition in
+        ForEach(manifest.settings.filter { model.isVisible($0, in: package) }, id: \.key) { definition in
             row(for: definition, in: package)
         }
 
@@ -135,23 +135,29 @@ struct PluginsPaneView: View {
         let value = model.value(of: definition, in: package)
         switch definition.type {
         case .boolean:
-            Toggle(definition.title, isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { value.bool == true },
                 set: { model.commit(.bool($0), for: definition, in: package) }
-            ))
+            )) {
+                Text(definition.title)
+                if let subtitle = definition.subtitle { Text(subtitle) }
+            }
         case .choice:
-            Picker(definition.title, selection: Binding(
+            Picker(selection: Binding(
                 get: { value.string ?? "" },
-                set: { model.commit(.string($0), for: definition, in: package) }
+                set: { choice in withAnimation { model.commit(.string(choice), for: definition, in: package) } }
             )) {
                 ForEach(definition.choices ?? [], id: \.self) { choice in
                     Text(choice).tag(choice)
                 }
+            } label: {
+                Text(definition.title)
+                if let subtitle = definition.subtitle { Text(subtitle) }
             }
         case .string:
             CommitTextField(
                 title: definition.title,
-                subtitle: nil,
+                subtitle: definition.subtitle,
                 prompt: definition.defaultValue.string ?? "",
                 value: value.string ?? "",
                 onCommit: { model.commit(.string($0), for: definition, in: package) }
@@ -159,7 +165,7 @@ struct PluginsPaneView: View {
         case .number:
             CommitTextField(
                 title: definition.title,
-                subtitle: numberSubtitle(for: definition),
+                subtitle: definition.subtitle ?? numberSubtitle(for: definition),
                 prompt: definition.defaultValue.number.map(PluginsPaneModel.format) ?? "",
                 value: value.number.map(PluginsPaneModel.format) ?? "",
                 onCommit: { model.commit(Double($0.trimmingCharacters(in: .whitespaces)).map(JSONValue.number) ?? .null, for: definition, in: package) }

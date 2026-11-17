@@ -2,12 +2,12 @@ import Foundation
 import OddFrogPluginAPI
 
 public struct ChatRequest: Sendable, Equatable {
-    public var baseURL: URL
+    public var baseURL: URL?
     public var apiKey: String
     public var model: String
     public var systemPrompt: String
     public var messages: [PluginMessage]
-    public init(baseURL: URL, apiKey: String, model: String, systemPrompt: String, messages: [PluginMessage]) {
+    public init(baseURL: URL?, apiKey: String, model: String, systemPrompt: String, messages: [PluginMessage]) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.model = model
@@ -17,7 +17,7 @@ public struct ChatRequest: Sendable, Equatable {
 }
 
 public protocol ChatBackend: Sendable {
-    func stream(_ request: ChatRequest) async throws -> AsyncThrowingStream<String, any Error>
+    func stream(_ request: ChatRequest, tools: ChatToolContext?) async throws -> AsyncThrowingStream<String, any Error>
 }
 
 public struct OpenAICompatibleBackend: ChatBackend {
@@ -32,7 +32,10 @@ public struct OpenAICompatibleBackend: ChatBackend {
         self.session = session
     }
     public static func urlRequest(for request: ChatRequest) throws -> URLRequest {
-        var value = URLRequest(url: request.baseURL.appendingPathComponent("chat/completions"))
+        guard let baseURL = request.baseURL else {
+            throw RPCError("chat", "Set a valid API base URL in Chat settings.")
+        }
+        var value = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         value.httpMethod = "POST"
         value.setValue("application/json", forHTTPHeaderField: "Content-Type")
         value.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -50,7 +53,7 @@ public struct OpenAICompatibleBackend: ChatBackend {
             JSONValue.object(["model": .string(request.model), "stream": .bool(true), "messages": .array(messages)]))
         return value
     }
-    public func stream(_ request: ChatRequest) async throws -> AsyncThrowingStream<String, any Error> {
+    public func stream(_ request: ChatRequest, tools: ChatToolContext?) async throws -> AsyncThrowingStream<String, any Error> {
         let urlRequest = try Self.urlRequest(for: request)
         let (bytes, response) = try await session.bytes(for: urlRequest)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
