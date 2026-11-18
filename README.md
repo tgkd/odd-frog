@@ -78,6 +78,8 @@ layouts enabled in System Settings › Keyboard › Text Input.
 Odd Frog posts macOS notifications under its own name: the output of `silent` scripts when they
 finish, plugin messages, and failures. Turn them off in Settings › General › Notifications
 (`[notifications] enabled = false` in `settings.toml`); failures still appear in the menu bar and the log.
+The log (`~/Library/Logs/odd-frog.log`) records a notification by its title only, failures in full, and
+the file is capped in size: the oldest lines are dropped first.
 
 A script that keeps working after it exits, such as a download it backgrounds, can post later through
 the `odd-frog://notify` URL. `body` is required, `title` defaults to "Odd Frog", both percent-encoded:

@@ -53,6 +53,7 @@ public actor QueryHistoryStore {
     }
 
     public static func removeLegacyFile(at url: URL = legacyURL) {
+        try? FileManager.default.removeItem(at: url)
     }
 
     public func snapshot() -> QueryHistory { history }

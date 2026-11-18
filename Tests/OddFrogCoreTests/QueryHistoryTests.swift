@@ -72,4 +72,19 @@ struct QueryHistoryTests {
         #expect(await store.snapshot().queries == ["mail", "calendar"])
         #expect(await QueryHistoryStore().snapshot().queries.isEmpty)
     }
+
+    @Test func removeLegacyFileDeletesAnExistingFile() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("odd-frog-legacy-\(UUID().uuidString).json")
+        try Data("{\"queries\":[\"secret\"]}".utf8).write(to: url)
+        QueryHistoryStore.removeLegacyFile(at: url)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test func removeLegacyFileAcceptsAMissingFile() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("odd-frog-legacy-\(UUID().uuidString).json")
+        QueryHistoryStore.removeLegacyFile(at: url)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
 }
