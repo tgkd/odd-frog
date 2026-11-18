@@ -55,9 +55,22 @@ public struct OpenAICompatibleBackend: ChatBackend {
     }
     public func stream(_ request: ChatRequest, tools: ChatToolContext?) async throws -> AsyncThrowingStream<String, any Error> {
         let urlRequest = try Self.urlRequest(for: request)
-        let (bytes, response) = try await session.bytes(for: urlRequest)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw RPCError("chat", "HTTP \(http.statusCode) from \(urlRequest.url?.host ?? "the server"): \(try await Self.excerpt(of: bytes))")
+        let baseURL = request.baseURL
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: urlRequest)
+        } catch let error as URLError {
+            throw ChatBackendError.connection(error, baseURL: baseURL)
+        }
+        if let http = response as? HTTPURLResponse {
+            if !(200..<300).contains(http.statusCode) {
+                throw ChatBackendError.status(http.statusCode, baseURL: baseURL, body: try await Self.excerpt(of: bytes))
+            }
+            if http.value(forHTTPHeaderField: "Content-Type")?.localizedCaseInsensitiveContains("application/json") == true {
+                let body = try await Self.excerpt(of: bytes)
+                throw ChatBackendError.server(ChatBackendError.message(inBody: body) ?? "The server did not stream a reply.", baseURL: baseURL)
+            }
         }
         return AsyncThrowingStream { continuation in
             let task = Task {
@@ -67,7 +80,7 @@ public struct OpenAICompatibleBackend: ChatBackend {
                         case .delta(let text):
                             continuation.yield(text)
                         case .error(let message):
-                            throw RPCError("chat", message)
+                            throw ChatBackendError.server(message, baseURL: baseURL)
                         case .done:
                             continuation.finish()
                             return
@@ -76,6 +89,8 @@ public struct OpenAICompatibleBackend: ChatBackend {
                         }
                     }
                     continuation.finish()
+                } catch let error as URLError {
+                    continuation.finish(throwing: ChatBackendError.connection(error, baseURL: baseURL))
                 } catch {
                     continuation.finish(throwing: error)
                 }
