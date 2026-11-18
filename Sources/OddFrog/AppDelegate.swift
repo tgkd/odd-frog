@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHostServices(registry)
         let coordinator = PluginCoordinator(services: registry)
         coordinator.builtins = BuiltinProviders.factories
+        coordinator.secrets = KeychainSecretStore()
+        coordinator.onSecretFailure = { [weak self] _, message in
+            self?.report(message)
+        }
         return coordinator
     }
 
@@ -56,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private var allItems: [LauncherItem] = []
+    private var savedSecrets: Set<SecretReference> = []
     private var reportedHotkeys: [String: Hotkey] = [:]
     private var reportedItemHotkeys: [String: String] = [:]
     private var itemHotkeyFailures: [String: String] = [:]
@@ -346,6 +351,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updated.plugins.removeAll { $0.id == id }; updated.plugins.append(setting)
             applySettings(updated, persist: true)
         }
+        settingsWindow.pluginsPane.onSecret = { [weak self] reference, value in
+            guard let self else { return }
+            if let value { try plugins.secrets.write(value, for: reference) } else { try plugins.secrets.remove(reference) }
+            plugins.secretDidChange(pluginID: reference.pluginID)
+            refreshSavedSecrets()
+            updatePluginsPane()
+        }
         settingsWindow.pluginsPane.onTrigger = { [weak self] id, trigger in
             guard let self, let package = plugins.packages.first(where: { $0.manifest.id == id }) else {
                 return
@@ -384,6 +396,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NotificationCenter.default.addObserver(self, selector: #selector(storeDidChange), name: NSApplication.didBecomeActiveNotification, object: nil)
         reloadPlugins()
+        if let migrated = movePlainSecrets(in: settings.plugins) {
+            var updated = settings
+            updated.plugins = migrated
+            applySettings(updated, persist: true)
+        }
+    }
+
+    private func movePlainSecrets(in pluginSettings: [PluginSetting]) -> [PluginSetting]? {
+        let extracted = SecretMigration.extract(from: pluginSettings, packages: plugins.packages)
+        guard !extracted.secrets.isEmpty else { return nil }
+        var failed = false
+        for (reference, value) in extracted.secrets.sorted(by: { $0.key.account < $1.key.account }) {
+            do {
+                try plugins.secrets.write(value, for: reference)
+                plugins.secretDidChange(pluginID: reference.pluginID)
+            } catch {
+                failed = true
+                report("\(pluginName(reference.pluginID)): could not move \(reference.key) from settings.toml to the Keychain: \(error.localizedDescription)")
+            }
+        }
+        refreshSavedSecrets()
+        guard !failed else { return nil }
+        Log.write("moved \(extracted.secrets.count) secrets from settings.toml to the Keychain")
+        return extracted.settings
     }
 
     private func reloadPlugins(retryHotkeys: Bool = false) {
@@ -391,6 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let user = ConfigLoader.defaultDirectory.appendingPathComponent("plugins", isDirectory: true)
         let discovery = PluginDiscovery.scan(bundled: bundled, user: user)
         plugins.reload(discovery: discovery, settings: settings.plugins)
+        refreshSavedSecrets()
         documents.pluginsDidReload()
         chats.pluginsDidReload()
         var watched = discovery.packages.map(\.directory) + [user]
@@ -498,7 +535,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow.update(pluginSettings: settings.plugins)
         settingsWindow.pluginsPane.update(packages: plugins.packages, settings: settings.plugins,
                                           failures: plugins.failures, errors: plugins.discoveryErrors,
-                                          showPlugins: settings.launcher.showPlugins)
+                                          showPlugins: settings.launcher.showPlugins, savedSecrets: savedSecrets)
+    }
+
+    private func refreshSavedSecrets() {
+        savedSecrets = Set(plugins.packages.flatMap { package in
+            package.manifest.settings.filter { $0.type == .secret }.map { SecretReference(package: package, key: $0.key) }
+        }.filter { plugins.secrets.contains($0) })
     }
 
     @objc private func storeDidChange() {
@@ -668,7 +711,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func applySettings(_ updated: Settings, persist: Bool) {
+    private func applySettings(_ candidate: Settings, persist requested: Bool) {
+        var updated = candidate
+        var persist = requested
+        if let migrated = movePlainSecrets(in: updated.plugins) {
+            updated.plugins = migrated
+            persist = true
+        }
         do { try plugins.validateSettings(updated.plugins) }
         catch { report("Settings not applied: \(error)"); return }
         let changed = plugins.packages.contains {
