@@ -15,6 +15,7 @@ import OddFrogPluginAPI
 
 public enum BuiltinProviders {
     public static let clipboardArchive = ClipboardArchive()
+    public static let chatArchive = ConversationArchive()
     public static let factories: [String: PluginCoordinator.BuiltinProviderFactory] = [
         "applications": { FeatureProvider(.applications) },
         "commands": { FeatureProvider(.commands) },
@@ -25,7 +26,7 @@ public enum BuiltinProviders {
         "calendar": { CalendarHandler() },
         "reminders": { RemindersHandler() },
         "notes": { NotesHandler() },
-        "chat": { ChatHandler() },
+        "chat": { ChatHandler(archive: chatArchive) },
         "clipboard": { ClipboardHandler(archive: clipboardArchive, pasteboard: ClipboardPasteboard(name: .general)) },
         "files": { FilesHandler() },
         "emoji": { CharactersHandler(.emoji) },

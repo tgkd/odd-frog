@@ -12,19 +12,23 @@ final class PluginsPaneModel {
     private(set) var errors: [String] = []
     private(set) var message: (package: String, text: String)?
     private(set) var showPlugins = true
+    private(set) var savedSecrets: Set<SecretReference> = []
 
     @ObservationIgnored var onToggle: ((String, Bool) -> Void)?
     @ObservationIgnored var onReload: (() -> Void)?
     @ObservationIgnored var onSetting: ((String, String, JSONValue) -> Void)?
+    @ObservationIgnored var onSecret: ((SecretReference, String?) throws -> Void)?
     @ObservationIgnored var onTrigger: ((String, String?) -> Void)?
     @ObservationIgnored var onRootResults: ((String, Int?) -> Void)?
     @ObservationIgnored var onShowPlugins: ((Bool) -> Void)?
     @ObservationIgnored var onManageLinks: (() -> Void)?
 
-    func update(packages: [PluginPackage], settings: [PluginSetting], failures: [String: String], errors: [String], showPlugins: Bool) {
+    func update(packages: [PluginPackage], settings: [PluginSetting], failures: [String: String], errors: [String], showPlugins: Bool,
+                savedSecrets: Set<SecretReference>) {
         guard packages != self.packages || settings != self.settings || failures != self.failures || errors != self.errors
-                || showPlugins != self.showPlugins else { return }
+                || showPlugins != self.showPlugins || savedSecrets != self.savedSecrets else { return }
         self.showPlugins = showPlugins
+        self.savedSecrets = savedSecrets
         self.packages = packages
         self.settings = settings
         self.failures = failures
@@ -63,6 +67,29 @@ final class PluginsPaneModel {
             onSetting?(package.manifest.id, definition.key, value)
         } catch {
             message = (package.manifest.id, "\(package.manifest.name): \(error)")
+        }
+    }
+
+    func isSecretSaved(_ definition: PluginSettingDefinition, in package: PluginPackage) -> Bool {
+        savedSecrets.contains(SecretReference(package: package, key: definition.key))
+    }
+
+    func commitSecret(_ raw: String, for definition: PluginSettingDefinition, in package: PluginPackage) {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        storeSecret(value, for: definition, in: package, failure: "could not save")
+    }
+
+    func removeSecret(for definition: PluginSettingDefinition, in package: PluginPackage) {
+        storeSecret(nil, for: definition, in: package, failure: "could not remove")
+    }
+
+    private func storeSecret(_ value: String?, for definition: PluginSettingDefinition, in package: PluginPackage, failure: String) {
+        do {
+            message = nil
+            try onSecret?(SecretReference(package: package, key: definition.key), value)
+        } catch {
+            message = (package.manifest.id, "\(package.manifest.name): \(failure) \(definition.title) in the Keychain: \(error.localizedDescription)")
         }
     }
 

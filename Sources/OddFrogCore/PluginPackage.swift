@@ -3,7 +3,7 @@ import TOMLKit
 import OddFrogPluginAPI
 
 public struct PluginSettingDefinition: Codable, Sendable, Equatable {
-    public enum Kind: String, Codable, Sendable { case boolean, string, number, choice, folders }
+    public enum Kind: String, Codable, Sendable { case boolean, string, number, choice, folders, secret }
     public var key: String
     public var title: String
     public var type: Kind
@@ -37,7 +37,7 @@ public struct PluginSettingDefinition: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case .boolean: valid = value.bool != nil
-        case .string: valid = value.string != nil
+        case .string, .secret: valid = value.string != nil
         case .number:
             valid = value.number.map { $0.isFinite && $0 >= (minimum ?? -Double.greatestFiniteMagnitude) && $0 <= (maximum ?? Double.greatestFiniteMagnitude) } ?? false
         case .choice: valid = value.string.map { choices?.contains($0) == true } ?? false
@@ -121,6 +121,9 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         for setting in value.settings {
             guard !setting.key.isEmpty, !setting.title.isEmpty else { throw PluginError.message("Empty setting key or title.") }
             try setting.validate(setting.defaultValue)
+            if setting.type == .secret && setting.defaultValue.string?.isEmpty != true {
+                throw PluginError.message("Secret setting '\(setting.key)' must have an empty default.")
+            }
             for (key, accepted) in setting.visibleWhen ?? [:] {
                 guard let controller = value.settings.first(where: { $0.key == key }), controller.key != setting.key,
                       controller.type == .choice, !accepted.isEmpty,
@@ -147,7 +150,8 @@ public struct PluginManifest: Decodable, Sendable, Equatable {
         var result: [String: JSONValue] = [:]
         for definition in settings {
             let value = values[definition.key] ?? definition.defaultValue
-            try definition.validate(value); result[definition.key] = value
+            try definition.validate(value)
+            result[definition.key] = definition.type == .secret ? definition.defaultValue : value
         }
         guard values.keys.allSatisfy({ result[$0] != nil }) else { throw PluginError.message("Unknown plugin setting. Reload the package or remove the obsolete key.") }
         return result

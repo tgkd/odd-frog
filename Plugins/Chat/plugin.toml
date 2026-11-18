@@ -48,9 +48,9 @@ default = "http://localhost:11434/v1"
 [[settings]]
 key = "api_key"
 title = "API key"
-subtitle = "Leave empty for local servers."
+subtitle = "Kept in the macOS Keychain, not in the settings file. Leave empty for local servers."
 visible_when = { service = ["Custom"] }
-type = "string"
+type = "secret"
 default = ""
 
 [[settings]]
@@ -67,3 +67,19 @@ title = "System prompt"
 subtitle = "Instructions sent before every chat."
 type = "string"
 default = ""
+
+[[settings]]
+key = "storage"
+title = "Keep chats"
+type = "choice"
+choices = ["Memory", "File"]
+default = "Memory"
+subtitle = "Memory: chats are gone when Odd Frog quits. File: every chat is saved unencrypted on disk, where other apps that run as you and your backups can read it."
+
+[[settings]]
+key = "storage_path"
+title = "Chats folder"
+type = "string"
+default = ""
+visible_when = { storage = ["File"] }
+subtitle = "Empty uses Odd Frog's Application Support folder. Do not choose a synced folder such as iCloud Drive or Dropbox: the chats would leave this Mac."

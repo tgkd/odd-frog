@@ -172,6 +172,14 @@ struct PluginsPaneView: View {
             )
         case .folders:
             foldersRow(for: definition, in: package)
+        case .secret:
+            SecretField(
+                title: definition.title,
+                subtitle: definition.subtitle,
+                isSaved: model.isSecretSaved(definition, in: package),
+                onCommit: { model.commitSecret($0, for: definition, in: package) },
+                onRemove: { model.removeSecret(for: definition, in: package) }
+            )
         }
     }
 
