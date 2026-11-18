@@ -4,12 +4,19 @@ import Synchronization
 import OddFrogPluginAPI
 
 public actor ClipboardArchive {
+    private struct StoredImage {
+        var png: Data
+        var thumbnail: Data
+        var icon: String
+    }
+
     public nonisolated let counter = Atomic<Int>(0)
     private var owner: Int?
     private var newest = 0
     private var directory: URL?
     private var limits = ClipboardLimits(count: 50, captureImages: true)
     private var entries: [ClipboardEntry] = []
+    private var memoryImages: [String: StoredImage] = [:]
 
     public init() {}
 
@@ -17,17 +24,17 @@ public actor ClipboardArchive {
         counter.add(1, ordering: .relaxed).newValue
     }
 
-    public func claim(generation: Int, directory: URL, limits: ClipboardLimits) throws -> Bool {
+    public func claim(generation: Int, directory: URL?, limits: ClipboardLimits) throws -> Bool {
         guard generation >= newest else {
             return false
         }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let loaded = try Self.loadIndex(from: directory)
+        let loaded = try Self.load(from: directory)
         newest = generation
         owner = generation
         self.directory = directory
         self.limits = limits
         entries = loaded
+        memoryImages = [:]
         var reconciled = loaded
         reconcile(&reconciled)
         applyLimits(&reconciled)
@@ -39,19 +46,26 @@ public actor ClipboardArchive {
     }
 
     public func release(generation: Int) {
-        if owner == generation {
-            owner = nil
+        guard owner == generation else {
+            return
         }
+        owner = nil
+        entries = []
+        memoryImages = [:]
     }
 
-    public func configure(generation: Int, limits: ClipboardLimits) throws {
+    public func configure(generation: Int, directory: URL?, limits: ClipboardLimits) throws {
         guard generation == owner else {
             return
         }
         self.limits = limits
-        var next = entries
-        applyLimits(&next)
-        try commit(next)
+        guard directory != self.directory else {
+            var next = entries
+            applyLimits(&next)
+            try commit(next)
+            return
+        }
+        try move(to: directory)
     }
 
     public func entries(generation: Int) -> [ClipboardEntry] {
@@ -61,21 +75,30 @@ public actor ClipboardArchive {
         return entries
     }
 
-    public func imageData(generation: Int, id: String) -> Data? {
-        guard generation == owner, let directory, entries.contains(where: { $0.id == id && $0.kind == .image }) else {
-            return nil
+    public func icons(generation: Int) -> [String: String] {
+        guard generation == owner else {
+            return [:]
         }
-        let url = Self.imageURL(in: directory, id: id)
-        return try? Data(contentsOf: url)
+        var icons: [String: String] = [:]
+        for entry in entries where entry.kind == .image {
+            if let directory {
+                icons[entry.id] = Self.thumbnailPath(in: directory, id: entry.id)
+            } else if let image = memoryImages[entry.id] {
+                icons[entry.id] = image.icon
+            }
+        }
+        return icons
     }
 
-    public nonisolated static func imagePath(in directory: URL, id: String) -> String {
-        imageURL(in: directory, id: id).path
+    public func imageData(generation: Int, id: String) -> Data? {
+        guard generation == owner, entries.contains(where: { $0.id == id && $0.kind == .image }) else {
+            return nil
+        }
+        return storedImage(id: id)?.png
     }
 
     public nonisolated static func thumbnailPath(in directory: URL, id: String) -> String {
-        directory.appendingPathComponent("images", isDirectory: true)
-            .appendingPathComponent("\(id)-thumb.png", isDirectory: false).path
+        thumbnailURL(in: directory, id: id).path
     }
 
     public func record(_ capture: ClipboardCapture, image: ProcessedImage?, generation: Int, now: Date) throws -> Bool {
@@ -148,12 +171,53 @@ public actor ClipboardArchive {
         return removed
     }
 
+    private func move(to target: URL?) throws {
+        let carried = entries.compactMap { entry -> (ClipboardEntry, StoredImage?)? in
+            guard entry.kind == .image else {
+                return (entry, nil)
+            }
+            return storedImage(id: entry.id).map { (entry, $0) }
+        }
+        let loaded = try Self.load(from: target)
+        directory = target
+        entries = loaded
+        memoryImages = [:]
+        var current = loaded
+        reconcile(&current)
+        entries = current
+        removeOrphans()
+        let loadedHashes = Set(current.map(\.hash))
+        let incoming = carried.filter { !loadedHashes.contains($0.0.hash) }
+        var next = (current + incoming.map(\.0)).sorted { $0.copied > $1.copied }
+        applyLimits(&next)
+        let kept = Set(next.map(\.id))
+        let newImages = incoming.compactMap { entry, image -> (String, Data, Data)? in
+            guard let image, kept.contains(entry.id) else {
+                return nil
+            }
+            return (entry.id, image.png, image.thumbnail)
+        }
+        try commit(next, newImages: newImages)
+    }
+
+    private func storedImage(id: String) -> StoredImage? {
+        guard let directory else {
+            return memoryImages[id]
+        }
+        guard let png = try? Data(contentsOf: Self.imageURL(in: directory, id: id)),
+              let thumbnail = try? Data(contentsOf: Self.thumbnailURL(in: directory, id: id)) else {
+            return nil
+        }
+        return StoredImage(png: png, thumbnail: thumbnail, icon: Self.thumbnailPath(in: directory, id: id))
+    }
+
     private func applyLimits(_ list: inout [ClipboardEntry]) {
         while list.count > limits.count {
             list.removeLast()
         }
+        let cap = directory == nil ? min(limits.maxTotalImageBytes, ClipboardLimits.maxMemoryImageBytes) : limits.maxTotalImageBytes
         var total = list.reduce(0) { $0 + ($1.kind == .image ? $1.byteSize : 0) }
-        while total > limits.maxTotalImageBytes {
+        while total > cap {
             guard let index = list.lastIndex(where: { $0.kind == .image }) else {
                 break
             }
@@ -176,7 +240,15 @@ public actor ClipboardArchive {
     }
 
     private func commit(_ newEntries: [ClipboardEntry], newImages: [(String, Data, Data)] = []) throws {
+        let removed = entries.filter { old in !newEntries.contains(where: { $0.id == old.id }) }
         guard let directory else {
+            for (id, png, thumbnail) in newImages {
+                memoryImages[id] = StoredImage(png: png, thumbnail: thumbnail, icon: Self.inlineIcon(thumbnail))
+            }
+            entries = newEntries
+            for entry in removed {
+                memoryImages[entry.id] = nil
+            }
             return
         }
         let images = directory.appendingPathComponent("images", isDirectory: true)
@@ -184,10 +256,10 @@ public actor ClipboardArchive {
         do {
             try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
             for (id, png, thumb) in newImages {
-                let full = images.appendingPathComponent("\(id).png", isDirectory: false)
+                let full = Self.imageURL(in: directory, id: id)
                 try png.write(to: full, options: .atomic)
                 written.append(full)
-                let thumbnail = images.appendingPathComponent("\(id)-thumb.png", isDirectory: false)
+                let thumbnail = Self.thumbnailURL(in: directory, id: id)
                 try thumb.write(to: thumbnail, options: .atomic)
                 written.append(thumbnail)
             }
@@ -198,7 +270,6 @@ public actor ClipboardArchive {
             }
             throw error
         }
-        let removed = entries.filter { old in !newEntries.contains(where: { $0.id == old.id }) }
         entries = newEntries
         for entry in removed {
             try? FileManager.default.removeItem(at: Self.imageURL(in: directory, id: entry.id))
@@ -225,6 +296,10 @@ public actor ClipboardArchive {
         }
     }
 
+    private static func inlineIcon(_ png: Data) -> String {
+        PluginItem.inlinePNGPrefix + png.base64EncodedString()
+    }
+
     private static func imageURL(in directory: URL, id: String) -> URL {
         directory.appendingPathComponent("images", isDirectory: true).appendingPathComponent("\(id).png", isDirectory: false)
     }
@@ -238,7 +313,11 @@ public actor ClipboardArchive {
         try data.write(to: directory.appendingPathComponent("index.json", isDirectory: false), options: .atomic)
     }
 
-    private static func loadIndex(from directory: URL) throws -> [ClipboardEntry] {
+    private static func load(from directory: URL?) throws -> [ClipboardEntry] {
+        guard let directory else {
+            return []
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("index.json", isDirectory: false)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return []

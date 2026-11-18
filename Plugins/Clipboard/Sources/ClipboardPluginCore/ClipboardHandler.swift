@@ -16,6 +16,7 @@ public actor ClipboardHandler: ProviderHandler {
     private var lastCount = 0
     private var lastBehavior: NSPasteboard.AccessBehavior = .default
     private var limits = ClipboardLimits(count: 50, captureImages: true)
+    private var storage: URL?
 
     public init(archive: ClipboardArchive, pasteboard: ClipboardPasteboard, interval: Duration = .milliseconds(500)) {
         self.archive = archive
@@ -58,9 +59,10 @@ public actor ClipboardHandler: ProviderHandler {
         let state = await pasteboard.state()
         lastCount = state.changeCount
         lastBehavior = state.behavior
-        let directory = URL(fileURLWithPath: context.storagePath)
+        let directory = try ClipboardStorage.directory(settings: context.settings, defaultPath: context.storagePath)
         let newLimits = ClipboardLimits(settings: context.settings)
         limits = newLimits
+        storage = directory
         let owned = try await archive.claim(generation: generation, directory: directory, limits: newLimits)
         if closed {
             await archive.release(generation: generation)
@@ -76,14 +78,15 @@ public actor ClipboardHandler: ProviderHandler {
 
     private func settings(params: JSONValue) async throws -> JSONValue {
         let context = try params["context"].decode(PluginContext.self)
+        let directory = try ClipboardStorage.directory(settings: context.settings, defaultPath: context.storagePath)
         let newLimits = ClipboardLimits(settings: context.settings)
         limits = newLimits
-        try await archive.configure(generation: generation, limits: newLimits)
+        storage = directory
+        try await archive.configure(generation: generation, directory: directory, limits: newLimits)
         return .object([:])
     }
 
     private func query(params: JSONValue) async throws -> JSONValue {
-        let context = try params["context"].decode(PluginContext.self)
         let input = try params["input"].decode(PluginQuery.self)
         let state = await pasteboard.state()
         let access: ClipboardProvider.Access
@@ -96,14 +99,16 @@ public actor ClipboardHandler: ProviderHandler {
             access = .setup
         }
         let entries = await archive.entries(generation: generation)
-        let directory = URL(fileURLWithPath: context.storagePath)
+        let icons = await archive.icons(generation: generation)
         return try .encode(ClipboardProvider.respond(to: input, access: access, entries: entries,
-                                                     directory: directory, failure: failure))
+                                                     icons: icons, storage: storage, failure: failure))
     }
 
     private func activate(params: JSONValue) async throws -> JSONValue {
         let activation = try params["input"].decode(PluginActivation.self)
         switch activation.actionID {
+        case "paste-image":
+            return try await pasteImage(id: activation.payload["id"].string ?? "")
         case "delete":
             try await archive.delete(generation: generation, id: activation.payload["id"].string ?? "")
             return try .encode(PluginEffects(refreshQuery: true))
@@ -131,6 +136,16 @@ public actor ClipboardHandler: ProviderHandler {
         default:
             throw RPCError("action", "Unknown action: \(activation.actionID)")
         }
+    }
+
+    private func pasteImage(id: String) async throws -> JSONValue {
+        guard let png = await archive.imageData(generation: generation, id: id) else {
+            return try .encode(PluginEffects(notification: "This image is no longer in the clipboard history.", refreshQuery: true))
+        }
+        guard await pasteboard.write(png: png) else {
+            return try .encode(PluginEffects(notification: "The image could not be put on the clipboard."))
+        }
+        return try .encode(PluginEffects(paste: true))
     }
 
     private func startPoll() {

@@ -48,6 +48,12 @@ public struct ClipboardPasteboard: Sendable {
         return nil
     }
 
+    @MainActor public func write(png: Data) -> Bool {
+        let pasteboard = NSPasteboard(name: name)
+        pasteboard.clearContents()
+        return pasteboard.setData(png, forType: .png)
+    }
+
     @MainActor public func requestAccess() -> AccessRequest {
         let pasteboard = NSPasteboard(name: name)
         guard let item = pasteboard.pasteboardItems?.first else {

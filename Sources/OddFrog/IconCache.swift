@@ -1,5 +1,6 @@
 import AppKit
 import OddFrogCore
+import OddFrogPluginAPI
 
 private struct SendableImage: @unchecked Sendable {
     let image: NSImage
@@ -33,6 +34,7 @@ final class IconCache {
             if let glyph = result.item.glyph { return glyphImage(glyph, size: size) }
             if let icon = result.item.icon {
                 if icon.hasPrefix("text:") { return emojiImage(String(icon.dropFirst(5)), size: size) }
+                if icon.hasPrefix(PluginItem.inlinePNGPrefix) { return inlineImage(icon) }
                 if icon.hasPrefix("file:") { return self.icon(forFile: String(icon.dropFirst(5)), size: size) }
                 let path = icon.hasPrefix("/") ? icon : result.directory?.appendingPathComponent(icon).path
                 if let path {
@@ -72,6 +74,15 @@ final class IconCache {
             return true
         }
         image.isTemplate = template
+        cache.setObject(image, forKey: key)
+        return image
+    }
+
+    private func inlineImage(_ icon: String) -> NSImage? {
+        let key = icon as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let data = Data(base64Encoded: String(icon.dropFirst(PluginItem.inlinePNGPrefix.count))),
+              let image = NSImage(data: data) else { return nil }
         cache.setObject(image, forKey: key)
         return image
     }

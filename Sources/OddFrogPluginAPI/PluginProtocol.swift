@@ -131,9 +131,10 @@ public struct PluginEffects: Codable, Sendable {
     public var refreshCatalog: Bool
     public var refreshQuery: Bool
     public var view: PluginView?
+    public var paste: Bool?
     public init(notification: String? = nil, refreshCatalog: Bool = false, refreshQuery: Bool = false,
-                view: PluginView? = nil) {
+                view: PluginView? = nil, paste: Bool? = nil) {
         self.notification = notification; self.refreshCatalog = refreshCatalog; self.refreshQuery = refreshQuery
-        self.view = view
+        self.view = view; self.paste = paste
     }
 }

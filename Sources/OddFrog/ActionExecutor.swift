@@ -145,9 +145,7 @@ final class ActionExecutor {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(value, forType: .string)
             }
-            if !PasteKeystroke.send() {
-                notifier.post(title: name, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: false)
-            }
+            pasteCopied(name: name)
             record(id)
         case .openURL, .openPath:
             let url = action.kind == .openPath ? URL(fileURLWithPath: ConfigParser.expandTilde(value)) : URL(string: value)
@@ -168,6 +166,12 @@ final class ActionExecutor {
             let command = action.argv == nil ? value : ([action.value] + argv).map(ShellCommand.quote).joined(separator: " ")
             runInTerminal(id: id, name: name, command: command, cwd: cwd)
         case .callback, .service: break
+        }
+    }
+
+    func pasteCopied(name: String) {
+        if !PasteKeystroke.send() {
+            notifier.post(title: name, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: false)
         }
     }
 

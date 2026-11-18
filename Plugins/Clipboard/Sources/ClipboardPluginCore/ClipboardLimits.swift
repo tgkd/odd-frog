@@ -6,6 +6,7 @@ public struct ClipboardLimits: Sendable, Equatable {
     public static let maxImageSourceBytes = 10_485_760
     public static let maxImagePixels = 40_000_000
     public static let maxImageBytes = 20_971_520
+    public static let maxMemoryImageBytes = 67_108_864
     public static let thumbnailPixels = 64
 
     public var count: Int

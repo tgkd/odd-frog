@@ -11,6 +11,22 @@ enabled_by_default = false
 capabilities = []
 
 [[settings]]
+key = "storage"
+title = "Keep history"
+type = "choice"
+choices = ["Memory", "File"]
+default = "Memory"
+subtitle = "Memory: history is gone when Odd Frog quits. File: copied text and images are saved unencrypted on disk, where other apps that run as you and your backups can read them, passwords included if an app does not mark them."
+
+[[settings]]
+key = "storage_path"
+title = "History folder"
+type = "string"
+default = ""
+visible_when = { storage = ["File"] }
+subtitle = "Empty uses Odd Frog's Application Support folder. Do not choose a synced folder such as iCloud Drive or Dropbox: the history would leave this Mac."
+
+[[settings]]
 key = "limit"
 title = "History size"
 type = "number"

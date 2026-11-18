@@ -130,7 +130,7 @@ providers finish and there are no live or catalog matches. Selection follows ite
 
 All catalog and query items use the same shape. Required: local `id` and `title`. Optional:
 `subtitle`, `kind` label, SF Symbol `symbol`, `icon` (absolute file, package-relative asset,
-`text:` glyph, or `file:<absolute path>` for the Finder icon of any file or folder), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
+`text:` glyph, `file:<absolute path>` for the Finder icon of any file or folder, or `png:<base64>` for a small inline PNG), `aliases` array, `argument: {placeholder, optional}`, `completion`, `primary`,
 `secondary`, `history`, and `answer` (see root rows above). Host identity is `plugin:<plugin-id>:<local-id>`. IDs must be unique
 within a catalog/response. Set `history: true` for reusable catalog items; live results are always
 transient. Missing secondary action uses primary. Missing primary produces an inert status row.
@@ -170,8 +170,9 @@ an opened path. Declarative packages cannot use `after`.
 
 Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
 from a document or chat window also receives the editor buffer in `text`. Success effects:
-`{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object}`. Errors use
-the normal structured error envelope. The host checks package generation and enablement before
+`{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object, paste?: boolean}`.
+`paste: true` makes the host press ⌘V in the previous app, for a callback that has put its own data on
+the clipboard. Errors use the normal structured error envelope. The host checks package generation and enablement before
 activation.
 
 ## Views

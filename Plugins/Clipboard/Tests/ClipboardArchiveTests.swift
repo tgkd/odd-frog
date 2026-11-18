@@ -74,7 +74,7 @@ struct ClipboardArchiveTests {
         let gen = archive.nextGeneration()
         _ = try await archive.claim(generation: gen, directory: dir, limits: ClipboardLimits(count: 50, captureImages: false))
         #expect(!(try await archive.record(.image(data: png(), type: .png), image: image(), generation: gen, now: now)))
-        try await archive.configure(generation: gen, limits: limits())
+        try await archive.configure(generation: gen, directory: dir, limits: limits())
         #expect(!(try await archive.record(.image(data: png(), type: .png), image: nil, generation: gen, now: now)))
     }
 
@@ -133,7 +133,7 @@ struct ClipboardArchiveTests {
         _ = try await archive.claim(generation: gen, directory: dir, limits: limits(count: 5))
         for i in 0..<5 { _ = try await archive.record(.text("t\(i)"), image: nil, generation: gen, now: now) }
         #expect(await archive.entries(generation: gen).count == 5)
-        try await archive.configure(generation: gen, limits: limits(count: 2))
+        try await archive.configure(generation: gen, directory: dir, limits: limits(count: 2))
         #expect(await archive.entries(generation: gen).count == 2)
     }
 
@@ -172,5 +172,56 @@ struct ClipboardArchiveTests {
     @Test func thumbnailPathPointsInsideTheImagesDirectory() {
         let dir = URL(fileURLWithPath: "/tmp/x")
         #expect(ClipboardArchive.thumbnailPath(in: dir, id: "abc") == "/tmp/x/images/abc-thumb.png")
+    }
+
+    @Test func memoryModeKeepsImagesWithoutTouchingDisk() async throws {
+        let archive = ClipboardArchive()
+        let gen = archive.nextGeneration()
+        #expect(try await archive.claim(generation: gen, directory: nil, limits: limits()))
+        let pngData = png()
+        _ = try await archive.record(.image(data: pngData, type: .png),
+                                     image: ProcessedImage(png: pngData, thumbnail: pngData, width: 1, height: 1),
+                                     generation: gen, now: now)
+        let entry = try #require(await archive.entries(generation: gen).first)
+        #expect(await archive.imageData(generation: gen, id: entry.id) == pngData)
+        #expect(await archive.icons(generation: gen)[entry.id] == PluginItem.inlinePNGPrefix + pngData.base64EncodedString())
+        await archive.release(generation: gen)
+        #expect(await archive.entries(generation: gen).isEmpty)
+    }
+
+    @Test func memoryModeCapsImageBytes() async throws {
+        let archive = ClipboardArchive()
+        let gen = archive.nextGeneration()
+        _ = try await archive.claim(generation: gen, directory: nil, limits: limits())
+        let big = Data(count: ClipboardLimits.maxMemoryImageBytes / 2 + 1)
+        for marker in UInt8(1)...3 {
+            var data = big
+            data[0] = marker
+            _ = try await archive.record(.image(data: data, type: .png),
+                                         image: ProcessedImage(png: data, thumbnail: Data(), width: 1, height: 1),
+                                         generation: gen, now: now)
+        }
+        #expect(await archive.entries(generation: gen).count == 1)
+    }
+
+    @Test func switchingStorageCarriesTheHistoryBothWays() async throws {
+        let archive = ClipboardArchive()
+        let dir = temp(); defer { try? FileManager.default.removeItem(at: dir) }
+        let gen = archive.nextGeneration()
+        _ = try await archive.claim(generation: gen, directory: nil, limits: limits())
+        let pngData = png()
+        _ = try await archive.record(.image(data: pngData, type: .png),
+                                     image: ProcessedImage(png: pngData, thumbnail: pngData, width: 1, height: 1),
+                                     generation: gen, now: now)
+        _ = try await archive.record(.text("memo"), image: nil, generation: gen, now: now.addingTimeInterval(1))
+        try await archive.configure(generation: gen, directory: dir, limits: limits())
+        let saved = await archive.entries(generation: gen)
+        #expect(saved.map(\.kind) == [.text, .image])
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("index.json").path))
+        let image = try #require(saved.last)
+        #expect(await archive.icons(generation: gen)[image.id] == ClipboardArchive.thumbnailPath(in: dir, id: image.id))
+        try await archive.configure(generation: gen, directory: nil, limits: limits())
+        #expect(await archive.entries(generation: gen).map(\.id) == saved.map(\.id))
+        #expect(await archive.imageData(generation: gen, id: image.id) == pngData)
     }
 }

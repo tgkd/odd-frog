@@ -67,6 +67,7 @@ public struct PluginItem: Codable, Sendable, Hashable {
 
 public extension PluginItem {
     static let glyphIconPrefix = "glyph:"
+    static let inlinePNGPrefix = "png:"
 
     /// `icon` value that makes the launcher draw `character` large in the icon slot.
     static func glyphIcon(_ character: String) -> String { glyphIconPrefix + character }

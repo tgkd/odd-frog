@@ -125,7 +125,8 @@ struct ClipboardHandlerTests {
         let handler = ClipboardHandler(archive: ClipboardArchive(), pasteboard: ClipboardPasteboard(name: name),
                                        interval: .milliseconds(20))
         defer { Task { await handler.shutdown() } }
-        _ = try await handler.handle("initialize", params: initParams(storage: root), operation: operation)
+        _ = try await handler.handle("initialize", params: initParams(storage: root, settings: ["storage": .string("File")]),
+                                     operation: operation)
         writeImage(makePNG(width: 6, height: 4), to: name)
         try await wait {
             let items = try? await handler.handle("query", params: queryParams("", storage: root), operation: operation)
@@ -276,6 +277,45 @@ struct ClipboardHandlerTests {
         }
         await #expect(throws: RPCError("method", "Unsupported method: catalog")) {
             try await handler.handle("catalog", params: .object([:]), operation: operation)
+        }
+    }
+
+    @Test func memoryModeCapturesAndPastesImagesWithoutFiles() async throws {
+        let root = temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let name = NSPasteboard.Name("odd-frog-clip-\(UUID().uuidString)")
+        let handler = ClipboardHandler(archive: ClipboardArchive(), pasteboard: ClipboardPasteboard(name: name),
+                                       interval: .milliseconds(20))
+        defer { Task { await handler.shutdown() } }
+        _ = try await handler.handle("initialize", params: initParams(storage: root), operation: operation)
+        let png = makePNG(width: 6, height: 4)
+        writeImage(png, to: name)
+        try await wait {
+            let items = try? await handler.handle("query", params: queryParams("", storage: root), operation: operation)
+                .decode([PluginItem].self)
+            return items?.contains { $0.symbol == "photo" } == true
+        }
+        let items = try await handler.handle("query", params: queryParams("", storage: root), operation: operation)
+            .decode([PluginItem].self)
+        let image = try #require(items.first { $0.symbol == "photo" })
+        #expect(image.icon?.hasPrefix(PluginItem.inlinePNGPrefix) == true)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("index.json").path))
+        writeText("other", to: name)
+        let effects = try await handler.handle("activate",
+                                               params: activateParams("paste-image", payload: .object(["id": .string(image.id)]), storage: root),
+                                               operation: operation).decode(PluginEffects.self)
+        #expect(effects.paste == true)
+        #expect(NSPasteboard(name: name).data(forType: .png) == png)
+    }
+
+    @Test func aRelativeHistoryFolderIsRejected() async throws {
+        let root = temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = ClipboardHandler(archive: ClipboardArchive(),
+                                       pasteboard: ClipboardPasteboard(name: NSPasteboard.Name("odd-frog-clip-\(UUID().uuidString)")))
+        defer { Task { await handler.shutdown() } }
+        await #expect(throws: RPCError.self) {
+            try await handler.handle("initialize",
+                                     params: initParams(storage: root, settings: ["storage": .string("File"), "storage_path": .string("history")]),
+                                     operation: operation)
         }
     }
 }

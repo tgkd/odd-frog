@@ -11,7 +11,7 @@ public enum ClipboardProvider {
     }
 
     public static func respond(to request: PluginQuery, access: Access, entries: [ClipboardEntry],
-                               directory: URL, failure: String?) -> [PluginItem] {
+                               icons: [String: String], storage: URL?, failure: String?) -> [PluginItem] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: request.timeZoneIdentifier) ?? .gmt
         switch access {
@@ -57,10 +57,10 @@ public enum ClipboardProvider {
         }
         if filter.isEmpty && available > 1 {
             let limited = Array(matches.prefix(min(available - 1, recentCount)))
-            rows += limited.map { entryRow($0, now: request.now, calendar: calendar, directory: directory) }
-            rows.append(clearRow(count: entries.count))
+            rows += limited.map { entryRow($0, now: request.now, calendar: calendar, icon: icons[$0.id]) }
+            rows.append(clearRow(count: entries.count, storage: storage))
         } else {
-            rows += matches.prefix(available).map { entryRow($0, now: request.now, calendar: calendar, directory: directory) }
+            rows += matches.prefix(available).map { entryRow($0, now: request.now, calendar: calendar, icon: icons[$0.id]) }
         }
         return rows
     }
@@ -70,25 +70,26 @@ public enum ClipboardProvider {
                    subtitle: failure, kind: "Clipboard", symbol: "exclamationmark.triangle")
     }
 
-    private static func entryRow(_ entry: ClipboardEntry, now: Date, calendar: Calendar, directory: URL) -> PluginItem {
+    private static func entryRow(_ entry: ClipboardEntry, now: Date, calendar: Calendar, icon: String?) -> PluginItem {
         let isImage = entry.kind == .image
         let paste = isImage
-            ? PluginAction(.paste, payload: .object(["png": .string(ClipboardArchive.imagePath(in: directory, id: entry.id))]))
+            ? PluginAction(.callback, "paste-image", payload: .object(["id": .string(entry.id)]))
             : PluginAction(.paste, entry.text ?? "")
         return PluginItem(id: entry.id, title: ClipboardEntry.title(for: entry),
                           subtitle: dateLabel(entry.copied, calendar: calendar, now: now),
                           kind: "Clipboard",
                           symbol: isImage ? "photo" : "doc.on.clipboard",
-                          icon: isImage ? ClipboardArchive.thumbnailPath(in: directory, id: entry.id) : nil,
+                          icon: isImage ? icon : nil,
                           primary: paste,
                           secondary: PluginAction(.callback, "delete", payload: .object(["id": .string(entry.id)])))
     }
 
-    private static func clearRow(count: Int) -> PluginItem {
-        PluginItem(id: "clear", title: "Clear clipboard history",
-                   subtitle: "Removes \(count) saved entries. What is on the clipboard now stays.",
-                   kind: "Clipboard", symbol: "trash",
-                   primary: PluginAction(.callback, "clear", payload: .object([:])))
+    private static func clearRow(count: Int, storage: URL?) -> PluginItem {
+        let place = storage.map { "saved unencrypted in \($0.path)" } ?? "kept in memory only"
+        return PluginItem(id: "clear", title: "Clear clipboard history",
+                          subtitle: "Removes \(count) entries \(place). What is on the clipboard now stays.",
+                          kind: "Clipboard", symbol: "trash",
+                          primary: PluginAction(.callback, "clear", payload: .object([:])))
     }
 
     private static func dateLabel(_ modified: Date, calendar: Calendar, now: Date) -> String {

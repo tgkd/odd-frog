@@ -520,6 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch response {
                 case .success(let effects):
                     if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
+                    if effects.paste == true { executor.pasteCopied(name: result.item.title) }
                     executor.recordPlugin(result)
                     if let view = effects.view {
                         switch view.kind {
