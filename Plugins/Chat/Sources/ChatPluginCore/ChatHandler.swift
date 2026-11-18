@@ -4,11 +4,14 @@ import OddFrogPluginAPI
 public actor ChatHandler: ProviderHandler {
     private let backend: any ChatBackend
     private let onDevice: any ChatBackend
+    private let archive: ConversationArchive
     private var drafts = Set<String>()
     public init(backend: any ChatBackend = OpenAICompatibleBackend(),
-                onDevice: any ChatBackend = FoundationModelsBackend()) {
+                onDevice: any ChatBackend = FoundationModelsBackend(),
+                archive: ConversationArchive = ConversationArchive()) {
         self.backend = backend
         self.onDevice = onDevice
+        self.archive = archive
     }
     public func handle(_ method: String, params: JSONValue, operation: ProviderOperation) async throws -> JSONValue {
         switch method {
@@ -18,7 +21,7 @@ public actor ChatHandler: ProviderHandler {
             return .object([:])
         case "query":
             let query = try params["input"].decode(PluginQuery.self)
-            return try .encode(ChatProvider.respond(to: query, conversations: store(params).list()))
+            return try .encode(ChatProvider.respond(to: query, conversations: await archive.list(in: location(params))))
         case "activate":
             let activation = try params["input"].decode(PluginActivation.self)
             return try .encode(await effects(for: activation, params: params, operation: operation))
@@ -26,34 +29,34 @@ public actor ChatHandler: ProviderHandler {
             throw RPCError("method", "Unsupported method: \(method)")
         }
     }
-    private func store(_ params: JSONValue) throws -> ConversationStore {
+    private func location(_ params: JSONValue) throws -> URL? {
         let context = try params["context"].decode(PluginContext.self)
-        return ConversationStore(directory: URL(fileURLWithPath: context.storagePath))
+        return try ChatStorage.directory(settings: context.settings, defaultPath: context.storagePath)
     }
     private func effects(for activation: PluginActivation, params: JSONValue,
                          operation: ProviderOperation) async throws -> PluginEffects {
-        let store = try store(params)
+        let directory = try location(params)
         switch activation.actionID {
         case "open":
-            return PluginEffects(view: ChatProvider.view(for: try store.read(id: try identifier(activation))))
+            return PluginEffects(view: ChatProvider.view(for: try await archive.read(id: try identifier(activation), in: directory)))
         case "create":
-            let id = store.newID()
+            let id = ConversationArchive.newID()
             drafts.insert(id)
             let now = Date()
             let conversation = Conversation(id: id, title: "New chat", created: now, modified: now, messages: [])
             return PluginEffects(view: ChatProvider.view(for: conversation, prompt: activation.payload["text"].string))
         case "send":
-            return try await send(activation, params: params, store: store, operation: operation)
+            return try await send(activation, params: params, directory: directory, operation: operation)
         case "delete":
             let id = try identifier(activation)
-            try store.delete(id: id)
+            try await archive.delete(id: id, in: directory)
             drafts.remove(id)
             return PluginEffects(notification: "Conversation deleted.", refreshQuery: true)
         default:
             throw RPCError("action", "Unknown action: \(activation.actionID)")
         }
     }
-    private func send(_ activation: PluginActivation, params: JSONValue, store: ConversationStore,
+    private func send(_ activation: PluginActivation, params: JSONValue, directory: URL?,
                       operation: ProviderOperation) async throws -> PluginEffects {
         let id = try identifier(activation)
         let text = (activation.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -64,14 +67,14 @@ public actor ChatHandler: ProviderHandler {
         let now = Date()
         var conversation = draft
             ? Conversation(id: id, title: "New chat", created: now, modified: now, messages: [])
-            : try store.read(id: id)
+            : try await archive.read(id: id, in: directory)
         let settings = try params["context"].decode(PluginContext.self).settings
         let service = ChatService.selected(in: settings)
-        let pending = conversation.messages + [PluginMessage(id: store.newID(), role: .user, text: text)]
+        let pending = conversation.messages + [PluginMessage(id: ConversationArchive.newID(), role: .user, text: text)]
         let request = try service.request(settings: settings, messages: pending)
         conversation.messages = pending
         let backend = service.isOnDevice ? onDevice : self.backend
-        let replyID = store.newID()
+        let replyID = ConversationArchive.newID()
         var reply = ""
         let tools = service.isOnDevice && settings["tools"]?.bool != false
             ? ChatToolContext(notes: settings["notes_source"]?.string.flatMap(ChatNotesSource.init(rawValue:)) ?? .oddFrog) {
@@ -92,7 +95,7 @@ public actor ChatHandler: ProviderHandler {
             conversation.title = Conversation.title(from: conversation.messages.first { $0.role == .user }?.text ?? text)
         }
         conversation.modified = Date()
-        try store.write(conversation)
+        try await archive.write(conversation, in: directory)
         drafts.remove(id)
         return PluginEffects(refreshQuery: true, view: ChatProvider.view(for: conversation))
     }

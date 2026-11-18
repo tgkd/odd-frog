@@ -59,9 +59,23 @@ struct ChatHandlerTests {
     }
 
     private func settings(baseURL: String = "http://localhost:11434/v1", model: String = "llama3.2",
-                          systemPrompt: String = "Be brief.") -> [String: JSONValue] {
-        ["base_url": .string(baseURL), "api_key": .string(""), "model": .string(model),
-         "system_prompt": .string(systemPrompt)]
+                          systemPrompt: String = "Be brief.", storage: String? = nil,
+                          folder: String? = nil) -> [String: JSONValue] {
+        var values: [String: JSONValue] = ["base_url": .string(baseURL), "api_key": .string(""), "model": .string(model),
+                                           "system_prompt": .string(systemPrompt)]
+        if let storage {
+            values["storage"] = .string(storage)
+        }
+        if let folder {
+            values["storage_path"] = .string(folder)
+        }
+        return values
+    }
+
+    private func query(storage: URL, settings values: [String: JSONValue]) throws -> JSONValue {
+        .object(["apiVersion": .number(2),
+                 "context": try .encode(PluginContext(settings: values, storagePath: storage.path)),
+                 "input": try .encode(PluginQuery(query: "", fullQuery: "chat"))])
     }
 
     private func params(_ input: PluginActivation, storage: URL,
@@ -94,12 +108,15 @@ struct ChatHandlerTests {
         let backend = FakeBackend(chunks: ["Hel", "lo"])
         let handler = ChatHandler(backend: backend)
         let recorder = Recorder()
+        let file = settings(storage: "File")
         let created = try await handler.handle(
-            "activate", params: params(activation("create", payload: .object(["text": .string("hi")])), storage: root),
+            "activate", params: params(activation("create", payload: .object(["text": .string("hi")])), storage: root,
+                                       settings: file),
             operation: operation(recorder)).decode(PluginEffects.self)
         let id = try #require(created.view?.id)
         let sent = try await handler.handle(
-            "activate", params: params(activation("send", payload: .object(["id": .string(id)]), text: " hi "), storage: root),
+            "activate", params: params(activation("send", payload: .object(["id": .string(id)]), text: " hi "), storage: root,
+                                       settings: file),
             operation: operation(recorder)).decode(PluginEffects.self)
         let events = await recorder.events
         #expect(events.map(\.method) == ["messageDelta", "messageDelta"])
@@ -124,12 +141,75 @@ struct ChatHandlerTests {
         #expect(stored.map(\.id) == [id])
         #expect(stored.first?.title == "hi")
         #expect(stored.first?.messages.map(\.text) == ["hi", "Hello"])
-        let listed = try await handler.handle(
-            "query", params: .object(["apiVersion": .number(2),
-                                      "context": try .encode(PluginContext(storagePath: root.path)),
-                                      "input": try .encode(PluginQuery(query: "", fullQuery: "chat"))]),
-            operation: operation(recorder)).decode([PluginItem].self)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(id + ".json").path))
+        let listed = try await handler.handle("query", params: query(storage: root, settings: file),
+                                              operation: operation(recorder)).decode([PluginItem].self)
         #expect(listed.map(\.title) == ["hi", "New chat"])
+    }
+
+    @Test func defaultSettingsKeepChatsInMemoryAndNeverTouchTheDisk() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("odd-frog-chat-handler-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = ConversationArchive()
+        let handler = ChatHandler(backend: FakeBackend(chunks: ["Hello"]), archive: archive)
+        let recorder = Recorder()
+        let created = try await handler.handle(
+            "activate", params: params(activation("create"), storage: root),
+            operation: operation(recorder)).decode(PluginEffects.self)
+        let id = try #require(created.view?.id)
+        let sent = try await handler.handle(
+            "activate", params: params(activation("send", payload: .object(["id": .string(id)]), text: "hi"), storage: root),
+            operation: operation(recorder)).decode(PluginEffects.self)
+        #expect(sent.view?.messages?.map(\.text) == ["hi", "Hello"])
+        let listed = try await handler.handle("query", params: query(storage: root, settings: settings()),
+                                              operation: operation(recorder)).decode([PluginItem].self)
+        #expect(listed.map(\.title) == ["hi", "New chat"])
+        let opened = try await handler.handle(
+            "activate", params: params(activation("open", payload: .object(["id": .string(id)])), storage: root),
+            operation: operation(recorder)).decode(PluginEffects.self)
+        #expect(opened.view?.messages?.map(\.text) == ["hi", "Hello"])
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+
+        let reloaded = ChatHandler(backend: FakeBackend(), archive: archive)
+        let again = try await reloaded.handle("query", params: query(storage: root, settings: settings()),
+                                              operation: operation(recorder)).decode([PluginItem].self)
+        #expect(again.map(\.title) == ["hi", "New chat"])
+        let isolated = ChatHandler(backend: FakeBackend())
+        let fresh = try await isolated.handle("query", params: query(storage: root, settings: settings()),
+                                              operation: operation(recorder)).decode([PluginItem].self)
+        #expect(fresh.map(\.title) == ["New chat"])
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test func switchingToFileCarriesMemoryChatsIntoTheFolder() async throws {
+        let root = try existing(); defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("chats", isDirectory: true)
+        let handler = ChatHandler(backend: FakeBackend(chunks: ["Hello"]))
+        let recorder = Recorder()
+        let created = try await handler.handle(
+            "activate", params: params(activation("create"), storage: root),
+            operation: operation(recorder)).decode(PluginEffects.self)
+        let id = try #require(created.view?.id)
+        _ = try await handler.handle(
+            "activate", params: params(activation("send", payload: .object(["id": .string(id)]), text: "hi"), storage: root),
+            operation: operation(recorder))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+        let file = settings(storage: "File", folder: folder.path)
+        let listed = try await handler.handle("query", params: query(storage: root, settings: file),
+                                              operation: operation(recorder)).decode([PluginItem].self)
+        #expect(listed.map(\.title) == ["hi", "New chat"])
+        #expect(try ConversationStore(directory: folder).list().map(\.id) == [id])
+    }
+
+    @Test func aRelativeFolderIsRejected() async throws {
+        let root = try existing(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = ChatHandler(backend: FakeBackend())
+        await #expect(throws: RPCError("chat", "The chat folder must start with / or ~: chats")) {
+            try await handler.handle("query", params: query(storage: root, settings: settings(storage: "File", folder: "chats")),
+                                     operation: operation(Recorder()))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
     }
 
     @Test func aFailingBackendPropagatesAndLeavesNoFile() async throws {
@@ -197,13 +277,15 @@ struct ChatHandlerTests {
         try store.write(Conversation(id: id, title: "Alpha", created: Date(), modified: Date(),
                                      messages: [PluginMessage(id: "m0", role: .user, text: "hi")]))
         let opened = try await handler.handle(
-            "activate", params: params(activation("open", payload: .object(["id": .string(id)])), storage: root),
+            "activate", params: params(activation("open", payload: .object(["id": .string(id)])), storage: root,
+                                       settings: settings(storage: "File")),
             operation: operation(recorder)).decode(PluginEffects.self)
         #expect(opened.view?.title == "Alpha")
         #expect(opened.view?.messages?.map(\.text) == ["hi"])
         #expect(opened.view?.prompt == nil)
         let deleted = try await handler.handle(
-            "activate", params: params(activation("delete", payload: .object(["id": .string(id)])), storage: root),
+            "activate", params: params(activation("delete", payload: .object(["id": .string(id)])), storage: root,
+                                       settings: settings(storage: "File")),
             operation: operation(recorder)).decode(PluginEffects.self)
         #expect(deleted.notification == "Conversation deleted.")
         #expect(deleted.refreshQuery)
