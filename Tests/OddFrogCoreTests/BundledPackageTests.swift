@@ -33,7 +33,9 @@ import FilesPluginCore
     }
     private func registry() -> HostServiceRegistry {
         let services = HostServiceRegistry()
-        for id in ["calendar.access@1", "reminders.access@1", "reminders.complete@1", "reminders.create@1", "windows.perform@1", "links.manage@1", "links.read@1", "links.write@1"] {
+        for id in ["calendar.access@1", "calendar.create@1", "reminders.access@1", "reminders.complete@1", "reminders.create@1",
+                   "notes.read@1", "notes.create@1", "notes.append@1", "applenotes.read@1", "applenotes.create@1", "applenotes.append@1",
+                   "windows.perform@1", "links.manage@1", "links.read@1", "links.write@1"] {
             services.register(id, activationRequired: true) { _, _ in throw RPCError("test", "Unexpected user activation during query.") }
         }
         services.register("calendar.read@1") { _, _ in try .encode(CalendarSnapshot(access: .notDetermined)) }

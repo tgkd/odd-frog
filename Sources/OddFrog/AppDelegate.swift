@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = HotKeyManager()
     private let inputSource = InputSourceSwitch()
     private lazy var frecency = FrecencyStore(url: FrecencyStore.defaultURL)
-    private lazy var queryHistory = QueryHistoryStore(url: QueryHistoryStore.defaultURL)
+    private let queryHistory = QueryHistoryStore()
     private let status = StatusMenu()
     private lazy var controller = LauncherViewController(icons: icons)
     lazy var panel = LauncherPanel(contentViewController: controller)
@@ -67,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TerminalLauncher.cleanupStaleFiles()
         installMainMenu()
         guard migrateIfNeeded() else { return }
+        QueryHistoryStore.removeLegacyFile()
         loadInitialConfig()
         loadInitialSettings()
         notifier.requestAuthorizationIfNeeded()
@@ -519,7 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 switch response {
                 case .success(let effects):
-                    if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: false) }
+                    if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: .nothing) }
                     if effects.paste == true { executor.pasteCopied(name: result.item.title) }
                     executor.recordPlugin(result)
                     if let view = effects.view {

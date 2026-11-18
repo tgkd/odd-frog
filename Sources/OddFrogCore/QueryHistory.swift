@@ -44,38 +44,20 @@ public struct QueryHistory: Codable, Sendable, Equatable {
 }
 
 public actor QueryHistoryStore {
-    public let url: URL
-    private var history: QueryHistory
+    private var history = QueryHistory()
 
-    public init(url: URL) {
-        self.url = url
-        self.history = QueryHistoryStore.read(url) ?? QueryHistory()
+    public init() {}
+
+    public static var legacyURL: URL {
+        StoragePaths.support.appendingPathComponent("query-history.json")
     }
 
-    public static var defaultURL: URL {
-        StoragePaths.support.appendingPathComponent("query-history.json")
+    public static func removeLegacyFile(at url: URL = legacyURL) {
     }
 
     public func snapshot() -> QueryHistory { history }
 
     public func record(_ query: String) {
-        let before = history
         history.record(query)
-        guard history != before else { return }
-        persist()
-    }
-
-    private func persist() {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(history).write(to: url, options: .atomic)
-        } catch {
-            NSLog("odd-frog: query history write failed: \(error)")
-        }
-    }
-
-    private static func read(_ url: URL) -> QueryHistory? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(QueryHistory.self, from: data)
     }
 }

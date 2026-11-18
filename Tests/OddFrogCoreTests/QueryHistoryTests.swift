@@ -65,14 +65,11 @@ struct QueryHistoryTests {
         #expect(QueryHistory.window(around: 0, count: 5, total: 0).isEmpty)
     }
 
-    @Test func storeRoundTrips() async throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("odd-frog-tests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let url = dir.appendingPathComponent("query-history.json")
-        let store = QueryHistoryStore(url: url)
+    @Test func storeKeepsQueriesInMemoryOnly() async throws {
+        let store = QueryHistoryStore()
         await store.record("calendar")
         await store.record("mail")
-        let reloaded = QueryHistoryStore(url: url)
-        #expect(await reloaded.snapshot().queries == ["mail", "calendar"])
+        #expect(await store.snapshot().queries == ["mail", "calendar"])
+        #expect(await QueryHistoryStore().snapshot().queries.isEmpty)
     }
 }

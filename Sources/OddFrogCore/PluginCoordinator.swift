@@ -12,6 +12,8 @@ import OddFrogPluginAPI
     public var onChange: (() -> Void)?
     public var onMessageDelta: ((String, PluginMessageDelta) -> Void)?
     public let services: HostServiceRegistry
+    public var secrets: any SecretStore = MemorySecretStore()
+    public var onSecretFailure: ((String, String) -> Void)?
     private var generation = UUID()
     private var queryGeneration = UUID()
     private var processes: [String: any ProviderTransport] = [:]
@@ -413,6 +415,8 @@ import OddFrogPluginAPI
             }
         }
         onChange?()
+    }
+    public func secretDidChange(pluginID: String) {
     }
     public func validateSettings(_ updated: [PluginSetting]) throws {
         for package in packages { _ = try package.manifest.validatedSettings(package.setting(in: updated)?.values ?? [:]) }

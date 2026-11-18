@@ -171,7 +171,7 @@ final class ActionExecutor {
 
     func pasteCopied(name: String) {
         if !PasteKeystroke.send() {
-            notifier.post(title: name, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: false)
+            notifier.post(title: name, body: "Copied. Allow Odd Frog in Privacy & Security › Accessibility to paste automatically.", log: .nothing)
         }
     }
 

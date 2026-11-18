@@ -172,6 +172,8 @@ struct PluginsPaneView: View {
             )
         case .folders:
             foldersRow(for: definition, in: package)
+        case .secret:
+            LabeledContent(definition.title, value: "")
         }
     }
 

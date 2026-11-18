@@ -15,8 +15,18 @@ final class Notifier {
         }
     }
 
-    func post(title: String, body: String, log: Bool = true) {
-        if log { Log.write("notify: \(title) — \(body)") }
+    enum LogDetail {
+        case nothing
+        case title
+        case full
+    }
+
+    func post(title: String, body: String, log: LogDetail = .title) {
+        switch log {
+        case .nothing: break
+        case .title: Log.write("notify: \(title)")
+        case .full: Log.write("notify: \(title) — \(body)")
+        }
         guard enabled, isOn else { return }
         let deliver: @Sendable () -> Void = {
             let content = UNMutableNotificationContent()
@@ -41,6 +51,6 @@ final class Notifier {
     }
 
     func failure(_ message: String) {
-        post(title: "Odd Frog", body: message)
+        post(title: "Odd Frog", body: message, log: .full)
     }
 }
