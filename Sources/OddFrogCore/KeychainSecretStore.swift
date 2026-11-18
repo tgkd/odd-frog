@@ -11,18 +11,49 @@ public struct KeychainSecretStore: SecretStore {
     }
 
     public func contains(_ reference: SecretReference) -> Bool {
-        false
+        var query = baseQuery(reference)
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
 
     public func read(_ reference: SecretReference) throws -> String? {
-        nil
+        var query = baseQuery(reference)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        try check(status)
+        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
+            throw PluginError.message("The Keychain item is not readable text.")
+        }
+        return value
     }
 
     public func write(_ value: String, for reference: SecretReference) throws {
-        throw PluginError.message("The Keychain store is not available.")
+        try remove(reference)
+        var query = baseQuery(reference)
+        query[kSecValueData as String] = Data(value.utf8)
+        query[kSecAttrLabel as String] = "Odd Frog plugin secret"
+        try check(SecItemAdd(query as CFDictionary, nil))
     }
 
     public func remove(_ reference: SecretReference) throws {
-        throw PluginError.message("The Keychain store is not available.")
+        let status = SecItemDelete(baseQuery(reference) as CFDictionary)
+        if status == errSecItemNotFound { return }
+        try check(status)
+    }
+
+    private func baseQuery(_ reference: SecretReference) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: reference.account]
+    }
+
+    private func check(_ status: OSStatus) throws {
+        guard status != errSecSuccess else { return }
+        let text = SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)."
+        throw PluginError.message(text)
     }
 }

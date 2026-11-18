@@ -69,14 +69,21 @@ does. The Plugins pane has a switch for this list, stored as `show_plugins` in t
 of `settings.toml`.
 
 Settings definitions have `key`, `title`, `type`, and `default`. Types are `boolean`, `string`,
-`number` (optional `minimum`/`maximum`), `choice` (required `choices`), and `folders` (array of
-nonempty paths). The host validates defaults and edits. Invalid external edits retain the last
-valid settings. Providers receive all validated defaults and overrides in their context.
+`number` (optional `minimum`/`maximum`), `choice` (required `choices`), `folders` (array of
+nonempty paths), and `secret`. The host validates defaults and edits. Invalid external edits retain
+the last valid settings. Providers receive all validated defaults and overrides in their context.
+
+A `secret` is a string, such as an API key, that the host keeps in the macOS Keychain. Its
+`default` must be `""`. The value is never written to `settings.toml`; a plain-text value found
+there moves to the Keychain. The provider receives the value in `context.settings` under the
+setting key. It is `""` while the user has not set it, while it is hidden by `visible_when`, and
+when the Keychain read fails.
 
 Optional `subtitle` adds a second line under the title in the Plugins pane. Optional
 `visible_when = { <choice key> = ["Choice", ...] }` shows the row only while another `choice`
 setting has one of the listed values; the listed values must be among that setting's `choices`.
-A hidden setting keeps its value and still reaches the provider.
+A hidden setting keeps its value and still reaches the provider, except a hidden `secret`, which
+arrives as `""` and is not read from the Keychain.
 
 ## Wire format
 

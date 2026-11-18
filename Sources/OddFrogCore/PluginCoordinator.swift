@@ -12,7 +12,7 @@ import OddFrogPluginAPI
     public var onChange: (() -> Void)?
     public var onMessageDelta: ((String, PluginMessageDelta) -> Void)?
     public let services: HostServiceRegistry
-    public var secrets: any SecretStore = MemorySecretStore()
+    public var secrets: any SecretStore = MemorySecretStore() { didSet { secretReads = [:] } }
     public var onSecretFailure: ((String, String) -> Void)?
     private var generation = UUID()
     private var queryGeneration = UUID()
@@ -33,6 +33,7 @@ import OddFrogPluginAPI
     private static let loadingDelay: Duration = .milliseconds(300)
     private static let answerWait: Duration = .milliseconds(150)
     private var contexts: [String: PluginContext] = [:]
+    private var secretReads: [String: (id: UUID, task: Task<[String: String], Never>)] = [:]
     public init(services: HostServiceRegistry) {
         self.services = services
         services.onInvalidation = { [weak self] context in
@@ -130,7 +131,7 @@ import OddFrogPluginAPI
         for task in catalogTasks.values { task.cancel() }; catalogTasks = [:]
         for task in actionTasks.values { task.cancel() }; actionTasks = [:]
         for process in processes.values { Task { await process.stop() } }; processes = [:]
-        catalogs = [:]; contexts = [:]
+        catalogs = [:]; contexts = [:]; secretReads = [:]
     }
     public func invalidate() {
         queryGeneration = UUID(); queryTask?.cancel(); queryTask = nil; currentQuery = nil
@@ -214,7 +215,11 @@ import OddFrogPluginAPI
     }
     private func perform(_ method: String, package: PluginPackage, params: JSONValue, timeout: Duration?, activated: Bool = false) async throws -> JSONValue {
         let token = generation
-        var fields: [String: JSONValue] = ["context": try .encode(contexts[package.manifest.id] ?? PluginContext()), "input": params]
+        let secretValues = await resolveSecrets(package)
+        guard token == generation else { throw CancellationError() }
+        var requestContext = contexts[package.manifest.id] ?? PluginContext()
+        for (key, value) in secretValues where requestContext.settings[key] != nil { requestContext.settings[key] = .string(value) }
+        var fields: [String: JSONValue] = ["context": try .encode(requestContext), "input": params]
         fields["apiVersion"] = .number(2)
         let registry = services
         let context = HostServiceRegistry.Context(pluginID: package.manifest.id, generation: token, activated: activated)
@@ -224,6 +229,41 @@ import OddFrogPluginAPI
         }
         guard isCurrent(package, token: token) else { throw CancellationError() }
         return result
+    }
+    private func visibleSecrets(_ package: PluginPackage) -> [PluginSettingDefinition] {
+        guard let settings = contexts[package.manifest.id]?.settings else { return [] }
+        return package.manifest.settings.filter { $0.type == .secret && $0.isVisible { settings[$0] } }
+    }
+    private func resolveSecrets(_ package: PluginPackage) async -> [String: String] {
+        let definitions = visibleSecrets(package)
+        guard !definitions.isEmpty else { return [:] }
+        let id = package.manifest.id
+        let task = secretReads[id]?.task ?? startSecretRead(package, definitions: definitions)
+        let values = await task.value
+        let visible = Set(visibleSecrets(package).map(\.key))
+        return values.filter { visible.contains($0.key) }
+    }
+    private func startSecretRead(_ package: PluginPackage, definitions: [PluginSettingDefinition]) -> Task<[String: String], Never> {
+        let id = package.manifest.id, readID = UUID(), token = generation, store = secrets
+        let requests = definitions.map { (key: $0.key, title: $0.title, reference: SecretReference(package: package, key: $0.key)) }
+        let task = Task { [weak self] in
+            let outcomes = await Task.detached {
+                requests.map { request in (request.key, request.title, Result { try store.read(request.reference) }) }
+            }.value
+            var values: [String: String] = [:]
+            for (key, title, outcome) in outcomes {
+                switch outcome {
+                case .success(let value):
+                    if let value, !value.isEmpty { values[key] = value }
+                case .failure(let error):
+                    guard let self, token == generation, secretReads[id]?.id == readID else { continue }
+                    onSecretFailure?(id, "\(package.manifest.name) could not read \"\(title)\" from the Keychain: \(error). Enter it again in Settings › Plugins.")
+                }
+            }
+            return values
+        }
+        secretReads[id] = (readID, task)
+        return task
     }
     private func isCurrent(_ package: PluginPackage, token: UUID) -> Bool {
         token == generation && package.isEnabled(settings: settings) && failures[package.manifest.id] == nil
@@ -394,29 +434,39 @@ import OddFrogPluginAPI
     public func updateSettings(_ updated: [PluginSetting]) throws {
         try validateSettings(updated)
         let previous = settings; settings = updated
+        for package in packages where package.setting(in: updated)?.values != package.setting(in: previous)?.values {
+            secretReads[package.manifest.id] = nil
+        }
         for package in enabled {
             let id = package.manifest.id
             let values = package.setting(in: updated)?.values ?? [:]
             guard values != (package.setting(in: previous)?.values ?? [:]) else { continue }
             contexts[id]?.settings = try package.manifest.validatedSettings(values)
             guard package.manifest.mode != .declarative, initialization[id] != nil else { continue }
-            let token = generation
-            settingsTasks[id]?.cancel()
-            settingsTasks[id] = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await initialize(package).value
-                    _ = try await perform("settings", package: package, params: .object([:]), timeout: .seconds(30))
-                    guard token == generation, !Task.isCancelled else { return }
-                    if package.manifest.catalog { refreshCatalog(package) }; invalidate()
-                } catch {
-                    if token == generation, !(error is CancellationError) { fail(package, error: error) }
-                }
-            }
+            sendSettings(package)
         }
         onChange?()
     }
     public func secretDidChange(pluginID: String) {
+        secretReads[pluginID] = nil
+        guard let package = enabled.first(where: { $0.manifest.id == pluginID }),
+              package.manifest.mode != .declarative, initialization[pluginID] != nil else { return }
+        sendSettings(package)
+    }
+    private func sendSettings(_ package: PluginPackage) {
+        let id = package.manifest.id, token = generation
+        settingsTasks[id]?.cancel()
+        settingsTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await initialize(package).value
+                _ = try await perform("settings", package: package, params: .object([:]), timeout: .seconds(30))
+                guard token == generation, !Task.isCancelled else { return }
+                if package.manifest.catalog { refreshCatalog(package) }; invalidate()
+            } catch {
+                if token == generation, !(error is CancellationError) { fail(package, error: error) }
+            }
+        }
     }
     public func validateSettings(_ updated: [PluginSetting]) throws {
         for package in packages { _ = try package.manifest.validatedSettings(package.setting(in: updated)?.values ?? [:]) }

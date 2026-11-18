@@ -53,6 +53,21 @@ public final class MemorySecretStore: SecretStore {
 public enum SecretMigration {
     public static func extract(from settings: [PluginSetting], packages: [PluginPackage])
         -> (settings: [PluginSetting], secrets: [SecretReference: String]) {
-        (settings, [:])
+        var result = settings
+        var secrets: [SecretReference: String] = [:]
+        for package in packages {
+            guard let current = package.setting(in: result),
+                  let index = result.firstIndex(of: current),
+                  var values = result[index].values else { continue }
+            let keys = package.manifest.settings.filter { $0.type == .secret }.map(\.key).filter { values[$0] != nil }
+            guard !keys.isEmpty else { continue }
+            for key in keys {
+                if let value = values.removeValue(forKey: key)?.string, !value.isEmpty {
+                    secrets[SecretReference(package: package, key: key)] = value
+                }
+            }
+            result[index].values = values.isEmpty ? nil : values
+        }
+        return (result, secrets)
     }
 }
