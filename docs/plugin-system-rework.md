@@ -22,6 +22,7 @@ capability may still require a host release.
 | Reminders | Exclusive keyword `rem` | `rem` range/filter/labels and requested writes |
 | Notes | Exclusive keyword `note` | `note` list/filter, plain-text notes in the document window |
 | Chat | Exclusive keyword `chat` | `chat` list/filter, streamed conversations in the chat window over an OpenAI-compatible API |
+| Workflows | Exclusive keyword `wf`, catalog | Workflow files from chosen folders, runs and their state |
 
 The [API 2 contract](query-plugins.md) defines one item model, generic host actions and callbacks,
 NDJSON envelopes, lifecycle, settings, search precedence, and process limits. Calendar and Reminders
