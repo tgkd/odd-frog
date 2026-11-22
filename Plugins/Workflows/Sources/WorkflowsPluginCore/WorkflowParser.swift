@@ -59,7 +59,6 @@ public enum WorkflowParser {
     private static let commonKeys: Set<String> = ["kind", "id", "on_error", "timeout"]
     private static let kindKeys: [String: Set<String>] = [
         "exec": ["argv", "cwd", "output"],
-        "llm": ["provider", "model", "prompt", "context", "output"],
         "confirm": ["text", "title", "editable"],
         "show": ["text"],
     ]
@@ -76,7 +75,7 @@ public enum WorkflowParser {
         }
         let kind = try fields.requiredString("kind")
         guard let allowed = kindKeys[kind] else {
-            throw fields.failure("unknown kind \"\(kind)\". Use exec, llm, confirm or show.")
+            throw fields.failure("unknown kind \"\(kind)\". Use exec, confirm or show.")
         }
         try rejectStepKeys(fields, kind: kind, allowed: allowed)
 
@@ -94,7 +93,6 @@ public enum WorkflowParser {
         let stepKind: WorkflowStep.Kind
         switch kind {
         case "exec": stepKind = .exec(try parseExec(fields))
-        case "llm": stepKind = .llm(try parseLLM(fields))
         case "confirm": stepKind = .confirm(try parseConfirm(fields))
         default: stepKind = .show(ShowStep(text: Template.parse(try fields.requiredString("text"))))
         }
@@ -110,7 +108,7 @@ public enum WorkflowParser {
             throw fields.failure("unknown key \"\(key)\".")
         }
         if fields.table["timeout"] != nil, kind == "confirm" || kind == "show" {
-            throw fields.failure("timeout is only for exec and llm steps.")
+            throw fields.failure("timeout is only for exec steps.")
         }
     }
 
@@ -142,25 +140,6 @@ public enum WorkflowParser {
         return ExecStep(argv: templates, cwd: cwd, output: try parseOutput(fields))
     }
 
-    private static func parseLLM(_ fields: Fields) throws -> LLMStep {
-        let name = try fields.requiredString("provider")
-        if name == "apple-fm" { throw fields.failure("The apple-fm provider is not available yet.") }
-        guard let provider = LLMProvider(rawValue: name) else {
-            let names = LLMProvider.allCases.map(\.rawValue).joined(separator: ", ")
-            throw fields.failure("unknown provider \"\(name)\". Use one of: \(names).")
-        }
-        let given = try fields.optionalString("model")
-        let model = given?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if given == nil, provider != .gateway { throw fields.failure("model is required.") }
-        if given != nil, model.isEmpty { throw fields.failure("model must not be empty.") }
-        if provider == .gateway, ModelRouter.isAnthropic(model) {
-            throw fields.failure(ModelRouter.anthropicRefused)
-        }
-        let prompt = Template.parse(try fields.requiredString("prompt"))
-        let context = try fields.optionalStringArray("context")?.map(expandingTilde) ?? []
-        return LLMStep(provider: provider, model: model, prompt: prompt, context: context, output: try parseOutput(fields))
-    }
-
     private static func parseConfirm(_ fields: Fields) throws -> ConfirmStep {
         ConfirmStep(text: Template.parse(try fields.requiredString("text")),
                     title: try fields.optionalString("title").map(Template.parse),
@@ -174,7 +153,6 @@ public enum WorkflowParser {
 
     private static let standardFields: [String: Set<String>] = [
         "exec": ["output", "last_line", "exit", "stderr"],
-        "llm": ["output", "last_line"],
         "confirm": ["text", "title", "body", "file"],
     ]
 
@@ -214,7 +192,6 @@ public enum WorkflowParser {
     private static func producesJSON(_ step: WorkflowStep) -> Bool {
         switch step.kind {
         case .exec(let exec): exec.output == .json
-        case .llm(let llm): llm.output == .json
         case .confirm, .show: false
         }
     }
@@ -222,7 +199,6 @@ public enum WorkflowParser {
     private static func templates(of step: WorkflowStep) -> [Template] {
         switch step.kind {
         case .exec(let exec): exec.argv + (exec.cwd.map { [$0] } ?? [])
-        case .llm(let llm): [llm.prompt]
         case .confirm(let confirm): [confirm.text] + (confirm.title.map { [$0] } ?? [])
         case .show(let show): [show.text]
         }

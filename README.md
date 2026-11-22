@@ -79,9 +79,10 @@ with up to 1000 sides each.
 
 ### Workflows (Workflows plugin)
 
-A workflow is a TOML file with steps in a line: run a command, ask a model, review text in the editor,
+A workflow is a TOML file with steps in a line: run a command, review text in the editor,
 show a result. Choose the folders with workflow files in Settings → Plugins → Workflows, then type the
-workflow's keyword and your text. `wf` lists the runs. The format, the substitution rules and the
+workflow's keyword and your text. `wf` lists the runs. Odd Frog knows no service: a workflow that
+needs a model or an API calls your own command. The format, the substitution rules and the
 safety notes are in [docs/workflows.md](docs/workflows.md); `examples/workflows/` has a harmless
 example.
 

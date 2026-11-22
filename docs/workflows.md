@@ -1,6 +1,6 @@
 # Workflows
 
-A workflow is a TOML file that describes steps in a line: run a command, ask a model, let you review
+A workflow is a TOML file that describes steps in a line: run a command, let you review
 text, show a result. There is no branching, no loop and no expression language. Logic that needs more
 goes into an `exec` step that calls a script.
 
@@ -64,13 +64,13 @@ Every step:
 
 | Key | Value |
 | --- | --- |
-| `kind` | `exec`, `llm`, `confirm` or `show`. Required. |
+| `kind` | `exec`, `confirm` or `show`. Required. |
 | `id` | Optional. Letters, digits, `_` and `-`, starting with a letter or `_`. Unique in the file, never `input`. Only a step with an `id` can be used in later steps. |
 | `on_error` | `"stop"` (default) or `"continue"`. |
-| `timeout` | Seconds, a positive integer or decimal. Only on `exec` (default 600) and `llm` (default 180). |
+| `timeout` | Seconds, a positive integer or decimal. Only on `exec` (default 600). |
 
-An unknown key is an error when the file loads, also a key of another kind (for example `argv` on an
-`llm` step). This catches typing errors early.
+An unknown key is an error when the file loads, also a key of another kind (for example `argv` on a
+`confirm` step). This catches typing errors early.
 
 ### exec
 
@@ -88,51 +88,22 @@ An unknown key is an error when the file loads, also a key of another kind (for 
   and a bare command name is looked up in that `PATH`. An app started from Finder has no Homebrew
   `PATH`, so add those folders to the setting.
 
-### llm
+### Models and other services
 
-| Key | Value |
-| --- | --- |
-| `provider` | `gateway`, `ollama` or `lm-studio`. Required. |
-| `model` | Model name for that provider. Required for `ollama` and `lm-studio`. Optional for `gateway`: without it the step uses the Default gateway model setting (`openai/gpt-6-luna` unless changed). |
-| `prompt` | The prompt text. Required. |
-| `context` | Optional list of file paths. The files are read and sent with the prompt. These are plain paths, not templates. |
-| `output` | `"text"` (default) or `"json"`. |
+Odd Frog knows no service. A step that needs a model, an API or a token calls your own command with
+`exec`, and that command holds the address, the model and the secret. For example, with a CLI that
+sends a prompt to a model:
 
-Providers:
+```toml
+[[steps]]
+id = "draft"
+kind = "exec"
+argv = ["aigw", "-f", "~/notes/products.md", "Return one JSON object {{title, body}. Idea: {input}"]
+output = "json"
+```
 
-- `gateway` is the Cloudflare AI Gateway. Set `gateway_url` and `gateway_token` in Settings → Plugins →
-  Workflows; a workflow file never holds a secret.
-  - `gateway_url` goes up to the gateway id:
-    `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>`. It must use `https`. Odd Frog adds
-    `/compat/chat/completions` (a URL that already ends with `/compat` is also accepted).
-  - The token is kept in the Keychain. It is sent in the `cf-aig-authorization` header. No
-    `Authorization` header and no provider key are sent: the gateway adds the provider key.
-  - `model` takes a provider prefix, for example `openai/gpt-6-luna`. Leave it out to use the
-    Default gateway model setting (`gateway_model`, default `openai/gpt-6-luna`).
-  - `anthropic/*` models are refused when the file loads. The gateway has no Anthropic key, so such
-    calls would be billed from Cloudflare credits.
-- `ollama` calls `http://localhost:11434/v1` and `lm-studio` calls `http://localhost:1234/v1`, with no
-  key. `model` is the local model name.
-
-What is sent:
-
-- One user message with the prompt after substitution.
-- Each `context` file is read as UTF-8 when the step runs and goes in the system message as
-  `Context file <path>:` followed by its text. Files are separated by a blank line. A missing or
-  unreadable file, or a file larger than 256 KiB, fails the step.
-- With `output = "json"`, the system message also ends with "Answer with one JSON object and nothing
-  else." and the request asks for a JSON object (`response_format`).
-
-The reply:
-
-- The streamed reply is collected into `{<id>.output}`, with trailing whitespace removed. An empty
-  reply fails the step.
-- With `output = "json"`, a reply in a code fence (```` ```json ... ``` ````) is taken out of the
-  fence first. The top-level fields of the object become values. A reply that is not a JSON object
-  fails the step; the notification and the `wf` row show the start of the raw reply, the run history
-  does not.
-- The default timeout is 180 seconds. Set `timeout` to change it.
-- Prompts and replies are never written to the run history.
+If the command can print a JSON object inside code fences, strip them in a small script of your own,
+because `output = "json"` reads stdout as it is.
 
 ### confirm
 
@@ -185,7 +156,6 @@ Fields:
 | Kind | Fields |
 | --- | --- |
 | `exec` | `output` (stdout), `last_line`, `exit`, `stderr` |
-| `llm` | `output`, `last_line` |
 | `confirm` | `text`, `title`, `body`, `file` |
 | any step with `output = "json"` | also every top-level field of the JSON object |
 
@@ -198,7 +168,7 @@ Rules:
   starting with a letter or `_`. All other braces are literal. `Return {title, product, body}` stays
   as written.
 - `{{` gives a literal `{`. `{{input}` gives the text `{input}`. `}` is always literal.
-- One pass. A value is never scanned again: when a model writes `{review.file}`, that text stays as
+- One pass. A value is never scanned again: when a command prints `{review.file}`, that text stays as
   it is.
 - One placeholder in an `argv` element gives one element. Values are never split at spaces.
 - `~` at the start of `argv[0]`, `cwd` and each `context` path is your home folder. A `~` in a
@@ -228,7 +198,7 @@ is the real exit code. Every other field that has no value is empty text.
 
 ## Safety
 
-- A value from a model can start with `-`, and the called script can read it as an option. There is no
+- A value from a model or any other command can start with `-`, and the called script can read it as an option. There is no
   shell, but that does not prevent this. Put a `confirm` step before an `exec` step that uses model
   output, so that you see the values first.
 - Run history keeps only metadata: workflow id, step states, times, exit codes and error text. It does
@@ -242,8 +212,6 @@ is the real exit code. Every other field that has no value is empty text.
 - `max_chars = N` on `exec` will keep the last N characters of stdout before `output`, `last_line` and
   JSON parsing see it, so that a small on-device model gets a bounded input. It will not be allowed with
   `output = "json"`. Today the key is an error: "max_chars is not available yet."
-- Provider `apple-fm` (the on-device model). Today it is an error: "The apple-fm provider is not
-  available yet."
 
 ## Example
 

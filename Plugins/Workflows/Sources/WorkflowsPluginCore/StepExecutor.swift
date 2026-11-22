@@ -27,7 +27,6 @@ struct StepExecutor: Sendable {
     static let detailLimit = 2000
 
     var exec: any ExecRunning
-    var model: any ModelCompleting
     var environment: [String: String]
 
     func run(_ step: WorkflowStep, values: WorkflowValues, workflowFile: URL,
@@ -38,8 +37,6 @@ struct StepExecutor: Sendable {
         case .show(let show):
             let text = try render(show.text, values)
             return StepCompletion(values: StepValues(output: text), note: text)
-        case .llm(let llm):
-            return try await run(llm, values: values, settings: settings)
         case .confirm:
             throw StepFailure("A confirm step runs only through a review.")
         }
@@ -100,80 +97,6 @@ struct StepExecutor: Sendable {
             }
         }
         return StepCompletion(values: stepValues)
-    }
-
-    static let contextLimit = 256 * 1024
-    static let jsonInstruction = "Answer with one JSON object and nothing else."
-
-    private func run(_ step: LLMStep, values: WorkflowValues, settings: [String: JSONValue]) async throws -> StepCompletion {
-        let text = try render(step.prompt, values)
-        var sections: [String] = []
-        for path in step.context {
-            let content = try Self.readContext(path)
-            sections.append("Context file \(path):\n\(content)")
-        }
-        if step.output == .json {
-            sections.append(Self.jsonInstruction)
-        }
-        let prompt = ModelPrompt(provider: step.provider, model: step.model, system: sections.joined(separator: "\n\n"),
-                                 prompt: text, json: step.output == .json)
-        let reply: String
-        do {
-            reply = try await model.complete(prompt, settings: settings)
-        } catch let error as CancellationError {
-            throw error
-        } catch let error as RPCError {
-            throw StepFailure(error.message)
-        } catch {
-            throw StepFailure(String(describing: error))
-        }
-        try Task.checkCancellation()
-        guard step.output == .json else {
-            let output = Self.trimmingTrailing(reply)
-            guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw StepFailure("The model returned no text.")
-            }
-            return StepCompletion(values: StepValues(output: output))
-        }
-        let cleaned = Self.removingFences(reply)
-        guard !cleaned.isEmpty else {
-            throw StepFailure("The model returned no text.")
-        }
-        guard let fields = try? JSONFields.parse(cleaned) else {
-            throw StepFailure("The model did not return a JSON object.", detail: String(reply.prefix(Self.detailLimit)))
-        }
-        return StepCompletion(values: StepValues(output: cleaned, fields: fields))
-    }
-
-    static func readContext(_ path: String) throws -> String {
-        let url = URL(fileURLWithPath: path)
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-              size.isRegularFile == true else {
-            throw StepFailure("Cannot read context file \(path).")
-        }
-        if let bytes = size.fileSize, bytes > contextLimit {
-            throw StepFailure("Context file \(path) is larger than 256 KiB.")
-        }
-        guard let data = try? Data(contentsOf: url) else {
-            throw StepFailure("Cannot read context file \(path).")
-        }
-        guard data.count <= contextLimit else {
-            throw StepFailure("Context file \(path) is larger than 256 KiB.")
-        }
-        guard let content = String(data: data, encoding: .utf8) else {
-            throw StepFailure("Cannot read context file \(path).")
-        }
-        return content
-    }
-
-    static func removingFences(_ reply: String) -> String {
-        let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("```") else { return trimmed }
-        var lines = trimmed.components(separatedBy: "\n").dropFirst()
-        if lines.last?.trimmingCharacters(in: .whitespaces) == "```" {
-            lines = lines.dropLast()
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func render(_ template: Template, _ values: WorkflowValues) throws -> String {

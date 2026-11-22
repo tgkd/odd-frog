@@ -3,7 +3,6 @@ import OddFrogPluginAPI
 
 public actor WorkflowsHandler: ProviderHandler {
     private let exec: any ExecRunning
-    private let model: any ModelCompleting
     private let rescanInterval: Duration
     private let watcher = FolderWatcher()
 
@@ -14,10 +13,8 @@ public actor WorkflowsHandler: ProviderHandler {
     private var library = WorkflowLibrary()
     private var periodic: Task<Void, Never>?
 
-    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = ModelRouter(),
-                rescanInterval: Duration = .seconds(60)) {
+    public init(exec: any ExecRunning = ProcessGroupRunner(), rescanInterval: Duration = .seconds(60)) {
         self.exec = exec
-        self.model = model
         self.rescanInterval = rescanInterval
     }
 
@@ -65,7 +62,7 @@ public actor WorkflowsHandler: ProviderHandler {
                 try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
                 history = storage.appendingPathComponent(RunHistory.fileName)
             }
-            let created = WorkflowRunner(exec: exec, model: model, history: history, onChange: { [weak self] in
+            let created = WorkflowRunner(exec: exec, history: history, onChange: { [weak self] in
                 await self?.send("queryInvalidated")
             })
             runner = created

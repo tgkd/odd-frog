@@ -48,16 +48,13 @@ struct WorkflowParserTests {
         argument = { placeholder = "Idea" }
         [[steps]]
         id = "draft"
-        kind = "llm"
-        provider = "gateway"
-        model = "openai/gpt-5-mini"
-        context = ["~/.claude/skills/board/products.md"]
-        output = "json"
-        prompt = """
+        kind = "exec"
+        argv = ["aigw", "-f", "~/.claude/skills/board/products.md", """
         Turn the idea into a board card for one of my products.
         Return {title, product, work_type, body}.
         Idea: {input}
-        """
+        """]
+        output = "json"
         [[steps]]
         id = "review"
         kind = "confirm"
@@ -83,13 +80,11 @@ struct WorkflowParserTests {
         #expect(workflow.steps.map(\.position) == [0, 1, 2, 3])
         #expect(workflow.steps.allSatisfy { $0.onError == .stop && $0.timeout == nil })
 
-        guard case .llm(let draft) = workflow.steps[0].kind else { Issue.record("draft is not llm"); return }
-        #expect(draft.provider == .gateway)
-        #expect(draft.model == "openai/gpt-5-mini")
+        guard case .exec(let draft) = workflow.steps[0].kind else { Issue.record("draft is not exec"); return }
         #expect(draft.output == .json)
-        #expect(draft.context == [home + "/.claude/skills/board/products.md"])
-        #expect(draft.prompt.references == [ValueReference(name: "input")])
-        #expect(try draft.prompt.render(WorkflowValues(input: "X")).contains("Return {title, product, work_type, body}."))
+        #expect(draft.argv[2] == Template(parts: [.text("~/.claude/skills/board/products.md")]))
+        #expect(draft.argv[3].references == [ValueReference(name: "input")])
+        #expect(try draft.argv[3].render(WorkflowValues(input: "X")).contains("Return {title, product, work_type, body}."))
 
         guard case .confirm(let review) = workflow.steps[1].kind else { Issue.record("review is not confirm"); return }
         #expect(review.editable)
@@ -116,10 +111,8 @@ struct WorkflowParserTests {
         on_error = "continue"
         timeout = 2.5
         [[steps]]
-        kind = "llm"
-        provider = "lm-studio"
-        model = "m"
-        prompt = "p {run.anything}"
+        kind = "exec"
+        argv = ["/bin/echo", "p {run.anything}"]
         timeout = 30
         [[steps]]
         kind = "confirm"
@@ -132,22 +125,11 @@ struct WorkflowParserTests {
         #expect(workflow.steps[1].timeout == .seconds(30))
         guard case .exec(let run) = workflow.steps[0].kind else { Issue.record("not exec"); return }
         #expect(run.cwd == Template(parts: [.text(home + "/work")]))
-        guard case .llm(let llm) = workflow.steps[1].kind else { Issue.record("not llm"); return }
-        #expect(llm.provider == .lmStudio)
-        #expect(llm.context.isEmpty)
-        #expect(llm.output == .text)
+        guard case .exec(let second) = workflow.steps[1].kind else { Issue.record("not exec"); return }
+        #expect(second.output == .text)
         guard case .confirm(let confirm) = workflow.steps[2].kind else { Issue.record("not confirm"); return }
         #expect(!confirm.editable)
         #expect(confirm.title == nil)
-    }
-
-    @Test func aGatewayStepMayLeaveOutTheModel() throws {
-        let workflow = try parse("[[steps]]\nkind = \"llm\"\nprovider = \"gateway\"\nprompt = \"p\"\n")
-        guard case .llm(let step) = workflow.steps[0].kind else {
-            Issue.record("Expected an llm step.")
-            return
-        }
-        #expect(step.model == "")
     }
 
     @Test func withoutArgumentTableThereIsNoArgument() throws {
@@ -159,27 +141,19 @@ struct WorkflowParserTests {
         #expect(workflow.argument == PluginArgument(placeholder: "Name", optional: true))
     }
 
-    @Test func tildeIsExpandedOnlyInArgvZeroCwdAndContext() throws {
+    @Test func tildeIsExpandedOnlyInArgvZeroAndCwd() throws {
         let workflow = try parse("""
         [[steps]]
         id = "run"
         kind = "exec"
         argv = ["~/bin/tool", "~/not-expanded", "~"]
         cwd = "~"
-        [[steps]]
-        kind = "llm"
-        provider = "ollama"
-        model = "m"
-        prompt = "~/prompt"
-        context = ["~/a {b}.md", "/abs", "~user/x"]
         """)
-        guard case .exec(let run) = workflow.steps[0].kind, case .llm(let llm) = workflow.steps[1].kind else {
-            Issue.record("wrong kinds"); return
+        guard case .exec(let run) = workflow.steps[0].kind else {
+            Issue.record("wrong kind"); return
         }
         #expect(run.argv == [Template(parts: [.text(home + "/bin/tool")]), Template(parts: [.text("~/not-expanded")]), Template(parts: [.text("~")])])
         #expect(run.cwd == Template(parts: [.text(home)]))
-        #expect(llm.prompt == Template(parts: [.text("~/prompt")]))
-        #expect(llm.context == [home + "/a {b}.md", "/abs", "~user/x"])
     }
 
     @Test func tomlSyntaxErrorsNameLineAndColumn() throws {
@@ -217,11 +191,11 @@ struct WorkflowParserTests {
 
     @Test(arguments: [
         ("kind = \"exec\"\nargv = [\"a\"]\nargs = 1", "Step 1: unknown key \"args\"."),
-        ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"p\"\nargv = [\"a\"]", "Step 1: \"argv\" is not a key of an llm step."),
+        ("kind = \"confirm\"\ntext = \"t\"\nargv = [\"a\"]", "Step 1: \"argv\" is not a key of a confirm step."),
         ("kind = \"show\"\ntext = \"t\"\neditable = true", "Step 1: \"editable\" is not a key of a show step."),
         ("kind = \"exec\"\nargv = [\"a\"]\nmax_chars = 100", "Step 1: max_chars is not available yet."),
-        ("kind = \"confirm\"\ntext = \"t\"\ntimeout = 5", "Step 1: timeout is only for exec and llm steps."),
-        ("kind = \"show\"\ntext = \"t\"\ntimeout = 5", "Step 1: timeout is only for exec and llm steps."),
+        ("kind = \"confirm\"\ntext = \"t\"\ntimeout = 5", "Step 1: timeout is only for exec steps."),
+        ("kind = \"show\"\ntext = \"t\"\ntimeout = 5", "Step 1: timeout is only for exec steps."),
         ("kind = \"exec\"\nargv = [\"a\"]\ntimeout = 0", "Step 1: timeout must be a positive number of seconds."),
         ("kind = \"exec\"\nargv = [\"a\"]\ntimeout = \"5\"", "Step 1: timeout must be a positive number of seconds."),
         ("kind = \"exec\"\nargv = [\"a\"]\non_error = \"skip\"", "Step 1: on_error must be \"stop\" or \"continue\"."),
@@ -230,14 +204,8 @@ struct WorkflowParserTests {
         ("kind = \"exec\"\nargv = [1]", "Step 1: argv must be a list of strings."),
         ("kind = \"exec\"", "Step 1: argv is required."),
         ("argv = [\"a\"]", "Step 1: kind is required."),
-        ("kind = \"run\"", "Step 1: unknown kind \"run\". Use exec, llm, confirm or show."),
-        ("kind = \"llm\"\nprovider = \"apple-fm\"\nmodel = \"m\"\nprompt = \"p\"", "Step 1: The apple-fm provider is not available yet."),
-        ("kind = \"llm\"\nprovider = \"openai\"\nmodel = \"m\"\nprompt = \"p\"", "Step 1: unknown provider \"openai\". Use one of: gateway, ollama, lm-studio."),
-        ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \" \"\nprompt = \"p\"", "Step 1: model must not be empty."),
-        ("kind = \"llm\"\nprovider = \"ollama\"\nprompt = \"p\"", "Step 1: model is required."),
-        ("kind = \"llm\"\nprovider = \"gateway\"\nmodel = \"Anthropic/claude-x\"\nprompt = \"p\"", "Step 1: anthropic/* models are not called through the gateway. Use a provider with a key in the gateway, such as openai/…."),
-        ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"", "Step 1: prompt is required."),
-        ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"p\"\ncontext = \"a\"", "Step 1: context must be a list of strings."),
+        ("kind = \"run\"", "Step 1: unknown kind \"run\". Use exec, confirm or show."),
+        ("kind = \"llm\"\nprompt = \"p\"", "Step 1: unknown kind \"llm\". Use exec, confirm or show."),
         ("kind = \"confirm\"\ntext = \"t\"\neditable = \"yes\"", "Step 1: editable must be true or false."),
         ("kind = \"show\"", "Step 1: text is required."),
         ("id = \"1st\"\nkind = \"show\"\ntext = \"t\"", "Step \"1st\": invalid id. Use letters, digits, \"_\" or \"-\", starting with a letter or \"_\"."),
@@ -259,7 +227,6 @@ struct WorkflowParserTests {
         ("{run.titel}", "Step 2: {run.titel} — unknown field \"titel\"."),
         ("{note.output}", "Step 2: {note.output} — a show step has no values."),
         ("{ask.output}", "Step 2: {ask.output} — unknown field \"output\"."),
-        ("{think.exit}", "Step 2: {think.exit} — unknown field \"exit\"."),
     ])
     func referencesAreCheckedAtLoad(_ placeholder: String, _ expected: String) {
         let steps: String
@@ -268,8 +235,6 @@ struct WorkflowParserTests {
             steps = "[[steps]]\nid = \"note\"\nkind = \"show\"\ntext = \"x\"\n"
         case "{ask.output}":
             steps = "[[steps]]\nid = \"ask\"\nkind = \"confirm\"\ntext = \"x\"\n"
-        case "{think.exit}":
-            steps = "[[steps]]\nid = \"think\"\nkind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"x\"\n"
         default:
             steps = echo
         }
@@ -286,7 +251,7 @@ struct WorkflowParserTests {
         let bodies = [
             "kind = \"exec\"\nargv = [\"a\"]\ncwd = \"{x.output}\"",
             "kind = \"confirm\"\ntext = \"t\"\ntitle = \"{x.output}\"",
-            "kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"{x.output}\"",
+            "kind = \"show\"\ntext = \"{x.output}\"",
         ]
         for body in bodies {
             #expect(stepMessage("[[steps]]\n" + body + "\n")?.contains("unknown step \"x\"") == true)
@@ -300,17 +265,9 @@ struct WorkflowParserTests {
         kind = "exec"
         argv = ["a"]
         [[steps]]
-        id = "think"
-        kind = "llm"
-        provider = "ollama"
-        model = "m"
-        prompt = "p"
-        [[steps]]
         id = "data"
-        kind = "llm"
-        provider = "ollama"
-        model = "m"
-        prompt = "p"
+        kind = "exec"
+        argv = ["a"]
         output = "json"
         [[steps]]
         id = "ask"
@@ -318,15 +275,9 @@ struct WorkflowParserTests {
         text = "t"
         [[steps]]
         kind = "show"
-        text = "{run.output}{run.last_line}{run.exit}{run.stderr}{think.output}{think.last_line}{data.anything}{data.output}{ask.text}{ask.title}{ask.body}{ask.file}{input}{{input.x}"
+        text = "{run.output}{run.last_line}{run.exit}{run.stderr}{data.anything}{data.output}{ask.text}{ask.title}{ask.body}{ask.file}{input}{{input.x}"
         """)
-        #expect(workflow.steps.count == 5)
-    }
-
-    @Test func contextEntriesAreNotTemplates() throws {
-        let workflow = try parse("[[steps]]\nkind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"p\"\ncontext = [\"/a/{nope.x}.md\"]\n")
-        guard case .llm(let llm) = workflow.steps[0].kind else { Issue.record("not llm"); return }
-        #expect(llm.context == ["/a/{nope.x}.md"])
+        #expect(workflow.steps.count == 4)
     }
 
     @Test func everyExampleWorkflowParses() throws {

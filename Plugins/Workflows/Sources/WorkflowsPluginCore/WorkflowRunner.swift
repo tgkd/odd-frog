@@ -13,7 +13,6 @@ public struct RunSnapshot: Sendable, Equatable {
 
 public actor WorkflowRunner {
     public static let execTimeout: Duration = .seconds(600)
-    public static let llmTimeout: Duration = .seconds(180)
 
     private struct Segment: Sendable {
         var workflow: Workflow
@@ -48,11 +47,10 @@ public actor WorkflowRunner {
     private var files: [String: [URL]] = [:]
     private var stopping = false
 
-    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = ModelRouter(),
-                history: URL?, environment: [String: String] = ProcessInfo.processInfo.environment,
+    public init(exec: any ExecRunning = ProcessGroupRunner(), history: URL?, environment: [String: String] = ProcessInfo.processInfo.environment,
                 now: @escaping @Sendable () -> Date = { Date() },
                 onChange: @escaping @Sendable () async -> Void = {}) {
-        executor = StepExecutor(exec: exec, model: model, environment: environment)
+        executor = StepExecutor(exec: exec, environment: environment)
         self.history = history
         reviewFiles = ReviewFiles(history: history)
         self.now = now
@@ -260,7 +258,7 @@ public actor WorkflowRunner {
 
     private func attempt(_ step: WorkflowStep, values: WorkflowValues, workflowFile: URL,
                          settings: [String: JSONValue]) async -> Attempt {
-        let limit = step.timeout ?? (step.kindName == "llm" ? Self.llmTimeout : Self.execTimeout)
+        let limit = step.timeout ?? Self.execTimeout
         let executor = executor
         do {
             let completion: StepCompletion? = try await withThrowingTaskGroup(of: StepCompletion?.self) { group -> StepCompletion? in

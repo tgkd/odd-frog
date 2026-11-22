@@ -15,8 +15,8 @@ The format reference is `docs/workflows.md`; `examples/workflows/` holds a harml
 - `exec` takes an argv and never runs a shell. Do not wrap commands in `sh -c` to get a shell back.
 - Put a `confirm` step before any `exec` that uses LLM output: an LLM value can start with `-` and be read
   as an option, and no shell does not prevent that.
-- No secrets in a workflow file. Gateway URL and token are plugin settings; the token is in the Keychain.
-- Hosted models go through the Cloudflare AI Gateway (`gateway` provider) only.
+- The engine knows no service: no provider, URL, model or token. A step that needs one calls the
+  user's own command with `exec`, and that command holds the secret. No secrets in a workflow file.
 - Keep `{` literal with `{{` when a prompt shows JSON keys; any `{name}` other than `{input}` is a load error.
 
 ### Changing the engine
