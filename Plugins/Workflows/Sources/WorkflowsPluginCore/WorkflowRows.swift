@@ -42,7 +42,7 @@ public enum WorkflowRows {
         case .failed:
             let label = run.steps.last(where: { $0.state == .failed })?.label ?? "A step"
             let summary = run.error ?? "Unknown error."
-            let subtitle = summary + (detail.map { ": " + $0 } ?? "")
+            let subtitle = StepFailure.joined(summary, detail: detail)
             return PluginItem(id: run.id, title: "\(run.workflowTitle): \(label) failed", subtitle: subtitle,
                               kind: "Workflow", symbol: "exclamationmark.triangle",
                               primary: PluginAction(.copy, subtitle), multiline: true)

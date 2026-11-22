@@ -14,7 +14,7 @@ public actor WorkflowsHandler: ProviderHandler {
     private var library = WorkflowLibrary()
     private var periodic: Task<Void, Never>?
 
-    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = UnavailableModel(),
+    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = ModelRouter(),
                 rescanInterval: Duration = .seconds(60)) {
         self.exec = exec
         self.model = model

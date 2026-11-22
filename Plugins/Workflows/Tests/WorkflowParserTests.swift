@@ -225,6 +225,7 @@ struct WorkflowParserTests {
         ("kind = \"llm\"\nprovider = \"apple-fm\"\nmodel = \"m\"\nprompt = \"p\"", "Step 1: The apple-fm provider is not available yet."),
         ("kind = \"llm\"\nprovider = \"openai\"\nmodel = \"m\"\nprompt = \"p\"", "Step 1: unknown provider \"openai\". Use one of: gateway, ollama, lm-studio."),
         ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \" \"\nprompt = \"p\"", "Step 1: model must not be empty."),
+        ("kind = \"llm\"\nprovider = \"gateway\"\nmodel = \"Anthropic/claude-x\"\nprompt = \"p\"", "Step 1: anthropic/* models are not called through the gateway. Use a provider with a key in the gateway, such as openai/…."),
         ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"", "Step 1: prompt is required."),
         ("kind = \"llm\"\nprovider = \"ollama\"\nmodel = \"m\"\nprompt = \"p\"\ncontext = \"a\"", "Step 1: context must be a list of strings."),
         ("kind = \"confirm\"\ntext = \"t\"\neditable = \"yes\"", "Step 1: editable must be true or false."),

@@ -151,6 +151,9 @@ public enum WorkflowParser {
         }
         let model = try fields.requiredString("model").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !model.isEmpty else { throw fields.failure("model must not be empty.") }
+        if provider == .gateway, ModelRouter.isAnthropic(model) {
+            throw fields.failure(ModelRouter.anthropicRefused)
+        }
         let prompt = Template.parse(try fields.requiredString("prompt"))
         let context = try fields.optionalStringArray("context")?.map(expandingTilde) ?? []
         return LLMStep(provider: provider, model: model, prompt: prompt, context: context, output: try parseOutput(fields))

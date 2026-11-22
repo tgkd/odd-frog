@@ -23,7 +23,7 @@ public actor WorkflowRunner {
     private var tasks: [String: Task<RunOutcome, any Error>] = [:]
     private var stopping = false
 
-    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = UnavailableModel(),
+    public init(exec: any ExecRunning = ProcessGroupRunner(), model: any ModelCompleting = ModelRouter(),
                 history: URL?, environment: [String: String] = ProcessInfo.processInfo.environment,
                 now: @escaping @Sendable () -> Date = { Date() },
                 onChange: @escaping @Sendable () async -> Void = {}) {
@@ -125,7 +125,7 @@ public actor WorkflowRunner {
                 details[id] = failure.detail
                 update(id) { $0.state = .failed; $0.ended = now(); $0.error = failure.summary }
                 await changed()
-                let message = "\(step.label) failed: \(failure.summary)" + (failure.detail.map { ": " + $0 } ?? "")
+                let message = "\(step.label) failed: \(StepFailure.joined(failure.summary, detail: failure.detail))"
                 throw RPCError("workflow", message)
             case .cancelled:
                 await end(id, state: stopping ? .interrupted : .cancelled, cancelling: index)

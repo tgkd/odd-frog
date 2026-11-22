@@ -72,4 +72,16 @@ struct OpenAICompatibleBackendTests {
         #expect(messages.first?["content"].string == "Be brief.")
         #expect(messages.last?["content"].string == "again")
     }
+
+    @Test func customHeadersAndJSONResponseFormatAppearInTheRequest() throws {
+        var value = request()
+        value.headers = ["cf-aig-authorization": "Bearer gw-token"]
+        value.responseFormat = .jsonObject
+        let built = try OpenAICompatibleBackend.urlRequest(for: value)
+        #expect(built.value(forHTTPHeaderField: "cf-aig-authorization") == "Bearer gw-token")
+        #expect(built.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(try body(built)["response_format"]["type"].string == "json_object")
+        let plain = try OpenAICompatibleBackend.urlRequest(for: request())
+        #expect(try body(plain)["response_format"] == .null)
+    }
 }

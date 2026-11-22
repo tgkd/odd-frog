@@ -97,10 +97,40 @@ An unknown key is an error when the file loads, also a key of another kind (for 
 | `context` | Optional list of file paths. The files are read and sent with the prompt. These are plain paths, not templates. |
 | `output` | `"text"` (default) or `"json"`. |
 
-- `gateway` is the Cloudflare AI Gateway. Set `gateway_url` and `gateway_token` in the plugin
-  settings; a workflow file never holds a secret. `anthropic/*` models are refused.
-- `ollama` and `lm-studio` use their fixed localhost addresses.
-- `output = "json"` asks the model for one JSON object.
+Providers:
+
+- `gateway` is the Cloudflare AI Gateway. Set `gateway_url` and `gateway_token` in Settings → Plugins →
+  Workflows; a workflow file never holds a secret.
+  - `gateway_url` goes up to the gateway id:
+    `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>`. It must use `https`. Odd Frog adds
+    `/compat/chat/completions` (a URL that already ends with `/compat` is also accepted).
+  - The token is kept in the Keychain. It is sent in the `cf-aig-authorization` header. No
+    `Authorization` header and no provider key are sent: the gateway adds the provider key.
+  - `model` takes a provider prefix, for example `openai/gpt-6-luna`.
+  - `anthropic/*` models are refused when the file loads. The gateway has no Anthropic key, so such
+    calls would be billed from Cloudflare credits.
+- `ollama` calls `http://localhost:11434/v1` and `lm-studio` calls `http://localhost:1234/v1`, with no
+  key. `model` is the local model name.
+
+What is sent:
+
+- One user message with the prompt after substitution.
+- Each `context` file is read as UTF-8 when the step runs and goes in the system message as
+  `Context file <path>:` followed by its text. Files are separated by a blank line. A missing or
+  unreadable file, or a file larger than 256 KiB, fails the step.
+- With `output = "json"`, the system message also ends with "Answer with one JSON object and nothing
+  else." and the request asks for a JSON object (`response_format`).
+
+The reply:
+
+- The streamed reply is collected into `{<id>.output}`, with trailing whitespace removed. An empty
+  reply fails the step.
+- With `output = "json"`, a reply in a code fence (```` ```json ... ``` ````) is taken out of the
+  fence first. The top-level fields of the object become values. A reply that is not a JSON object
+  fails the step; the notification and the `wf` row show the start of the raw reply, the run history
+  does not.
+- The default timeout is 180 seconds. Set `timeout` to change it.
+- Prompts and replies are never written to the run history.
 
 ### confirm
 

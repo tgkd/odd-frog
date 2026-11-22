@@ -144,12 +144,8 @@ struct WorkflowRunnerTests {
         }
     }
 
-    @Test func llmAndConfirmStepsAreNotAvailableYet() async throws {
+    @Test func confirmStepsAreNotAvailableYet() async throws {
         let runner = WorkflowRunner(exec: FakeExec { _ in ExecResult() }, history: nil)
-        let llm = WorkflowStep(id: "draft", position: 0, kind: .llm(LLMStep(provider: .gateway, model: "m", prompt: text("p"))))
-        await #expect(throws: RPCError("workflow", "draft failed: llm steps are not available in this build yet.")) {
-            try await runner.start(workflow([llm]), input: "", settings: [:])
-        }
         let confirm = WorkflowStep(id: "review", position: 0, kind: .confirm(ConfirmStep(text: text("t"))))
         await #expect(throws: RPCError("workflow", "review failed: confirm steps are not available in this build yet.")) {
             try await runner.start(workflow([confirm]), input: "", settings: [:])
