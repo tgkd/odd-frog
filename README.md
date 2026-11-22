@@ -77,6 +77,14 @@ roll. Advantage is `2d20kh1` or `max(d20, d20)`, disadvantage is `2d20kl1` or `m
 division rounds down, and `к` works in place of `d` (`2к6`). One expression rolls at most 100 dice
 with up to 1000 sides each.
 
+### Workflows (Workflows plugin)
+
+A workflow is a TOML file with steps in a line: run a command, ask a model, review text in the editor,
+show a result. Choose the folders with workflow files in Settings → Plugins → Workflows, then type the
+workflow's keyword and your text. `wf` lists the runs. The format, the substitution rules and the
+safety notes are in [docs/workflows.md](docs/workflows.md); `examples/workflows/` has a harmless
+example.
+
 ### Keyboard layout
 
 Settings › General › Input source picks a keyboard layout for the launcher, such as ABC. Odd Frog

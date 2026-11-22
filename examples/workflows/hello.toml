@@ -1,0 +1,29 @@
+id = "hello"
+title = "Hello workflow"
+keyword = "hello"
+argument = { placeholder = "Name" }
+
+[[steps]]
+id = "greet"
+kind = "exec"
+argv = ["/bin/echo", "Hello, {input}!"]
+
+[[steps]]
+id = "system"
+kind = "exec"
+argv = ["/usr/bin/uname", "-sm"]
+
+[[steps]]
+id = "wait"
+kind = "exec"
+argv = ["/bin/sleep", "20"]
+timeout = 30
+
+[[steps]]
+id = "time"
+kind = "exec"
+argv = ["/bin/date", "+%H:%M"]
+
+[[steps]]
+kind = "show"
+text = "{greet.last_line} {system.last_line} at {time.last_line}."
