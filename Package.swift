@@ -10,11 +10,12 @@ let package = Package(
     targets: [
         .target(name: "OddFrogPluginAPI"),
         .executableTarget(name: "OddFrogPackage", dependencies: ["OddFrogCore"]),
+        .executableTarget(name: "OddFrogDevProvider", dependencies: ["OddFrogBuiltins", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(name: "OddFrogHostServicesAPI"),
         .target(name: "BundledFeatures", dependencies: ["OddFrogCore", "OddFrogPluginAPI"], path: "Plugins/Shared/Sources/BundledFeatures"),
         .target(name: "CalendarPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Calendar/Sources/CalendarPluginCore"),
         .target(name: "RemindersPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Reminders/Sources/RemindersPluginCore"),
-        .target(name: "NotesPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Notes/Sources/NotesPluginCore"),
+        .target(name: "NotesPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Notes/Sources/NotesPluginCore"),
         .target(name: "ChatPluginCore", dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Chat/Sources/ChatPluginCore"),
         .target(name: "ClipboardPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Clipboard/Sources/ClipboardPluginCore"),
         .target(name: "CharactersPluginCore", dependencies: ["OddFrogPluginAPI"], path: "Plugins/Characters/Sources/CharactersPluginCore"),
@@ -24,11 +25,11 @@ let package = Package(
         .target(name: "OddFrogBuiltins", dependencies: ["BundledFeatures", "CalendarPluginCore", "RemindersPluginCore", "NotesPluginCore", "ChatPluginCore", "ClipboardPluginCore", "CharactersPluginCore", "FilesPluginCore", "TranslatePluginCore", "DicePluginCore", "OddFrogCore", "OddFrogPluginAPI"]),
         .target(
             name: "OddFrogCore",
-            dependencies: ["OddFrogPluginAPI", .product(name: "TOMLKit", package: "TOMLKit")]
+            dependencies: ["OddFrogPluginAPI", "OddFrogHostServicesAPI", .product(name: "TOMLKit", package: "TOMLKit")]
         ),
         .executableTarget(
             name: "OddFrog",
-            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "OddFrogBuiltins", "NotesPluginCore"]
+            dependencies: ["OddFrogCore", "OddFrogHostServicesAPI", "OddFrogBuiltins"]
         ),
         .testTarget(name: "BundledFeatureTests", dependencies: ["BundledFeatures", "OddFrogCore"], path: "Plugins/Shared/Tests", resources: [.copy("Fixtures")]),
         .testTarget(
@@ -38,7 +39,7 @@ let package = Package(
         ),
         .testTarget(name: "CalendarPluginTests", dependencies: ["CalendarPluginCore", "OddFrogPluginAPI"], path: "Plugins/Calendar/Tests"),
         .testTarget(name: "RemindersPluginTests", dependencies: ["RemindersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Reminders/Tests"),
-        .testTarget(name: "NotesPluginTests", dependencies: ["NotesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Notes/Tests"),
+        .testTarget(name: "NotesPluginTests", dependencies: ["NotesPluginCore", "OddFrogPluginAPI", "OddFrogCore"], path: "Plugins/Notes/Tests"),
         .testTarget(name: "ChatPluginTests", dependencies: ["ChatPluginCore", "OddFrogPluginAPI", "OddFrogHostServicesAPI"], path: "Plugins/Chat/Tests"),
         .testTarget(name: "FilesPluginTests", dependencies: ["FilesPluginCore", "OddFrogPluginAPI"], path: "Plugins/Files/Tests"),
         .testTarget(name: "CharactersPluginTests", dependencies: ["CharactersPluginCore", "OddFrogPluginAPI"], path: "Plugins/Characters/Tests"),

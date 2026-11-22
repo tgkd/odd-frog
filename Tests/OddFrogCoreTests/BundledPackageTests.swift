@@ -31,10 +31,11 @@ import FilesPluginCore
             return PluginPackage(manifest: package.manifest, directory: folder, bundled: true)
         }
     }
-    private func registry() -> HostServiceRegistry {
+    private func registry(notes: URL) -> HostServiceRegistry {
         let services = HostServiceRegistry()
+        NotesService(directory: notes).register(in: services)
         for id in ["calendar.access@1", "calendar.create@1", "reminders.access@1", "reminders.complete@1", "reminders.create@1",
-                   "notes.read@1", "notes.create@1", "notes.append@1", "applenotes.read@1", "applenotes.create@1", "applenotes.append@1",
+                   "applenotes.read@1", "applenotes.create@1", "applenotes.append@1",
                    "windows.perform@1", "links.manage@1", "links.read@1", "links.write@1"] {
             services.register(id, activationRequired: true) { _, _ in throw RPCError("test", "Unexpected user activation during query.") }
         }
@@ -53,7 +54,7 @@ import FilesPluginCore
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let queries = ["applications": "Safari", "commands": "Docs", "scripts": "Sample Script", "calculator": "2+2", "windows": "maximize", "web": "a web query", "terminal": "> uptime", "calendar": "cal", "reminders": "rem", "notes": "note", "chat": "chat", "clipboard": "clip", "files": "f report", "emoji": "emoji", "symbols": "sym", "translate": "tr", "dice": "d20"]
         for package in packages {
-            let coordinator = PluginCoordinator(services: registry())
+            let coordinator = PluginCoordinator(services: registry(notes: root.appendingPathComponent("notes-store")))
             coordinator.builtins = BuiltinProviders.factories
             if package.manifest.id == "clipboard" {
                 coordinator.builtins["clipboard"] = { ClipboardHandler(archive: ClipboardArchive(), pasteboard: ClipboardPasteboard(name: NSPasteboard.Name("odd-frog-test-\(UUID().uuidString)"))) }

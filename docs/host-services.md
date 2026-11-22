@@ -14,6 +14,8 @@ prompt. Cancellation removes active service tasks; handlers check cancellation b
 | `reminders.complete@1` | `{id}` nonempty reminder ID | Effects, notification, refreshQuery | Yes |
 | `reminders.create@1` | `{title, due?, allDay?}`; title trimmed 1–500 characters, `due` Unix seconds | Effects, notification, refreshQuery | Yes |
 | `notes.read@1` | `{query, limit}`; limit 1–200 | `{notes: [{id, text, modified}], truncated}` | No |
+| `notes.get@1` | `{id}` note ID | `{id, text, modified}` | No |
+| `notes.write@1` | `{id, text}`; replaces the text, ≤100,000 characters, may be empty | `{id, text, modified}` | Yes |
 | `notes.create@1` | `{text}` nonempty, ≤100,000 characters | Effects, notification, refreshQuery | Yes |
 | `notes.append@1` | `{id, text}`; result ≤100,000 characters | Effects, notification, refreshQuery | Yes |
 | `applenotes.read@1` | `{query, limit}`; limit 1–200 | `{notes: [{id, text, modified}], truncated}` | Yes |
@@ -35,7 +37,8 @@ and optional `url`. The host returns incomplete items; the package owns query in
 A created reminder goes to the default list; a timed `due` also gets an alarm at that time.
 New events go to the default calendar for new events.
 
-Notes services work on the Notes package's storage, newest note first; `query` matches the text.
+Notes services work on the host's note storage, newest note first; `query` matches the text. The host owns
+the storage, so the Notes package keeps no files of its own and runs the same in or out of process.
 Apple Notes services drive Notes.app through `osascript` (JXA), so every call, reads included, can show
 the Automation prompt and needs activation. They return plain text, skip locked notes and Recently
 Deleted, create in the default account's default folder, and time out after 30 seconds.

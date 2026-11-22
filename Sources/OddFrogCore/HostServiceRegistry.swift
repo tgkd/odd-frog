@@ -6,6 +6,9 @@ import OddFrogPluginAPI
         public var pluginID: String
         public var generation: UUID
         public var activated: Bool
+        public init(pluginID: String, generation: UUID, activated: Bool) {
+            self.pluginID = pluginID; self.generation = generation; self.activated = activated
+        }
     }
     public typealias Handler = @MainActor @Sendable (JSONValue, Context) async throws -> JSONValue
     private struct Service { var activationRequired: Bool; var handler: Handler }

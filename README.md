@@ -41,6 +41,18 @@ make clean     # remove .build and build
 `make run` launches the bundle from `build/`, so use it for quick iteration; `make install` or
 `scripts/release.sh` when you want the installed copy updated.
 
+### Develop a bundled plugin without rebuilding the app
+
+```
+make dev-plugin ID=notes          # build the core as an NDJSON provider and install it as a user plugin
+make dev-plugin-remove ID=notes   # remove it; the bundled copy runs again
+```
+
+The user copy has the bundled ID, so it replaces the bundled one. Enable it once in Settings → Plugins
+(its settings are separate from the bundled copy's). After each `make dev-plugin`, use Reload Plugins.
+The Files plugin finds `libfff_c.dylib` this way only through `ODDFROG_FFF_LIBRARY` or a Homebrew copy,
+because the provider is not inside the app bundle.
+
 ### File search (Files plugin)
 
 The bundled `files` plugin (keyword `f`, off by default) searches your folders with

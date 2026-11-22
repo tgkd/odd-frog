@@ -1,4 +1,5 @@
 import Foundation
+import OddFrogHostServicesAPI
 
 public struct Note: Sendable, Hashable {
     public let id: String
@@ -9,22 +10,13 @@ public struct Note: Sendable, Hashable {
         self.text = text
         self.modified = modified
     }
+    public init(_ record: NoteRecord) {
+        self.init(id: record.id, text: record.text, modified: record.modified)
+    }
     public static func title(of text: String) -> String {
-        guard let line = lines(of: text).first else {
-            return "Untitled"
-        }
-        return String(line.prefix(80))
+        NoteText.title(of: text)
     }
     public static func snippet(of text: String) -> String? {
-        let values = lines(of: text)
-        guard values.count > 1 else {
-            return nil
-        }
-        return String(values[1].prefix(80))
-    }
-    private static func lines(of text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        NoteText.snippet(of: text)
     }
 }

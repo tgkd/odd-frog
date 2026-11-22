@@ -5,4 +5,4 @@ api_version = 2
 keyword = "note"
 mode = "persistent"
 activation = "exclusive"
-capabilities = []
+capabilities = ["notes.read@1", "notes.get@1", "notes.write@1"]
