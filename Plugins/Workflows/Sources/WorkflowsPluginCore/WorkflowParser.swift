@@ -149,8 +149,10 @@ public enum WorkflowParser {
             let names = LLMProvider.allCases.map(\.rawValue).joined(separator: ", ")
             throw fields.failure("unknown provider \"\(name)\". Use one of: \(names).")
         }
-        let model = try fields.requiredString("model").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else { throw fields.failure("model must not be empty.") }
+        let given = try fields.optionalString("model")
+        let model = given?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if given == nil, provider != .gateway { throw fields.failure("model is required.") }
+        if given != nil, model.isEmpty { throw fields.failure("model must not be empty.") }
         if provider == .gateway, ModelRouter.isAnthropic(model) {
             throw fields.failure(ModelRouter.anthropicRefused)
         }

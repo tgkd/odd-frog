@@ -30,6 +30,13 @@ type = "string"
 default = ""
 
 [[settings]]
+key = "gateway_model"
+title = "Default gateway model"
+subtitle = "Used by gateway llm steps that do not name a model. Give the provider prefix, for example openai/gpt-6-luna."
+type = "string"
+default = "openai/gpt-6-luna"
+
+[[settings]]
 key = "gateway_token"
 title = "AI Gateway token"
 subtitle = "An AI Gateway token with the Run permission. Kept in the macOS Keychain, not in the settings file or in workflow files."

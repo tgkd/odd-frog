@@ -8,6 +8,7 @@ public struct ModelRouter: ModelCompleting {
     public static let lmStudioURL = URL(string: "http://localhost:1234/v1")!
     public static let missingURL = "Set the AI Gateway URL in Settings › Plugins › Workflows."
     public static let missingToken = "Set the AI Gateway token in Settings › Plugins › Workflows."
+    public static let defaultGatewayModel = "openai/gpt-6-luna"
     public static let anthropicRefused = "anthropic/* models are not called through the gateway. Use a provider with a key in the gateway, such as openai/…."
 
     private let client: any ChatStreaming
@@ -32,7 +33,8 @@ public struct ModelRouter: ModelCompleting {
         let format: ChatRequest.ResponseFormat = prompt.json ? .jsonObject : .text
         switch prompt.provider {
         case .gateway:
-            if isAnthropic(prompt.model) {
+            let model = gatewayModel(prompt.model, settings: settings)
+            if isAnthropic(model) {
                 throw RPCError("workflow", anthropicRefused)
             }
             guard let baseURL = gatewayBaseURL(settings["gateway_url"]?.string ?? "") else {
@@ -42,7 +44,7 @@ public struct ModelRouter: ModelCompleting {
             guard !token.isEmpty else {
                 throw RPCError("workflow", missingToken)
             }
-            return ChatRequest(baseURL: baseURL, apiKey: "", model: prompt.model, systemPrompt: prompt.system,
+            return ChatRequest(baseURL: baseURL, apiKey: "", model: model, systemPrompt: prompt.system,
                                messages: messages, headers: ["cf-aig-authorization": "Bearer \(token)"],
                                responseFormat: format, settingsName: settingsName)
         case .ollama, .lmStudio:
@@ -50,6 +52,12 @@ public struct ModelRouter: ModelCompleting {
             return ChatRequest(baseURL: baseURL, apiKey: "", model: prompt.model, systemPrompt: prompt.system,
                                messages: messages, responseFormat: format, settingsName: settingsName)
         }
+    }
+
+    static func gatewayModel(_ model: String, settings: [String: JSONValue]) -> String {
+        guard model.isEmpty else { return model }
+        let setting = (settings["gateway_model"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return setting.isEmpty ? defaultGatewayModel : setting
     }
 
     public static func isAnthropic(_ model: String) -> Bool {

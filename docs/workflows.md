@@ -93,7 +93,7 @@ An unknown key is an error when the file loads, also a key of another kind (for 
 | Key | Value |
 | --- | --- |
 | `provider` | `gateway`, `ollama` or `lm-studio`. Required. |
-| `model` | Model name for that provider. Required. |
+| `model` | Model name for that provider. Required for `ollama` and `lm-studio`. Optional for `gateway`: without it the step uses the Default gateway model setting (`openai/gpt-6-luna` unless changed). |
 | `prompt` | The prompt text. Required. |
 | `context` | Optional list of file paths. The files are read and sent with the prompt. These are plain paths, not templates. |
 | `output` | `"text"` (default) or `"json"`. |
@@ -107,7 +107,8 @@ Providers:
     `/compat/chat/completions` (a URL that already ends with `/compat` is also accepted).
   - The token is kept in the Keychain. It is sent in the `cf-aig-authorization` header. No
     `Authorization` header and no provider key are sent: the gateway adds the provider key.
-  - `model` takes a provider prefix, for example `openai/gpt-6-luna`.
+  - `model` takes a provider prefix, for example `openai/gpt-6-luna`. Leave it out to use the
+    Default gateway model setting (`gateway_model`, default `openai/gpt-6-luna`).
   - `anthropic/*` models are refused when the file loads. The gateway has no Anthropic key, so such
     calls would be billed from Cloudflare credits.
 - `ollama` calls `http://localhost:11434/v1` and `lm-studio` calls `http://localhost:1234/v1`, with no

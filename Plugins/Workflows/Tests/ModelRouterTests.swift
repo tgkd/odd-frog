@@ -79,6 +79,18 @@ struct ModelRouterTests {
         }
     }
 
+    @Test func aGatewayStepWithoutAModelUsesTheSettingOrTheDefault() throws {
+        let prompt = ModelPrompt(provider: .gateway, model: "", prompt: "p")
+        #expect(try ModelRouter.request(for: prompt, settings: gatewaySettings).model == "openai/gpt-6-luna")
+        var settings = gatewaySettings
+        settings["gateway_model"] = .string(" deepseek/deepseek-chat ")
+        #expect(try ModelRouter.request(for: prompt, settings: settings).model == "deepseek/deepseek-chat")
+        settings["gateway_model"] = .string("anthropic/claude-x")
+        #expect(throws: RPCError("workflow", ModelRouter.anthropicRefused)) {
+            try ModelRouter.request(for: prompt, settings: settings)
+        }
+    }
+
     @Test func anthropicModelsAreRefusedForTheGateway() {
         let prompt = ModelPrompt(provider: .gateway, model: "ANTHROPIC/claude-x", prompt: "p")
         #expect(throws: RPCError("workflow", ModelRouter.anthropicRefused)) {
