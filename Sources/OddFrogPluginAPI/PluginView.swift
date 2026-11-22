@@ -27,13 +27,14 @@ public struct PluginView: Codable, Sendable, Hashable {
     public var text: String
     public var placeholder: String?
     public var save: PluginAction?
+    public var submit: PluginAction?
     public var messages: [PluginMessage]?
     public var prompt: String?
     public var send: PluginAction?
     public init(kind: Kind = .editor, id: String, title: String, text: String = "",
-                placeholder: String? = nil, save: PluginAction) {
+                placeholder: String? = nil, save: PluginAction, submit: PluginAction? = nil) {
         self.kind = kind; self.id = id; self.title = title; self.text = text
-        self.placeholder = placeholder; self.save = save
+        self.placeholder = placeholder; self.save = save; self.submit = submit
     }
     public init(id: String, title: String, messages: [PluginMessage], placeholder: String? = nil,
                 prompt: String? = nil, send: PluginAction) {
@@ -43,7 +44,7 @@ public struct PluginView: Codable, Sendable, Hashable {
     public init(month id: String, title: String) {
         kind = .month; self.id = id; self.title = title; text = ""
     }
-    enum CodingKeys: String, CodingKey { case kind, id, title, text, placeholder, save, messages, prompt, send }
+    enum CodingKeys: String, CodingKey { case kind, id, title, text, placeholder, save, submit, messages, prompt, send }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(Kind.self, forKey: .kind)
@@ -52,6 +53,7 @@ public struct PluginView: Codable, Sendable, Hashable {
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         placeholder = try c.decodeIfPresent(String.self, forKey: .placeholder)
         save = try c.decodeIfPresent(PluginAction.self, forKey: .save)
+        submit = try c.decodeIfPresent(PluginAction.self, forKey: .submit)
         messages = try c.decodeIfPresent([PluginMessage].self, forKey: .messages)
         prompt = try c.decodeIfPresent(String.self, forKey: .prompt)
         send = try c.decodeIfPresent(PluginAction.self, forKey: .send)

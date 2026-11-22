@@ -492,6 +492,12 @@ import OddFrogPluginAPI
                 throw RPCError("protocol", "Invalid document view.")
             }
             try validate(save, package: package)
+            if let submit = view.submit {
+                guard submit.kind == .callback else {
+                    throw RPCError("protocol", "Invalid document view.")
+                }
+                try validate(submit, package: package)
+            }
         case .chat:
             guard let send = view.send, send.kind == .callback, let messages = view.messages,
                   messages.allSatisfy({ !$0.id.isEmpty }), Set(messages.map(\.id)).count == messages.count else {

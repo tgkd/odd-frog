@@ -7,6 +7,7 @@ import OddFrogPluginAPI
     public let viewID: String
     public let result: PluginResult
     public let save: PluginAction
+    public let submit: PluginAction?
     public private(set) var title: String
     public private(set) var text: String
     public private(set) var revision = 0
@@ -21,6 +22,7 @@ import OddFrogPluginAPI
         viewID = view.id
         self.result = result
         self.save = save
+        submit = view.submit
         title = view.title
         text = view.text
     }
