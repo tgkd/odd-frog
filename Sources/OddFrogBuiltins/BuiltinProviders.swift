@@ -10,6 +10,7 @@ import CharactersPluginCore
 import FilesPluginCore
 import TranslatePluginCore
 import DicePluginCore
+import WorkflowsPluginCore
 import OddFrogCore
 import OddFrogPluginAPI
 
@@ -33,5 +34,6 @@ public enum BuiltinProviders {
         "symbols": { CharactersHandler(.symbols) },
         "translate": { TranslateHandler() },
         "dice": { DiceHandler() },
+        "workflows": { WorkflowsHandler() },
     ]
 }

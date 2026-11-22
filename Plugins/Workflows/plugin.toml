@@ -1,0 +1,23 @@
+id = "workflows"
+name = "Workflows"
+version = "0.1.0"
+api_version = 2
+keyword = "wf"
+mode = "persistent"
+activation = "exclusive"
+catalog = true
+capabilities = []
+
+[[settings]]
+key = "folders"
+title = "Workflow folders"
+subtitle = "Odd Frog reads the .toml workflow files in these folders. A workflow runs the commands it lists, so keep only your own files here."
+type = "folders"
+default = []
+
+[[settings]]
+key = "path"
+title = "Command search path"
+subtitle = "Folders searched first when an exec step names a command without a path. Odd Frog opened from Finder does not get the PATH of your shell."
+type = "string"
+default = "/opt/homebrew/bin:/usr/local/bin"
