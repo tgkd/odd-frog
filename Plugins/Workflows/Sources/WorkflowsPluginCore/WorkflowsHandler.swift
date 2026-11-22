@@ -96,10 +96,20 @@ public actor WorkflowsHandler: ProviderHandler {
         case "run":
             guard let runner, !closed else { throw RPCError("workflow", "Workflows are not ready yet.") }
             let workflow = try current(activation.payload["workflow"].string ?? "")
-            switch try await runner.start(workflow, input: activation.argument ?? "", settings: context.settings) {
-            case .finished(let notification):
-                return try .encode(PluginEffects(notification: notification, refreshQuery: true))
-            }
+            return try .encode(Self.effects(try await runner.start(workflow, input: activation.argument ?? "",
+                                                                   settings: context.settings)))
+        case "save":
+            await runner?.saveDraft(activation.payload["run"].string ?? "", text: activation.text ?? "")
+            return try .encode(PluginEffects())
+        case "submit":
+            guard let runner, !closed else { throw Self.notWaiting }
+            let outcome = try await runner.submit(activation.payload["run"].string ?? "", text: activation.text ?? "",
+                                                  settings: context.settings)
+            return try .encode(Self.effects(outcome))
+        case "continue":
+            guard let runner else { throw Self.notWaiting }
+            let review = try await runner.review(activation.payload["run"].string ?? "")
+            return try .encode(PluginEffects(refreshQuery: true, view: Self.view(review)))
         case "cancel":
             guard let runner else { throw RPCError("workflow", "This run is not running.") }
             try await runner.cancel(activation.payload["run"].string ?? "")
@@ -152,6 +162,24 @@ public actor WorkflowsHandler: ProviderHandler {
     private func send(_ event: String) async {
         guard !closed else { return }
         await emit?(event)
+    }
+
+    private static let notWaiting = RPCError("workflow", "This run is not waiting for review.")
+
+    static func effects(_ outcome: RunOutcome) -> PluginEffects {
+        switch outcome {
+        case .finished(let notification):
+            PluginEffects(notification: notification, refreshQuery: true)
+        case .paused(let review):
+            PluginEffects(refreshQuery: true, view: view(review))
+        }
+    }
+
+    static func view(_ review: Review) -> PluginView {
+        let run: JSONValue = .object(["run": .string(review.runID)])
+        return PluginView(id: review.viewID, title: review.title, text: review.text,
+                          save: PluginAction(.callback, "save", payload: run),
+                          submit: PluginAction(.callback, "submit", payload: run))
     }
 
     static func item(_ workflow: Workflow) -> PluginItem {

@@ -21,9 +21,9 @@ struct WorkflowsHandlerTests {
     }
 
     private func activate(_ handler: WorkflowsHandler, _ context: PluginContext, _ action: String, payload: JSONValue,
-                          argument: String? = nil) async throws -> PluginEffects {
+                          argument: String? = nil, text: String? = nil) async throws -> PluginEffects {
         let activation = PluginActivation(actionID: action, payload: payload, item: PluginItem(id: "x", title: "x"),
-                                          argument: argument)
+                                          argument: argument, text: text)
         return try await handler.handle("activate", params: params(context, activation), operation: operation)
             .decode(PluginEffects.self)
     }
@@ -82,6 +82,72 @@ struct WorkflowsHandlerTests {
         #expect(after.first?.subtitle?.hasPrefix("Finished · say done · step 2 done · ") == true)
         #expect(await events.names.contains("queryInvalidated"))
         #expect(FileManager.default.fileExists(atPath: storage.appendingPathComponent("runs.json").path))
+        await handler.shutdown()
+    }
+
+    @Test func aConfirmStepOpensTheEditorAndSubmitResumes() async throws {
+        let folder = try temporaryFolder(); defer { try? FileManager.default.removeItem(at: folder) }
+        let flows = folder.appendingPathComponent("flows")
+        try FileManager.default.createDirectory(at: flows, withIntermediateDirectories: true)
+        try """
+        id = "post"
+        title = "Post it"
+        keyword = "post"
+        argument = { placeholder = "Text" }
+
+        [[steps]]
+        id = "review"
+        kind = "confirm"
+        text = "{input}"
+
+        [[steps]]
+        kind = "show"
+        text = "Posted {review.title}"
+        """.write(to: flows.appendingPathComponent("post.toml"), atomically: true, encoding: .utf8)
+        let context = PluginContext(settings: ["folders": .array([.string(flows.path)])],
+                                    storagePath: folder.appendingPathComponent("storage").path)
+        let handler = WorkflowsHandler(rescanInterval: .seconds(3600))
+        _ = try await handler.handle("initialize", params: params(context, JSONValue.null), operation: operation)
+        let opened = try await activate(handler, context, "run", payload: .object(["workflow": .string("post")]),
+                                        argument: "Hello\nworld")
+        let view = try #require(opened.view)
+        #expect(opened.notification == nil)
+        #expect(opened.refreshQuery)
+        #expect(view.kind == .editor)
+        #expect(view.title == "Post it")
+        #expect(view.text == "Hello\nworld")
+        let runID = String(view.id.dropLast(2))
+        #expect(view.id == runID + "-0")
+        let payload: JSONValue = .object(["run": .string(runID)])
+        #expect(view.save == PluginAction(.callback, "save", payload: payload))
+        #expect(view.submit == PluginAction(.callback, "submit", payload: payload))
+        let row = try #require(try await query(handler, context).first)
+        #expect(row.id == runID)
+        #expect(row.subtitle == "review review · step 2 waiting · Return continues the review")
+        #expect(row.primary == PluginAction(.callback, "continue", payload: payload))
+        let saved = try await activate(handler, context, "save", payload: payload, text: "Edited\nbody")
+        #expect(saved.notification == nil && saved.view == nil)
+        let continued = try await activate(handler, context, "continue", payload: payload)
+        #expect(continued.view?.id == view.id)
+        #expect(continued.view?.text == "Edited\nbody")
+        let submitted = try await activate(handler, context, "submit", payload: payload, text: "Final\nbody")
+        #expect(submitted.notification == "Posted Final")
+        #expect(submitted.view == nil)
+        await #expect(throws: RPCError("workflow", "This run is not waiting for review.")) {
+            try await activate(handler, context, "continue", payload: payload)
+        }
+        await #expect(throws: RPCError("workflow", "This run is not waiting for review.")) {
+            try await activate(handler, context, "submit", payload: payload, text: "again")
+        }
+        let late = try await activate(handler, context, "save", payload: payload, text: "late")
+        #expect(late.notification == nil)
+        let second = try await activate(handler, context, "run", payload: .object(["workflow": .string("post")]),
+                                        argument: "Draft")
+        let secondPayload: JSONValue = .object(["run": .string(String(try #require(second.view).id.dropLast(2)))])
+        let cancelled = try await activate(handler, context, "cancel", payload: secondPayload)
+        #expect(cancelled.notification == "Cancelled.")
+        let afterCancel = try await activate(handler, context, "save", payload: secondPayload, text: "late")
+        #expect(afterCancel.view == nil)
         await handler.shutdown()
     }
 
@@ -146,6 +212,18 @@ struct WorkflowRowsTests {
         #expect(byID["error:/tmp/flows/bad.toml"]?.title == "Cannot load bad.toml")
         #expect(byID["error:/tmp/flows/bad.toml"]?.primary == PluginAction(.reveal, "/tmp/flows/bad.toml"))
         #expect(rows.allSatisfy { $0.kind == "Workflow" })
+    }
+
+    @Test func aPausedRunOffersContinueAndCancel() throws {
+        let paused = run("paused", .paused, steps: [step("draft", .done), step("review", .running), step("post", .pending)])
+        let rows = WorkflowRows.rows(runs: [paused], errors: [], hasFolders: true, keywords: [], query: "", maxResults: 8)
+        let row = try #require(rows.first)
+        let payload: JSONValue = .object(["run": .string("paused")])
+        #expect(row.subtitle == "draft done · review review · post waiting · Return continues the review")
+        #expect(row.symbol == "pause.circle")
+        #expect(row.primary == PluginAction(.callback, "continue", payload: payload))
+        #expect(row.secondary == PluginAction(.callback, "cancel", payload: payload))
+        #expect(row.multiline == true)
     }
 
     @Test func emptyAndSetupRows() {

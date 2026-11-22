@@ -29,7 +29,14 @@ public enum WorkflowRows {
 
     static func row(_ run: RunRecord, detail: String?) -> PluginItem {
         switch run.state {
-        case .running, .paused:
+        case .paused:
+            let payload: JSONValue = .object(["run": .string(run.id)])
+            return PluginItem(id: run.id, title: run.workflowTitle,
+                              subtitle: stepList(run) + " · Return continues the review",
+                              kind: "Workflow", symbol: "pause.circle",
+                              primary: PluginAction(.callback, "continue", payload: payload),
+                              secondary: PluginAction(.callback, "cancel", payload: payload), multiline: true)
+        case .running:
             return PluginItem(id: run.id, title: run.workflowTitle, subtitle: stepList(run) + " · Return cancels",
                               kind: "Workflow", symbol: "arrow.triangle.2.circlepath",
                               primary: PluginAction(.callback, "cancel", payload: .object(["run": .string(run.id)])),
@@ -63,7 +70,7 @@ public enum WorkflowRows {
     }
 
     static func stepList(_ run: RunRecord) -> String {
-        run.steps.map { "\($0.label) \(word($0.state))" }.joined(separator: " · ")
+        run.steps.map { "\($0.label) \(word($0.state, paused: run.state == .paused))" }.joined(separator: " · ")
     }
 
     static func durationText(_ interval: TimeInterval) -> String {
@@ -72,10 +79,10 @@ public enum WorkflowRows {
         return "\(total / 60) min \(total % 60) s"
     }
 
-    private static func word(_ state: RunRecord.Step.State) -> String {
+    private static func word(_ state: RunRecord.Step.State, paused: Bool) -> String {
         switch state {
         case .pending: "waiting"
-        case .running: "running"
+        case .running: paused ? "review" : "running"
         case .done: "done"
         case .failed: "failed"
         case .cancelled: "cancelled"

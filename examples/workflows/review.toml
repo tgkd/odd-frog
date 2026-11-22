@@ -1,0 +1,19 @@
+id = "review"
+title = "Review a text"
+keyword = "review"
+argument = { placeholder = "Text" }
+
+[[steps]]
+id = "draft"
+kind = "confirm"
+title = "Review: {input}"
+text = "{input}\n\nWrite the body here."
+
+[[steps]]
+id = "size"
+kind = "exec"
+argv = ["/usr/bin/wc", "-c", "{draft.file}"]
+
+[[steps]]
+kind = "show"
+text = "{draft.title}: {size.last_line}"

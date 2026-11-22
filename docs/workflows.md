@@ -23,7 +23,8 @@ Type the workflow's keyword, a space and your text: `idea fix the bug`. The text
 
 - A running row shows the current step. Return on it cancels the run.
 - A failed row shows the failed step and why it failed.
-- A paused row (a `confirm` step waits for you) offers Continue and Cancel.
+- A paused row (a `confirm` step waits for you) shows the step as `review`. Return on it opens the
+  editor again with your last draft (Continue). The secondary action cancels the run.
 - A file that does not load shows as an error row with the reason.
 
 The end of a run and a failure also give a notification.
@@ -140,10 +141,27 @@ The reply:
 | `title` | Optional window title. |
 | `editable` | `true` (default) or `false`. |
 
-The step opens the editor window and the run pauses. The first line of the reviewed text is
-`{<id>.title}` and the rest is `{<id>.body}`. `{<id>.file}` is the path of a temporary file that holds
-the body (mode 0600, deleted when the run ends). Cmd+Return continues the run. Return is a new line.
+The step opens the editor window with the rendered `text` and the run pauses. The window title is
+`title`, or the workflow title when `title` is not set or renders empty. Your edits are saved as a
+draft while you type. Cmd+Return continues the run with the reviewed text. Return is a new line.
 Closing the window does not cancel the run: it stays paused in `wf`.
+
+The values of the step:
+
+- `{<id>.title}` is the first line of the reviewed text that is not empty, without leading and
+  trailing spaces.
+- `{<id>.body}` is the text after that line, without blank lines at its start and end.
+- `{<id>.text}` is the full reviewed text.
+- `{<id>.file}` is the path of a temporary file that holds the body (mode 0600, deleted when the run
+  ends in any state).
+
+A reviewed text that is empty or only spaces fails the step: "The reviewed text is empty."
+
+With `editable = false` the window still opens, but the run continues with the rendered text, not
+with what is in the window.
+
+A paused run is kept in memory only. Reload Plugins or quit stops it, and it shows as stopped in `wf`.
+Two `confirm` steps in one run open the editor two times, each with its own document.
 
 ### show
 
@@ -214,7 +232,9 @@ is the real exit code. Every other field that has no value is empty text.
   output, so that you see the values first.
 - Run history keeps only metadata: workflow id, step states, times, exit codes and error text. It does
   not keep prompts, model output or stdout.
-- The `confirm` temporary file is in the plugin storage with mode 0600 and is deleted when the run ends.
+- The `confirm` temporary file is in the `review` folder of the plugin storage with mode 0600 and is
+  deleted when the run ends. The plugin deletes the folder when it starts.
+- The run history never keeps the confirm text, the draft or the window title.
 
 ## Planned, not built
 
@@ -230,3 +250,7 @@ is the real exit code. Every other field that has no value is empty text.
 `/usr/bin/uname`, `/bin/sleep` and `/bin/date`. Add the `examples/workflows` folder in Settings →
 Plugins → Workflows, then type `hello` and a name. The `sleep` step waits 20 seconds, so you can try
 cancel from `wf`.
+
+[examples/workflows/review.toml](../examples/workflows/review.toml) has a `confirm` step: type
+`review` and a line, edit the text, and press Cmd+Return. It counts the bytes of the body with
+`/usr/bin/wc`.

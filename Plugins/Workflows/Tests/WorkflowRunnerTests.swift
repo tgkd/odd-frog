@@ -144,14 +144,6 @@ struct WorkflowRunnerTests {
         }
     }
 
-    @Test func confirmStepsAreNotAvailableYet() async throws {
-        let runner = WorkflowRunner(exec: FakeExec { _ in ExecResult() }, history: nil)
-        let confirm = WorkflowStep(id: "review", position: 0, kind: .confirm(ConfirmStep(text: text("t"))))
-        await #expect(throws: RPCError("workflow", "review failed: confirm steps are not available in this build yet.")) {
-            try await runner.start(workflow([confirm]), input: "", settings: [:])
-        }
-    }
-
     @Test func cancelByRunIDKillsTheStepAndRecordsCancelled() async throws {
         let runner = WorkflowRunner(exec: waitsForCancel, history: nil)
         let started = Task { try await runner.start(workflow([exec("wait", 0, [text("/bin/sleep")])]), input: "", settings: [:]) }

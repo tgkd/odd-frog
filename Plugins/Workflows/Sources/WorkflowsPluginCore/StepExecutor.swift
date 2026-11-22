@@ -41,8 +41,20 @@ struct StepExecutor: Sendable {
         case .llm(let llm):
             return try await run(llm, values: values, settings: settings)
         case .confirm:
-            throw StepFailure("confirm steps are not available in this build yet.")
+            throw StepFailure("A confirm step runs only through a review.")
         }
+    }
+
+    func review(_ step: ConfirmStep, values: WorkflowValues, workflowTitle: String) throws -> (title: String, text: String) {
+        let text = try render(step.text, values)
+        let rendered = try step.title.map { try render($0, values) }?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = rendered.flatMap { $0.isEmpty ? nil : $0 } ?? workflowTitle
+        return (title, text)
+    }
+
+    static func reviewed(_ text: String, _ parts: ReviewedText, file: URL) -> StepCompletion {
+        let fields = ["text": text, "title": parts.title, "body": parts.body, "file": file.path]
+        return StepCompletion(values: StepValues(output: text, fields: fields))
     }
 
     private func run(_ step: ExecStep, values: WorkflowValues, workflowFile: URL,
