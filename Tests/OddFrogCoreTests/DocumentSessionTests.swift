@@ -5,9 +5,10 @@ import OddFrogPluginAPI
 
 @MainActor
 struct DocumentSessionTests {
-    private func make(title: String = "Note", text: String = "hello", placeholder: String? = nil) -> DocumentSession {
+    private func make(title: String = "Note", text: String = "hello", placeholder: String? = nil,
+                      submit: PluginAction? = nil) -> DocumentSession {
         let view = PluginView(id: "n1", title: title, text: text, placeholder: placeholder,
-                              save: PluginAction(.callback, "save"))
+                              save: PluginAction(.callback, "save"), submit: submit)
         let result = PluginResult(pluginID: "notes", item: PluginItem(id: "n1", title: title))
         return DocumentSession(view: view, save: PluginAction(.callback, "save"), result: result, pluginName: "Notes")
     }
@@ -118,5 +119,12 @@ struct DocumentSessionTests {
         _ = session.beginSave()
         session.acknowledge(revision: 2, title: nil)
         #expect(session.title == "Draft")
+    }
+
+    @Test func submitComesFromTheView() {
+        #expect(make().submit == nil)
+        let session = make(submit: PluginAction(.callback, "submit"))
+        #expect(session.submit == PluginAction(.callback, "submit"))
+        #expect(session.save == PluginAction(.callback, "save"))
     }
 }

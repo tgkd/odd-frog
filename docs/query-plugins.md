@@ -176,7 +176,7 @@ and failures are silent. Use it to learn from host-run actions, such as a file i
 an opened path. Declarative packages cannot use `after`.
 
 Callbacks receive the selected item, original payload, action ID, and argument. A callback invoked
-from a document or chat window also receives the editor buffer in `text`. Success effects:
+from a document or chat window, including an editor's `save` and `submit`, also receives the editor buffer in `text`. Success effects:
 `{notification?: string, refreshCatalog: boolean, refreshQuery: boolean, view?: object, paste?: boolean}`.
 `paste: true` makes the host press ⌘V in the previous app, for a callback that has put its own data on
 the clipboard. Errors use the normal structured error envelope. The host checks package generation and enablement before
@@ -188,7 +188,7 @@ Effects may carry one `view`, whose `kind` selects the window the host opens: `e
 
 ### Editor
 
-An editor view is `{kind: "editor", id, title, text, placeholder?, save}`. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
+An editor view is `{kind: "editor", id, title, text, placeholder?, save, submit?}`. `id` is plugin-scoped and must be stable for a given document: the host reuses its one
 document window, and a view whose plugin and `id` already match the open document just refocuses it
 without touching the buffer. `title` is the window title and `text` is the initial
 buffer; the document window does not display `placeholder`.
@@ -202,6 +202,13 @@ if one was pending, the text stays on screen, and a sheet offers Save and Close,
 Discard and Close. Reloading plugins invalidates the open document: the host never re-sends a draft to a
 superseded provider, and the text stays editable and copyable so it can be recovered by hand. The subtitle says so, and a
 sheet offering Keep Editing or Discard and Close appears whenever unsaved text is at stake.
+
+`submit` is optional and, when present, must be a `callback` action. Cmd+Return saves the buffer,
+closes the window, and then invokes `submit` with the buffer in `text`. If that save fails, the window
+stays open with the error as the subtitle and `submit` is not invoked. The host does not wait for
+`submit`: its effects are handled like a launcher callback (a `notification`, a new `view`, a failure
+notification), it has no deadline, and it can be cancelled from the status menu. Without `submit` the
+window has no Cmd+Return action, and Return always inserts a newline.
 
 ### Chat
 

@@ -115,6 +115,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let file = NSMenu(title: "File")
         file.addItem(NSMenuItem(title: "Save", action: #selector(DocumentWindowController.saveDocument(_:)), keyEquivalent: "s"))
+        let submit = NSMenuItem(title: "Submit", action: #selector(DocumentWindowController.submitDocument(_:)), keyEquivalent: "\r")
+        submit.keyEquivalentModifierMask = [.command]
+        file.addItem(submit)
         file.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
 
         let edit = NSMenu(title: "Edit")
@@ -321,6 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         executor.onPluginAction = { [weak self] result, argument, secondary in self?.runPluginAction(result, argument: argument, secondary: secondary) }
         documents.performSave = { [weak self] session, revision, text, completion in
             _ = self?.plugins.activate(session.result, action: session.save, argument: nil, text: text, completion: completion)
+        }
+        documents.performSubmit = { [weak self] session, text in
+            self?.runSubmit(session, text: text)
         }
         chats.performSend = { [weak self] session, text, completion in
             self?.plugins.activate(session.result, action: session.send, argument: nil, text: text, completion: completion)
@@ -558,34 +564,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { package = try plugins.authorize(result, action: action) }
         catch { report(String(describing: error)); return }
         if action.kind == .callback || action.kind == .service {
-            _ = plugins.activate(result, action: action, argument: argument) { [weak self] response in
-                guard let self else { return }
-                switch response {
-                case .success(let effects):
-                    if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: .nothing) }
-                    if effects.paste == true { executor.pasteCopied(name: result.item.title) }
-                    executor.recordPlugin(result)
-                    if let view = effects.view {
-                        switch view.kind {
-                        case .editor:
-                            if let save = view.save {
-                                documents.present(view, save: save, result: result, pluginName: package.manifest.name)
-                            }
-                        case .chat:
-                            if let send = view.send {
-                                chats.present(view, send: send, result: result, pluginName: package.manifest.name)
-                            }
-                        case .month:
-                            months.present(view)
-                        }
-                    }
-                case .failure(let error):
-                    if error is CancellationError { return }
-                    report(String(describing: error))
-                }
-            }
-            status.onCancelAction = { [weak self] in self?.plugins.cancelActions() }
+            runCallback(result, action: action, argument: argument, text: nil, package: package, record: true)
         } else { executor.runHost(action, result: result, argument: argument) }
+    }
+
+    private func runSubmit(_ session: DocumentSession, text: String) {
+        guard let submit = session.submit else { return }
+        let package: PluginPackage
+        do { package = try plugins.authorize(session.result, action: submit) }
+        catch { report(String(describing: error)); return }
+        runCallback(session.result, action: submit, argument: nil, text: text, package: package, record: false)
+    }
+
+    private func runCallback(_ result: PluginResult, action: PluginAction, argument: String?, text: String?, package: PluginPackage, record: Bool) {
+        _ = plugins.activate(result, action: action, argument: argument, text: text) { [weak self] response in
+            guard let self else { return }
+            switch response {
+            case .success(let effects):
+                applyEffects(effects, result: result, package: package, record: record)
+            case .failure(let error):
+                if error is CancellationError { return }
+                report(String(describing: error))
+            }
+        }
+        status.onCancelAction = { [weak self] in self?.plugins.cancelActions() }
+    }
+
+    private func applyEffects(_ effects: PluginEffects, result: PluginResult, package: PluginPackage, record: Bool) {
+        if let text = effects.notification { notifier.post(title: result.item.title, body: text, log: .nothing) }
+        if effects.paste == true { executor.pasteCopied(name: result.item.title) }
+        if record { executor.recordPlugin(result) }
+        guard let view = effects.view else { return }
+        switch view.kind {
+        case .editor:
+            if let save = view.save {
+                documents.present(view, save: save, result: result, pluginName: package.manifest.name)
+            }
+        case .chat:
+            if let send = view.send {
+                chats.present(view, send: send, result: result, pluginName: package.manifest.name)
+            }
+        case .month:
+            months.present(view)
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

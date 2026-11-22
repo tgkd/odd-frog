@@ -3,18 +3,19 @@ import OddFrogCore
 import OddFrogPluginAPI
 
 @MainActor
-final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate {
+final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate, NSMenuItemValidation {
     private enum Reason {
-        case autosave, manual, close, quit, replace
+        case autosave, manual, close, quit, replace, submit
         var blocking: Bool {
             switch self {
-            case .close, .quit, .replace: return true
+            case .close, .quit, .replace, .submit: return true
             case .autosave, .manual: return false
             }
         }
     }
 
     var performSave: ((DocumentSession, Int, String, @escaping (Result<PluginEffects, any Error>) -> Void) -> Void)?
+    var performSubmit: ((DocumentSession, String) -> Void)?
 
     private let scroll = NSTextView.scrollablePlainDocumentContentTextView()
     private let textView: NSTextView
@@ -23,6 +24,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private var autosave: Timer?
     private var pending: (reason: Reason, completion: ((Bool) -> Void)?)?
     private var choosing = false
+    private var submitting = false
     private var quitReply: ((Bool) -> Void)?
     private var quitTimer: Timer?
 
@@ -96,6 +98,29 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         flush(reason: .manual)
     }
 
+    @objc func submitDocument(_ sender: Any?) {
+        guard canSubmit, let session else { return }
+        submitting = true
+        flush(reason: .submit) { [weak self] saved in
+            guard let self else { return }
+            submitting = false
+            guard saved, self.session === session, !session.invalidated else { return }
+            let text = session.text
+            discardAndClose()
+            performSubmit?(session, text)
+        }
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(submitDocument(_:)) else { return true }
+        return canSubmit
+    }
+
+    private var canSubmit: Bool {
+        guard let session, session.submit != nil, !session.invalidated, !submitting, !choosing else { return false }
+        return window?.isKeyWindow == true
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard let session, session.isDirty else { return true }
         if session.invalidated {
@@ -120,6 +145,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         autosave?.invalidate()
         autosave = nil
         pending = nil
+        submitting = false
         session = DocumentSession(view: view, save: save, result: result, pluginName: pluginName)
         textView.isEditable = true
         textView.string = view.text
@@ -224,6 +250,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         autosave?.invalidate()
         autosave = nil
         pending = nil
+        submitting = false
         session = nil
         textView.isEditable = true
         refresh()

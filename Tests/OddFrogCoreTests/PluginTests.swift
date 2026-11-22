@@ -639,6 +639,57 @@ struct PluginTests {
         #expect(stale is PluginError)
         #expect(String(describing: stale) == "This result belongs to a disabled or superseded plugin. Search again.")
     }
+    @Test func editorViewSubmitRoundTripsAndIsOptional() throws {
+        let view = PluginView(id: "r1-2", title: "Confirm", text: "x", save: PluginAction(.callback, "save"),
+                              submit: PluginAction(.callback, "submit"))
+        let copy = try PluginProtocol.decoder().decode(PluginView.self, from: PluginProtocol.encoder().encode(view))
+        #expect(copy == view)
+        #expect(copy.submit == PluginAction(.callback, "submit"))
+        let plain = try PluginProtocol.decoder().decode(PluginView.self, from: Data("""
+        {"kind":"editor","id":"n1","title":"T","save":{"kind":"callback","value":"save"}}
+        """.utf8))
+        #expect(plain.submit == nil)
+    }
+    @Test @MainActor func editorSubmitMustBeACallback() async throws {
+        let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
+        let handler = DocumentHandler()
+        let package = PluginPackage(manifest: try manifest(extra: """
+        activation = "live"
+        [[commands]]
+        id = "doc"
+        title = "Doc"
+        primary = { kind = "callback", value = "open" }
+        """), directory: root, bundled: true)
+        let discovery = PluginDiscovery(packages: [package])
+        let coordinator = PluginCoordinator(services: HostServiceRegistry())
+        coordinator.builtins["fixture"] = { handler }
+        defer { coordinator.stop() }
+        coordinator.reload(discovery: discovery, settings: [], storage: root)
+        var outcomes: [Result<PluginEffects, any Error>] = []
+        func start() throws {
+            let result = try #require(coordinator.catalogItems.first?.result)
+            let action = try #require(result.item.primary)
+            _ = coordinator.activate(result, action: action, argument: nil) { outcomes.append($0) }
+        }
+        func view(submit: JSONValue) -> JSONValue {
+            .object(["refreshCatalog": .bool(false), "refreshQuery": .bool(false),
+                     "view": .object(["kind": .string("editor"), "id": .string("r1-0"), "title": .string("T"),
+                                      "text": .string("x"),
+                                      "save": .object(["kind": .string("callback"), "value": .string("save")]),
+                                      "submit": submit])])
+        }
+        await handler.respond(view(submit: .object(["kind": .string("openURL"), "value": .string("https://x")])))
+        try start()
+        try await waitUntil { outcomes.count == 1 }
+        guard case .failure(let rejected) = outcomes[0] else { Issue.record("Expected a non-callback submit to be refused"); return }
+        #expect((rejected as? RPCError)?.code == "protocol")
+        await handler.respond(view(submit: .object(["kind": .string("callback"), "value": .string("submit")])))
+        try start()
+        try await waitUntil { outcomes.count == 2 }
+        guard case .success(let effects) = outcomes[1] else { Issue.record("Expected a callback submit to pass"); return }
+        #expect(effects.view?.submit == PluginAction(.callback, "submit"))
+        #expect(effects.view?.save == PluginAction(.callback, "save"))
+    }
     @Test @MainActor func monthViewsNeedOnlyAnIDAndTitle() async throws {
         let root = try temp(); defer { try? FileManager.default.removeItem(at: root) }
         let handler = DocumentHandler()
