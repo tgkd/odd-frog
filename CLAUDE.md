@@ -5,7 +5,7 @@
 Workflows are local TOML files that list steps for Odd Frog to run in order. The bundled Workflows plugin
 (`Plugins/Workflows/`) is the engine. The files themselves live only in folders the user picks in
 Settings → Plugins → Workflows and never go into this repo, the same split as Scripts and script folders.
-The format reference is `docs/workflows.md`; `examples/workflows/` holds a harmless example.
+The format reference is `docs/workflows.md`; `docs/examples/workflows/` holds a harmless example.
 
 ### Writing a workflow
 

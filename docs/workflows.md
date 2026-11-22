@@ -215,11 +215,11 @@ is the real exit code. Every other field that has no value is empty text.
 
 ## Example
 
-[examples/workflows/hello.toml](../examples/workflows/hello.toml) uses only `/bin/echo`,
-`/usr/bin/uname`, `/bin/sleep` and `/bin/date`. Add the `examples/workflows` folder in Settings →
+[docs/examples/workflows/hello.toml](examples/workflows/hello.toml) uses only `/bin/echo`,
+`/usr/bin/uname`, `/bin/sleep` and `/bin/date`. Add the `docs/examples/workflows` folder in Settings →
 Plugins → Workflows, then type `hello` and a name. The `sleep` step waits 20 seconds, so you can try
 cancel from `wf`.
 
-[examples/workflows/review.toml](../examples/workflows/review.toml) has a `confirm` step: type
+[docs/examples/workflows/review.toml](examples/workflows/review.toml) has a `confirm` step: type
 `review` and a line, edit the text, and press Cmd+Return. It counts the bytes of the body with
 `/usr/bin/wc`.

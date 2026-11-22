@@ -283,7 +283,7 @@ struct WorkflowParserTests {
     @Test func everyExampleWorkflowParses() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let folder = repository.appendingPathComponent("examples/workflows")
+        let folder = repository.appendingPathComponent("docs/examples/workflows")
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "toml" }
         #expect(!files.isEmpty)

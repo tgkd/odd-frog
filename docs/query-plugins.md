@@ -258,8 +258,8 @@ never initialize/catalog/query. Reusable services can be added in a host release
 `.build/release/OddFrogPackage Plugins .build/release build/plugins` runs that packaging step alone.
 Bundled providers are Swift libraries linked into the host, so there is no standalone provider build.
 
-Runnable examples: [declarative](../examples/plugins/declarative/), [one-shot Python query](../examples/plugins/one-shot/),
-and [persistent Python catalog, settings, and callback](../examples/plugins/counter/).
+Runnable examples: [declarative](examples/plugins/declarative/), [one-shot Python query](examples/plugins/one-shot/),
+and [persistent Python catalog, settings, and callback](examples/plugins/counter/).
 The Swift `OddFrogPluginAPI` target is an optional SDK, not the protocol specification.
 
 For isolated development runs, set `XDG_CONFIG_HOME` and `ODD_FROG_SUPPORT_HOME` to temporary directories. The latter overrides the application-support root before the `v2` suffix.

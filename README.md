@@ -77,13 +77,21 @@ roll. Advantage is `2d20kh1` or `max(d20, d20)`, disadvantage is `2d20kl1` or `m
 division rounds down, and `к` works in place of `d` (`2к6`). One expression rolls at most 100 dice
 with up to 1000 sides each.
 
+### Calendar (Calendar plugin)
+
+`cal` or `cal today` lists the events left today, `cal tomorrow` the events of tomorrow, `cal week` the
+next seven days and `cal 12d` the next 12 days, up to 30. `cal <text>` searches titles, calendar names
+and locations over the next 30 days. Return opens Calendar, Command-Return joins the meeting link when
+the event has one. `cal month` opens a month window that works without Calendar access. Odd Frog asks
+for Calendar access only when you activate the access row, and it does not store calendar data.
+
 ### Workflows (Workflows plugin)
 
 A workflow is a TOML file with steps in a line: run a command, review text in the editor,
 show a result. Choose the folders with workflow files in Settings → Plugins → Workflows, then type the
 workflow's keyword and your text. `wf` lists the runs. Odd Frog knows no service: a workflow that
 needs a model or an API calls your own command. The format, the substitution rules and the
-safety notes are in [docs/workflows.md](docs/workflows.md); `examples/workflows/` has a harmless
+safety notes are in [docs/workflows.md](docs/workflows.md); `docs/examples/workflows/` has a harmless
 example.
 
 ### Keyboard layout
