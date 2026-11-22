@@ -21,3 +21,17 @@ title = "Command search path"
 subtitle = "Folders searched first when an exec step names a command without a path. Odd Frog opened from Finder does not get the PATH of your shell."
 type = "string"
 default = "/opt/homebrew/bin:/usr/local/bin"
+
+[[settings]]
+key = "gateway_url"
+title = "AI Gateway URL"
+subtitle = "Used by llm steps with provider = \"gateway\". The gateway address up to the gateway id: https://gateway.ai.cloudflare.com/v1/<account id>/<gateway id>."
+type = "string"
+default = ""
+
+[[settings]]
+key = "gateway_token"
+title = "AI Gateway token"
+subtitle = "An AI Gateway token with the Run permission. Kept in the macOS Keychain, not in the settings file or in workflow files."
+type = "secret"
+default = ""

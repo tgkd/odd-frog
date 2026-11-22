@@ -1,9 +1,9 @@
 import Foundation
 import Testing
-import ChatPluginCore
+import LLMClient
 import OddFrogPluginAPI
 
-struct ChatBackendTests {
+struct OpenAICompatibleBackendTests {
     private func request(apiKey: String = "", systemPrompt: String = "",
                          messages: [PluginMessage] = [PluginMessage(id: "m0", role: .user, text: "hi")]) -> ChatRequest {
         ChatRequest(baseURL: URL(string: "http://localhost:11434/v1")!, apiKey: apiKey, model: "llama3.2",

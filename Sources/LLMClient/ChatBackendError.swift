@@ -2,12 +2,12 @@ import Foundation
 import OddFrogPluginAPI
 
 public enum ChatBackendError {
-    public static func connection(_ error: URLError, baseURL: URL?) -> RPCError {
+    public static func connection(_ error: URLError, baseURL: URL?, settings: String = "Chat settings") -> RPCError {
         let server = name(of: baseURL)
         let text: String
         switch error.code {
         case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
-            text = "Could not connect to \(server). Start the server, or check the API base URL in Chat settings."
+            text = "Could not connect to \(server). Start the server, or check the API base URL in \(settings)."
         case .timedOut:
             text = "\(server) did not answer in time."
         case .notConnectedToInternet:
@@ -16,18 +16,18 @@ public enum ChatBackendError {
              .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
             text = "The secure connection to \(server) failed."
         case .badURL, .unsupportedURL:
-            text = "The API base URL in Chat settings is not valid."
+            text = "The API base URL in \(settings) is not valid."
         default:
             text = "Could not reach \(server): \(error.localizedDescription)"
         }
         return RPCError("chat", sentence(text))
     }
 
-    public static func status(_ code: Int, baseURL: URL?, body: String) -> RPCError {
+    public static func status(_ code: Int, baseURL: URL?, body: String, settings: String = "Chat settings") -> RPCError {
         let server = name(of: baseURL)
         switch code {
         case 401, 403:
-            return RPCError("chat", sentence("\(server) rejected the API key (HTTP \(code)). Check the API key in Chat settings."))
+            return RPCError("chat", sentence("\(server) rejected the API key (HTTP \(code)). Check the API key in \(settings)."))
         case 404:
             return RPCError("chat", sentence("\(server) has no chat endpoint at this address (HTTP 404)." + pathHint(baseURL)))
         default:

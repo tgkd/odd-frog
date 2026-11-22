@@ -1,4 +1,5 @@
 import Foundation
+import LLMClient
 import OddFrogPluginAPI
 
 public enum ChatService: String, CaseIterable, Sendable {

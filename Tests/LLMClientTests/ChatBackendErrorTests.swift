@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import ChatPluginCore
+import LLMClient
 import OddFrogPluginAPI
 
 private final class StubProtocol: URLProtocol, @unchecked Sendable {
@@ -70,7 +70,7 @@ struct ChatBackendErrorTests {
     @Test func aRefusedConnectionReachesTheCallerAsAPlainMessage() async {
         StubProtocol.responses = [:]
         await #expect(throws: RPCError("chat", "Could not connect to the server at localhost:11434. Start the server, or check the API base URL in Chat settings.")) {
-            _ = try await backend().stream(request("http://localhost:11434/v1"), tools: nil)
+            _ = try await backend().stream(request("http://localhost:11434/v1"))
         }
     }
 
@@ -78,7 +78,7 @@ struct ChatBackendErrorTests {
         StubProtocol.responses = ["localhost": (200, "application/json",
                                                 #"{"error":"Unexpected endpoint or method. (POST /chat/completions)"}"#)]
         await #expect(throws: RPCError("chat", "The server at localhost:1234 says: Unexpected endpoint or method. (POST /chat/completions) Check that the API base URL ends with /v1.")) {
-            _ = try await backend().stream(request("http://localhost:1234"), tools: nil)
+            _ = try await backend().stream(request("http://localhost:1234"))
         }
     }
 }

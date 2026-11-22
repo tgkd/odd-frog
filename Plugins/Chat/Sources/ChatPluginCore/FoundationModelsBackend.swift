@@ -1,4 +1,5 @@
 import Foundation
+import LLMClient
 import FoundationModels
 import OddFrogPluginAPI
 
